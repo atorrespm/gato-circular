@@ -1,3 +1,4 @@
+
 /* =====================================================
    GATO CIRCULAR - MOTOR UNIFICADO FINAL (v1.0 CLEAN)
    ===================================================== */
@@ -174,8 +175,81 @@ function procesarJugadaConEventos(casilla) {
 // INICIALIZACIÓN VISUAL
 // =========================
 
-function inicializarListenersGlobales(sistema) {
-    return sistema;
+function crearTableroVisual() {
+
+    const contenedor =
+        document.getElementById(
+            "tablero"
+        );
+
+    if (!contenedor) return;
+
+    contenedor.innerHTML = "";
+
+    const anillos = ["A","B","C","D"];
+
+    const radios = {
+        A: 160,
+        B: 120,
+        C: 80,
+        D: 40
+    };
+
+    const centroX = 200;
+    const centroY = 200;
+
+    anillos.forEach(anillo => {
+
+        for(let i = 0; i < 8; i++) {
+
+            const casilla =
+                document.createElement("div");
+
+            const nombre =
+                anillo + i;
+
+            casilla.classList.add(
+                "casilla"
+            );
+
+            casilla.id =
+                nombre;
+
+            casilla.dataset.posicion =
+                nombre;
+
+            casilla.innerText =
+                nombre;
+
+            const angulo =
+                ((360 / 8) * i - 90)
+                * Math.PI / 180;
+
+            const radio =
+                radios[anillo];
+
+            const x =
+                centroX +
+                Math.cos(angulo) * radio;
+
+            const y =
+                centroY +
+                Math.sin(angulo) * radio;
+
+            casilla.style.left =
+                x + "px";
+
+            casilla.style.top =
+                y + "px";
+
+            contenedor.appendChild(
+                casilla
+            );
+
+        }
+
+    });
+
 }
 
 // =========================
@@ -199,8 +273,13 @@ const GatoCircular = {
 
     iniciarJuego();
 
+    crearTableroVisual();
+
     window.GatoCircular = GatoCircular;
 
-    console.log("Gato Circular listo");
+    console.log(
+        "Gato Circular listo"
+    );
 
 })();
+
