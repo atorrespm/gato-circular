@@ -177,6 +177,8 @@ function procesarJugadaConEventos(casilla) {
 
 function crearTableroVisual() {
 
+    console.log("CREANDO TABLERO VISUAL");
+
     const contenedor =
         document.getElementById(
             "tablero"
@@ -207,6 +209,11 @@ function crearTableroVisual() {
 
             const nombre =
                 anillo + i;
+
+       console.log(
+       "Creando:",
+        nombre
+   );
 
             casilla.classList.add(
                 "casilla"
