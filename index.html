@@ -1,35 +1,484 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gato Circular</title>
-    <link rel="stylesheet" href="style.css">
-</head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gato Circular</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@500;700&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#1a1a1a;--panel:#242424;--border:#3a3a3a;
+  --gold:#c8a84b;--red:#e03030;--red-g:#ff5555;
+  --blue:#2a9fd6;--blue-g:#44ccff;--text:#ccc;
+}
+body{background:var(--bg);color:var(--text);font-family:'Rajdhani',Arial,sans-serif;
+  min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:10px;gap:8px}
+#app{display:grid;grid-template-columns:190px 1fr 210px;gap:10px;width:100%;max-width:1080px;align-items:start}
+.panel{background:var(--panel);border:2px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;position:relative}
+.panel::after{content:'';position:absolute;inset:4px;border:1px solid #2c2c2c;border-radius:5px;pointer-events:none}
+.ptitle{font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;color:var(--gold);text-align:center;margin-bottom:7px;text-transform:uppercase}
+#logo-panel{background:linear-gradient(135deg,#1c1c1c,#282828);border-color:#4a4a4a;text-align:center}
+#logo-panel h1{font-family:'Orbitron',sans-serif;font-size:20px;font-weight:900;color:#bbb;text-shadow:1px 1px 3px #000;line-height:1.1}
+#logo-panel p{font-size:10px;color:var(--red);letter-spacing:2px;font-weight:700;margin-top:4px}
+.pname{font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;text-align:center;margin-bottom:5px}
+.pname.x{color:var(--red)}.pname.o{color:var(--blue)}
+.ptoken{width:54px;height:54px;border-radius:50%;margin:0 auto 5px;display:flex;align-items:center;justify-content:center;
+  font-size:28px;font-weight:900;font-family:'Orbitron',sans-serif;border:3px solid}
+.ptoken.x{color:var(--red-g);border-color:var(--red);background:radial-gradient(circle,#3a0000,#1a0000);box-shadow:0 0 10px var(--red)}
+.ptoken.o{color:var(--blue-g);border-color:var(--blue);background:radial-gradient(circle,#001a2a,#000d1a);box-shadow:0 0 10px var(--blue)}
+.fichas-lbl{font-size:10px;letter-spacing:1px;color:#888;font-weight:700;text-align:center}
+.fichas-n{font-family:'Orbitron',sans-serif;font-size:22px;font-weight:700;text-align:center}
+.fichas-n.x{color:var(--red)}.fichas-n.o{color:var(--blue)}
+#turno-panel{text-align:center}
+#turno-ficha{font-family:'Orbitron',sans-serif;font-size:38px;font-weight:900;margin:4px 0;transition:color .3s,text-shadow .3s}
+#turno-ficha.x{color:var(--red-g);text-shadow:0 0 14px var(--red)}
+#turno-ficha.o{color:var(--blue-g);text-shadow:0 0 14px var(--blue)}
+#turno-msg{font-size:10px;color:#777;letter-spacing:.5px;line-height:1.5}
+#zona-tablero{display:flex;flex-direction:column;align-items:center;gap:8px}
+#tablero-wrap{width:460px;height:460px;position:relative}
+#tablero-svg{width:100%;height:100%}
 
+/* ── Sectores del tablero: siempre oscuros, solo estructura ── */
+.cell-sector{fill:#222;stroke:#505050;stroke-width:1.5;cursor:pointer;transition:fill .1s}
+.cell-sector:hover{fill:#2c2c2c}
+.cell-sector.ocupada{fill:#222;cursor:default}   /* sector NO cambia de color */
+
+/* ── Ficha circular: lo que se ilumina al jugar ── */
+.ficha-vacia{
+  fill:#2e2e2e;stroke:#555;stroke-width:1.5;cursor:pointer;
+  transition:fill .1s,stroke .1s;
+}
+.ficha-vacia:hover{fill:#3c3c3c;stroke:#777}
+.ficha-x{
+  fill:#3a0000;stroke:var(--red);stroke-width:2;cursor:default;
+  filter:drop-shadow(0 0 4px rgba(224,48,48,0.7));
+}
+.ficha-o{
+  fill:#001624;stroke:var(--blue);stroke-width:2;cursor:default;
+  filter:drop-shadow(0 0 4px rgba(42,159,214,0.7));
+}
+.ficha-winner-x{stroke:var(--red-g);stroke-width:3;filter:drop-shadow(0 0 7px rgba(255,85,85,0.9))}
+.ficha-winner-o{stroke:var(--blue-g);stroke-width:3;filter:drop-shadow(0 0 7px rgba(68,204,255,0.9))}
+
+/* Token X/O dentro de la ficha */
+.token-txt{font-family:'Orbitron',sans-serif;font-weight:900;pointer-events:none;
+  dominant-baseline:middle;text-anchor:middle}
+.token-txt.x{fill:var(--red-g)}.token-txt.o{fill:var(--blue-g)}
+
+/* Etiqueta de casilla vacía */
+.cell-lbl{font-family:'Rajdhani',sans-serif;fill:#555;pointer-events:none;
+  dominant-baseline:middle;text-anchor:middle}
+
+.how-title{font-family:'Orbitron',sans-serif;font-size:11px;color:var(--red);text-align:center;margin-bottom:6px;letter-spacing:1px}
+.how-sub{font-size:11px;color:#aaa;text-align:center;margin-bottom:8px;line-height:1.4}
+.wtype{display:flex;align-items:center;gap:9px;margin-bottom:7px;padding:5px 7px;background:#1a1a1a;border-radius:5px}
+.wdots{display:flex;flex-direction:column;gap:3px;flex-shrink:0}
+.wdots.h{flex-direction:row}
+.wdot{width:7px;height:7px;border-radius:50%;background:var(--red)}
+.wlbl{font-size:12px;font-weight:700;color:#ddd}.wlbl2{font-size:10px;color:#777}
+.leg-row{display:flex;justify-content:space-between;margin-bottom:3px;padding:3px 6px;background:#1a1a1a;border-radius:4px;font-size:11px}
+.leg-x{color:var(--red);font-weight:700;font-family:'Orbitron',sans-serif;font-size:10px}
+.leg-o{color:var(--blue);font-weight:700;font-family:'Orbitron',sans-serif;font-size:10px}
+.stat-row{display:flex;justify-content:space-between;align-items:center;padding:3px 6px;font-size:12px;font-weight:700}
+.stat-v{font-family:'Orbitron',sans-serif;font-size:14px}
+#barra{display:flex;justify-content:center;gap:8px;width:100%;max-width:1080px;flex-wrap:wrap}
+.btn{padding:11px 18px;font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;
+  border:none;border-radius:6px;cursor:pointer;display:flex;align-items:center;gap:7px;
+  transition:filter .2s,transform .1s}
+.btn:hover{filter:brightness(1.2);transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+#btn-nueva{background:linear-gradient(135deg,#7a0000,#bb1f00);color:#fff}
+#btn-sortear{background:linear-gradient(135deg,#6a5200,#b8922a);color:#111}
+#btn-reclamar{background:linear-gradient(135deg,#005500,#009933);color:#fff}
+#btn-confirmar{background:linear-gradient(135deg,#003070,#0055bb);color:#fff}
+#overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:99}
+#modal{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  background:linear-gradient(135deg,#1a1a1a,#252525);border:2px solid var(--gold);
+  border-radius:12px;padding:28px 36px;text-align:center;z-index:100;
+  box-shadow:0 0 40px rgba(0,0,0,.9);min-width:280px}
+#modal h2{font-family:'Orbitron',sans-serif;font-size:20px;margin-bottom:7px}
+#modal p{font-size:13px;color:#aaa;line-height:1.5;white-space:pre-line}
+#btn-modal{margin-top:14px;padding:9px 22px;background:var(--gold);color:#111;
+  border:none;border-radius:5px;font-family:'Orbitron',sans-serif;font-weight:700;cursor:pointer;font-size:12px}
+</style>
+</head>
 <body>
 
-    <header>
-        <h1>GATO CIRCULAR</h1>
-        <p>Conquista los anillos</p>
-    </header>
+<div id="app">
+  <!-- PANEL IZQ -->
+  <aside>
+    <div class="panel" id="logo-panel">
+      <h1>GATO<br>CIRCULAR</h1>
+      <p>CONQUISTA LOS ANILLOS</p>
+    </div>
+    <div class="panel">
+      <div class="pname x">JUGADOR 1</div>
+      <div class="ptoken x">X</div>
+      <div class="fichas-lbl">FICHAS</div>
+      <div class="fichas-n x" id="fichas-x">16</div>
+    </div>
+    <div class="panel">
+      <div class="pname o">JUGADOR 2</div>
+      <div class="ptoken o">O</div>
+      <div class="fichas-lbl">FICHAS</div>
+      <div class="fichas-n o" id="fichas-o">16</div>
+    </div>
+    <div class="panel" id="turno-panel">
+      <div class="ptitle">TURNO ACTUAL</div>
+      <div id="turno-ficha" class="x">X</div>
+      <div id="turno-msg">HAZ CLIC EN UNA CASILLA<br>PARA COLOCAR TU FICHA</div>
+    </div>
+  </aside>
 
-    <main id="app">
+  <!-- TABLERO -->
+  <main id="zona-tablero">
+    <div id="tablero-wrap">
+      <svg id="tablero-svg" viewBox="0 0 480 480" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="board-grad" cx="50%" cy="50%">
+            <stop offset="0%" stop-color="#262626"/>
+            <stop offset="100%" stop-color="#161616"/>
+          </radialGradient>
+        </defs>
 
-        <div id="tablero"></div>
+        <!-- Fondo circular -->
+        <circle cx="240" cy="240" r="197" fill="url(#board-grad)" stroke="#3a3a3a" stroke-width="3"/>
 
-        <div id="panel">
+        <!-- Anillos concéntricos -->
+        <circle cx="240" cy="240" r="195" fill="none" stroke="#505050" stroke-width="1.5"/>
+        <circle cx="240" cy="240" r="145" fill="none" stroke="#505050" stroke-width="1.5"/>
+        <circle cx="240" cy="240" r="95"  fill="none" stroke="#505050" stroke-width="1.5"/>
+        <circle cx="240" cy="240" r="48"  fill="none" stroke="#505050" stroke-width="1.5"/>
 
-            <button id="btn-sorteo">Sortear Partida</button>
-            <button id="btn-reclamar">Reclamar Victoria</button>
-            <button id="btn-confirmar">Confirmar</button>
-            <button id="btn-reinicio">Nueva Partida</button>
+        <!-- 8 Radios (separadores de casillas) -->
+        <line x1="240" y1="240" x2="240" y2="45"  stroke="#505050" stroke-width="1.5"/>
+        <line x1="240" y1="240" x2="378" y2="102" stroke="#505050" stroke-width="1.5"/>
+        <line x1="240" y1="240" x2="435" y2="240" stroke="#505050" stroke-width="1.5"/>
+        <line x1="240" y1="240" x2="378" y2="378" stroke="#505050" stroke-width="1.5"/>
+        <line x1="240" y1="240" x2="240" y2="435" stroke="#505050" stroke-width="1.5"/>
+        <line x1="240" y1="240" x2="102" y2="378" stroke="#505050" stroke-width="1.5"/>
+        <line x1="240" y1="240" x2="45"  y2="240" stroke="#505050" stroke-width="1.5"/>
+        <line x1="240" y1="240" x2="102" y2="102" stroke="#505050" stroke-width="1.5"/>
 
+        <!-- Sectores invisibles para hacer clic (área de la casilla) -->
+        <g id="sectors-layer"></g>
+
+        <!-- Fichas circulares (encima de los sectores) -->
+        <g id="fichas-layer"></g>
+
+        <!-- Centro -->
+        <circle cx="240" cy="240" r="0" fill="#333" stroke="#555" stroke-width="1"/>
+      </svg>
+    </div>
+  </main>
+
+  <!-- PANEL DER -->
+  <aside>
+    <div class="panel">
+      <div class="how-title">¿CÓMO SE GANA?</div>
+      <div class="how-sub">Consigue 4 fichas en línea en cualquiera de estas formas sin cruzar el centro:</div>
+      <div class="wtype">
+        <div class="wdots"><div class="wdot"></div><div class="wdot"></div><div class="wdot"></div><div class="wdot"></div></div>
+        <div><div class="wlbl">Vertical</div><div class="wlbl2">(Radial)</div></div>
+      </div>
+      <div class="wtype">
+        <div class="wdots h"><div class="wdot"></div><div class="wdot"></div><div class="wdot"></div><div class="wdot"></div></div>
+        <div><div class="wlbl">Horizontal</div><div class="wlbl2">(Circular)</div></div>
+      </div>
+      <div class="wtype">
+        <div class="wdots" style="gap:2px">
+          <div class="wdot" style="margin-left:0"></div>
+          <div class="wdot" style="margin-left:8px"></div>
+          <div class="wdot" style="margin-left:8px"></div>
+          <div class="wdot" style="margin-left:2px"></div>
         </div>
+        <div><div class="wlbl">Espiral</div><div class="wlbl2">(Por los Vértices)</div></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="leg-row"><span class="leg-x">JUGADOR 1 (X)</span></div>
+      <div class="leg-row"><span class="leg-o">JUGADOR 2 (O)</span></div>
+    </div>
+    <div class="panel">
+      <div class="ptitle">ESTADÍSTICAS</div>
+      <div class="stat-row">
+        <span style="color:var(--red)">VICTORIAS X</span>
+        <span class="stat-v" id="stat-x" style="color:var(--red)">0</span>
+      </div>
+      <div class="stat-row">
+        <span style="color:var(--blue)">VICTORIAS O</span>
+        <span class="stat-v" id="stat-o" style="color:var(--blue)">0</span>
+      </div>
+    </div>
+  </aside>
+</div>
 
-    </main>
+<div id="barra">
+  <button class="btn" id="btn-nueva">↺ NUEVA PARTIDA</button>
+  <button class="btn" id="btn-sortear">⇄ SORTEAR PARTIDA</button>
+  <button class="btn" id="btn-reclamar">🏆 RECLAMAR VICTORIA</button>
+  <button class="btn" id="btn-confirmar">✔ CONFIRMAR</button>
+</div>
 
-    <script src="gato_circular.js"></script>
+<div id="overlay"></div>
+<div id="modal">
+  <h2 id="modal-t"></h2>
+  <p id="modal-b"></p>
+  <button id="btn-modal">ACEPTAR</button>
+</div>
 
+<script>
+// =====================================================
+// GATO CIRCULAR v3 — Fichas circulares dentro de sectores
+// =====================================================
+
+const CX = 240, CY = 240;
+
+const RING_RADII = {
+  D: { i: 0,   o: 48  },
+  C: { i: 48,  o: 95  },
+  B: { i: 95,  o: 145 },
+  A: { i: 145, o: 195 }
+};
+
+// Radio de la ficha circular en cada anillo
+const FICHA_R = { A: 17, B: 16, C: 13, D: 9 };
+
+// Centroide del sector (donde va la ficha)
+function centroide(anillo, i) {
+  const { i: ri, o: ro } = RING_RADII[anillo];
+  const r = (ri + ro) / 2;
+  const a1 = (i * 45 - 90) * Math.PI / 180;
+  const a2 = ((i + 1) * 45 - 90) * Math.PI / 180;
+  const a = (a1 + a2) / 2;
+  return { x: CX + r * Math.cos(a), y: CY + r * Math.sin(a) };
+}
+
+// Path del sector (para zona clickeable invisible)
+function sectorPath(anillo, i) {
+  const { i: ri, o: ro } = RING_RADII[anillo];
+  const a1 = (i * 45 - 90) * Math.PI / 180;
+  const a2 = ((i + 1) * 45 - 90) * Math.PI / 180;
+  const ox1 = CX + ro * Math.cos(a1), oy1 = CY + ro * Math.sin(a1);
+  const ox2 = CX + ro * Math.cos(a2), oy2 = CY + ro * Math.sin(a2);
+  const ix2 = CX + ri * Math.cos(a2), iy2 = CY + ri * Math.sin(a2);
+  const ix1 = CX + ri * Math.cos(a1), iy1 = CY + ri * Math.sin(a1);
+  if (ri === 0) {
+    return `M ${CX} ${CY} L ${ox1.toFixed(2)} ${oy1.toFixed(2)} A ${ro} ${ro} 0 0 1 ${ox2.toFixed(2)} ${oy2.toFixed(2)} Z`;
+  }
+  return `M ${ox1.toFixed(2)} ${oy1.toFixed(2)} A ${ro} ${ro} 0 0 1 ${ox2.toFixed(2)} ${oy2.toFixed(2)} L ${ix2.toFixed(2)} ${iy2.toFixed(2)} A ${ri} ${ri} 0 0 0 ${ix1.toFixed(2)} ${iy1.toFixed(2)} Z`;
+}
+
+// ── LÍNEAS GANADORAS ──
+const lineasRadiales = [
+  ["A0","B0","C0","D0"],["A1","B1","C1","D1"],["A2","B2","C2","D2"],["A3","B3","C3","D3"],
+  ["A4","B4","C4","D4"],["A5","B5","C5","D5"],["A6","B6","C6","D6"],["A7","B7","C7","D7"]
+];
+const lineasCirculares = [];
+["A","B","C","D"].forEach(a => {
+  for(let i=0;i<8;i++) lineasCirculares.push([`${a}${i}`,`${a}${(i+1)%8}`,`${a}${(i+2)%8}`,`${a}${(i+3)%8}`]);
+});
+const lineasEspiralesH = [
+  ["A0","B1","C2","D3"],["A1","B2","C3","D4"],["A2","B3","C4","D5"],["A3","B4","C5","D6"],
+  ["A4","B5","C6","D7"],["A5","B6","C7","D0"],["A6","B7","C0","D1"],["A7","B0","C1","D2"]
+];
+const lineasEspiralesA = [
+  ["A0","B7","C6","D5"],["A1","B0","C7","D6"],["A2","B1","C0","D7"],["A3","B2","C1","D0"],
+  ["A4","B3","C2","D1"],["A5","B4","C3","D2"],["A6","B5","C4","D3"],["A7","B6","C5","D4"]
+];
+const TODAS_LINEAS = [...lineasRadiales,...lineasCirculares,...lineasEspiralesH,...lineasEspiralesA];
+
+// ── ESTADO ──
+const ANILLOS = ["A","B","C","D"];
+let tablero={}, turno="X", terminado=false;
+let fichasX=16, fichasO=16, victoriasX=0, victoriasO=0, jugadas=0;
+let pendienteConfirm=null;
+
+function inicializar() {
+  tablero={};
+  ANILLOS.forEach(a=>{for(let i=0;i<8;i++) tablero[`${a}${i}`]=null;});
+  turno="X"; terminado=false; fichasX=16; fichasO=16; jugadas=0;
+  renderTablero(); actualizarUI();
+  document.getElementById("turno-msg").textContent = "HAZ CLIC EN UNA CASILLA\nPARA COLOCAR TU FICHA";
+}
+
+function buscarVictoria(j) {
+  return TODAS_LINEAS.filter(l => l.every(c => tablero[c] === j));
+}
+
+// ── RENDER ──
+function renderTablero() {
+  const svgNS = "http://www.w3.org/2000/svg";
+  const sectorsLayer = document.getElementById("sectors-layer");
+  const fichasLayer  = document.getElementById("fichas-layer");
+  sectorsLayer.innerHTML = "";
+  fichasLayer.innerHTML  = "";
+
+  ANILLOS.forEach(anillo => {
+    for(let i=0;i<8;i++) {
+      const id     = `${anillo}${i}`;
+      const estado = tablero[id];
+      const pos    = centroide(anillo, i);
+      const fr     = FICHA_R[anillo];
+
+      // ── Sector clickeable (transparente / muy sutil de fondo) ──
+      const sector = document.createElementNS(svgNS, "path");
+      sector.setAttribute("d", sectorPath(anillo, i));
+      sector.setAttribute("fill", "transparent");
+      sector.setAttribute("stroke", "none");
+      sector.style.cursor = estado || terminado ? "default" : "pointer";
+      if(!estado && !terminado) {
+        sector.addEventListener("click", () => manejarClic(id));
+        // Hover sutil sobre el sector (ilumina un poco el fondo)
+        sector.addEventListener("mouseenter", () => sector.setAttribute("fill","rgba(255,255,255,0.03)"));
+        sector.addEventListener("mouseleave", () => sector.setAttribute("fill","transparent"));
+      }
+      sectorsLayer.appendChild(sector);
+
+      // ── Ficha circular ──
+      const g = document.createElementNS(svgNS, "g");
+      g.dataset.id = id;
+
+      const circ = document.createElementNS(svgNS, "circle");
+      circ.setAttribute("cx", pos.x.toFixed(2));
+      circ.setAttribute("cy", pos.y.toFixed(2));
+      circ.setAttribute("r",  fr);
+
+      if(!estado) {
+        // Ficha vacía — clickeable, hover
+        circ.classList.add("ficha-vacia");
+        circ.addEventListener("click", () => manejarClic(id));
+
+        // Etiqueta de la casilla
+        const lbl = document.createElementNS(svgNS, "text");
+        lbl.setAttribute("x", pos.x.toFixed(2));
+        lbl.setAttribute("y", pos.y.toFixed(2));
+        lbl.setAttribute("font-size", anillo==="D" ? "7.5" : anillo==="C" ? "8.5" : "9.5");
+        lbl.classList.add("cell-lbl");
+        lbl.textContent = id;
+        lbl.style.pointerEvents = "none";
+        g.appendChild(circ);
+        g.appendChild(lbl);
+      } else {
+        // Ficha jugada
+        circ.classList.add(`ficha-${estado.toLowerCase()}`);
+        const txt = document.createElementNS(svgNS, "text");
+        txt.setAttribute("x", pos.x.toFixed(2));
+        txt.setAttribute("y", pos.y.toFixed(2));
+        txt.setAttribute("font-size", anillo==="D" ? "9" : anillo==="C" ? "11" : "13");
+        txt.classList.add("token-txt", estado.toLowerCase());
+        txt.textContent = estado;
+        g.appendChild(circ);
+        g.appendChild(txt);
+      }
+
+      fichasLayer.appendChild(g);
+    }
+  });
+}
+
+function resaltarGanadores(lineas) {
+  const svgNS = "http://www.w3.org/2000/svg";
+  lineas.forEach(l => l.forEach(id => {
+    const g = document.querySelector(`#fichas-layer [data-id="${id}"] circle`);
+    if(g) {
+      const estado = tablero[id];
+      g.classList.add(`ficha-winner-${estado.toLowerCase()}`);
+    }
+  }));
+}
+
+// ── LÓGICA ──
+function manejarClic(id) {
+  if(terminado || tablero[id] !== null) return;
+  const f = turno==="X" ? fichasX : fichasO;
+  if(f <= 0) { mostrarModal("Sin fichas", `El jugador ${turno} ya no tiene fichas disponibles.`); return; }
+
+  tablero[id] = turno;
+  jugadas++;
+  if(turno==="X") fichasX--; else fichasO--;
+
+  renderTablero();
+  turno = turno==="X" ? "O" : "X";
+  actualizarUI();
+}
+
+function actualizarUI() {
+  document.getElementById("fichas-x").textContent = fichasX;
+  document.getElementById("fichas-o").textContent = fichasO;
+  document.getElementById("stat-x").textContent   = victoriasX;
+  document.getElementById("stat-o").textContent   = victoriasO;
+  const tf = document.getElementById("turno-ficha");
+  tf.textContent = turno;
+  tf.className   = turno.toLowerCase();
+}
+
+function declararGanador(j) {
+  terminado = true;
+  if(j==="X") victoriasX++; else victoriasO++;
+  const lineas = buscarVictoria(j);
+  renderTablero();
+  resaltarGanadores(lineas);
+  actualizarUI();
+  const nombre = j==="X" ? "Jugador 1 (X)" : "Jugador 2 (O)";
+  mostrarModal(`🏆 ¡VICTORIA!`,
+    `¡${nombre} gana con ${lineas.length} línea(s) ganadora(s)!\n\nInicia una nueva partida para seguir jugando.`);
+  document.getElementById("turno-msg").textContent = "¡Partida terminada!";
+}
+
+// ── BOTONES ──
+document.getElementById("btn-nueva").onclick = () => inicializar();
+
+document.getElementById("btn-sortear").onclick = () => {
+  if(jugadas > 0) { mostrarModal("Sorteo","Solo puedes sortear al inicio de la partida."); return; }
+  turno = Math.random() < .5 ? "X" : "O";
+  actualizarUI();
+  mostrarModal("¡SORTEO!", `Comienza el Jugador ${turno==="X" ? "1 (X)" : "2 (O)"}`);
+};
+
+document.getElementById("btn-reclamar").onclick = () => {
+  if(terminado) { mostrarModal("Partida terminada","Inicia una nueva partida."); return; }
+  if(jugadas < 7) { mostrarModal("Muy pronto","Se requieren al menos 7 jugadas para reclamar victoria."); return; }
+  const jAnt = turno==="X" ? "O" : "X";
+  if(buscarVictoria(jAnt).length > 0) {
+    pendienteConfirm = jAnt;
+    const n = jAnt==="X" ? "1" : "2";
+    mostrarModal("⚠️ RECLAMAR VICTORIA",
+      `Jugador ${n} (${jAnt}) reclama victoria.\nPresiona CONFIRMAR para validarla.`, "RECLAMAR");
+  } else {
+    mostrarModal("Sin victoria aún","El jugador que acaba de jugar no tiene 4 en línea todavía.");
+  }
+};
+
+document.getElementById("btn-confirmar").onclick = () => {
+  if(terminado || jugadas < 7) return;
+  const jAnt = turno==="X" ? "O" : "X";
+  if(buscarVictoria(jAnt).length > 0) declararGanador(jAnt);
+  else mostrarModal("Sin victoria","No hay línea ganadora confirmada aún.");
+};
+
+// ── MODAL ──
+function mostrarModal(titulo, cuerpo, btnTxt="ACEPTAR") {
+  document.getElementById("modal-t").textContent  = titulo;
+  document.getElementById("modal-b").textContent  = cuerpo;
+  document.getElementById("btn-modal").textContent = btnTxt;
+  document.getElementById("modal").style.display  = "block";
+  document.getElementById("overlay").style.display = "block";
+}
+
+document.getElementById("btn-modal").onclick = () => {
+  document.getElementById("modal").style.display   = "none";
+  document.getElementById("overlay").style.display = "none";
+  if(pendienteConfirm) { declararGanador(pendienteConfirm); pendienteConfirm = null; }
+};
+document.getElementById("overlay").onclick = () => {
+  document.getElementById("modal").style.display   = "none";
+  document.getElementById("overlay").style.display = "none";
+  pendienteConfirm = null;
+};
+
+inicializar();
+</script>
 </body>
 </html>
