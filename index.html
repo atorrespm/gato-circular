@@ -17,7 +17,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',Arial,sans-se
 #app{display:grid;grid-template-columns:190px 1fr 210px;gap:10px;width:100%;max-width:1080px;align-items:start}
 .panel{background:var(--panel);border:2px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;position:relative}
 .panel::after{content:'';position:absolute;inset:4px;border:1px solid #2c2c2c;border-radius:5px;pointer-events:none}
-.ptitle{font-family:'Orbitron',sans-serif;font-size:13px;letter-spacing:2px;color:var(--gold);text-align:center;margin-bottom:7px;text-transform:uppercase}
+.ptitle{font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;color:var(--gold);text-align:center;margin-bottom:7px;text-transform:uppercase}
 #logo-panel{background:linear-gradient(135deg,#1c1c1c,#282828);border-color:#4a4a4a;text-align:center}
 #logo-panel h1{font-family:'Orbitron',sans-serif;font-size:20px;font-weight:900;color:#bbb;text-shadow:1px 1px 3px #000;line-height:1.1}
 #logo-panel p{font-size:10px;color:var(--red);letter-spacing:2px;font-weight:700;margin-top:4px}
@@ -27,14 +27,14 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',Arial,sans-se
   font-size:28px;font-weight:900;font-family:'Orbitron',sans-serif;border:3px solid}
 .ptoken.x{color:var(--red-g);border-color:var(--red);background:radial-gradient(circle,#3a0000,#1a0000);box-shadow:0 0 10px var(--red)}
 .ptoken.o{color:var(--blue-g);border-color:var(--blue);background:radial-gradient(circle,#001a2a,#000d1a);box-shadow:0 0 10px var(--blue)}
-.fichas-lbl{font-size:13px;letter-spacing:1px;color:#aaa;font-weight:700;text-align:center}
+.fichas-lbl{font-size:10px;letter-spacing:1px;color:#888;font-weight:700;text-align:center}
 .fichas-n{font-family:'Orbitron',sans-serif;font-size:22px;font-weight:700;text-align:center}
 .fichas-n.x{color:var(--red)}.fichas-n.o{color:var(--blue)}
 #turno-panel{text-align:center}
 #turno-ficha{font-family:'Orbitron',sans-serif;font-size:38px;font-weight:900;margin:4px 0;transition:color .3s,text-shadow .3s}
 #turno-ficha.x{color:var(--red-g);text-shadow:0 0 14px var(--red)}
 #turno-ficha.o{color:var(--blue-g);text-shadow:0 0 14px var(--blue)}
-#turno-msg{font-size:12px;color:#999;letter-spacing:.5px;line-height:1.5}
+#turno-msg{font-size:10px;color:#777;letter-spacing:.5px;line-height:1.5}
 #zona-tablero{display:flex;flex-direction:column;align-items:center;gap:8px}
 #tablero-wrap{width:460px;height:460px;position:relative}
 #tablero-svg{width:100%;height:100%}
@@ -70,18 +70,18 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',Arial,sans-se
 .cell-lbl{font-family:'Rajdhani',sans-serif;fill:#555;pointer-events:none;
   dominant-baseline:middle;text-anchor:middle}
 
-.how-title{font-family:'Orbitron',sans-serif;font-size:13px;color:var(--red);text-align:center;margin-bottom:6px;letter-spacing:1px}
-.how-sub{font-size:12px;color:#bbb;text-align:center;margin-bottom:8px;line-height:1.4}
+.how-title{font-family:'Orbitron',sans-serif;font-size:11px;color:var(--red);text-align:center;margin-bottom:6px;letter-spacing:1px}
+.how-sub{font-size:11px;color:#aaa;text-align:center;margin-bottom:8px;line-height:1.4}
 .wtype{display:flex;align-items:center;gap:9px;margin-bottom:7px;padding:5px 7px;background:#1a1a1a;border-radius:5px}
 .wdots{display:flex;flex-direction:column;gap:3px;flex-shrink:0}
 .wdots.h{flex-direction:row}
 .wdot{width:7px;height:7px;border-radius:50%;background:var(--red)}
-.wlbl{font-size:14px;font-weight:700;color:#eee}.wlbl2{font-size:12px;color:#999}
-.leg-row{display:flex;justify-content:space-between;margin-bottom:3px;padding:5px 8px;background:#1a1a1a;border-radius:4px;font-size:13px}
-.leg-x{color:var(--red);font-weight:700;font-family:'Orbitron',sans-serif;font-size:12px}
-.leg-o{color:var(--blue);font-weight:700;font-family:'Orbitron',sans-serif;font-size:12px}
-.stat-row{display:flex;justify-content:space-between;align-items:center;padding:5px 8px;font-size:14px;font-weight:700}
-.stat-v{font-family:'Orbitron',sans-serif;font-size:16px}
+.wlbl{font-size:12px;font-weight:700;color:#ddd}.wlbl2{font-size:10px;color:#777}
+.leg-row{display:flex;justify-content:space-between;margin-bottom:3px;padding:3px 6px;background:#1a1a1a;border-radius:4px;font-size:11px}
+.leg-x{color:var(--red);font-weight:700;font-family:'Orbitron',sans-serif;font-size:10px}
+.leg-o{color:var(--blue);font-weight:700;font-family:'Orbitron',sans-serif;font-size:10px}
+.stat-row{display:flex;justify-content:space-between;align-items:center;padding:3px 6px;font-size:12px;font-weight:700}
+.stat-v{font-family:'Orbitron',sans-serif;font-size:14px}
 #barra{display:flex;justify-content:center;gap:8px;width:100%;max-width:1080px;flex-wrap:wrap}
 .btn{padding:11px 18px;font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;
   border:none;border-radius:6px;cursor:pointer;display:flex;align-items:center;gap:7px;
@@ -101,9 +101,112 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',Arial,sans-se
 #modal p{font-size:13px;color:#aaa;line-height:1.5;white-space:pre-line}
 #btn-modal{margin-top:14px;padding:9px 22px;background:var(--gold);color:#111;
   border:none;border-radius:5px;font-family:'Orbitron',sans-serif;font-weight:700;cursor:pointer;font-size:12px}
+
+/* ── LOBBY / SALA DE ESPERA ── */
+#lobby-overlay {
+  display:flex; position:fixed; inset:0;
+  background:rgba(0,0,0,0.92); z-index:200;
+  align-items:center; justify-content:center;
+}
+#lobby-box {
+  background:linear-gradient(135deg,#1a1a1a,#252525);
+  border:2px solid var(--gold); border-radius:14px;
+  padding:32px 40px; text-align:center; width:360px;
+  box-shadow:0 0 50px rgba(0,0,0,0.9);
+}
+#lobby-box h2 {
+  font-family:'Orbitron',sans-serif; font-size:18px;
+  color:var(--gold); margin-bottom:6px; letter-spacing:2px;
+}
+#lobby-box p { font-size:12px; color:#888; margin-bottom:18px; }
+.lobby-btn {
+  display:block; width:100%; padding:13px;
+  font-family:'Orbitron',sans-serif; font-size:13px; font-weight:700;
+  border:none; border-radius:8px; cursor:pointer; margin-bottom:10px;
+  letter-spacing:1px; transition:filter .2s, transform .1s;
+}
+.lobby-btn:hover { filter:brightness(1.2); transform:translateY(-1px); }
+#btn-crear  { background:linear-gradient(135deg,#7a0000,#cc2200); color:#fff; }
+#btn-unirse { background:linear-gradient(135deg,#003070,#0055bb); color:#fff; }
+#lobby-input {
+  width:100%; padding:10px 14px; margin-bottom:10px;
+  background:#111; border:2px solid #444; border-radius:7px;
+  color:#fff; font-family:'Orbitron',sans-serif; font-size:16px;
+  text-align:center; letter-spacing:4px; text-transform:uppercase;
+}
+#lobby-input:focus { outline:none; border-color:var(--gold); }
+#lobby-status {
+  font-size:12px; color:#aaa; margin-top:10px;
+  min-height:20px; line-height:1.5;
+}
+#sala-codigo {
+  font-family:'Orbitron',sans-serif; font-size:28px; font-weight:900;
+  color:var(--gold); letter-spacing:6px; margin:10px 0;
+  text-shadow:0 0 12px rgba(200,168,75,0.5);
+}
+.lobby-sep { border:none; border-top:1px solid #333; margin:14px 0; }
+#btn-copiar {
+  background:#2a2a2a; color:var(--gold); border:1px solid var(--gold);
+  padding:7px 16px; border-radius:5px; cursor:pointer;
+  font-family:'Orbitron',sans-serif; font-size:10px; letter-spacing:1px;
+}
+#btn-copiar:hover { background:#333; }
+/* Indicador online */
+#online-indicator {
+  display:none; position:fixed; top:8px; right:12px;
+  background:#1a1a1a; border:1px solid #333; border-radius:20px;
+  padding:4px 10px; font-size:11px; color:#aaa; z-index:50;
+  font-family:'Rajdhani',sans-serif;
+}
+#online-dot { display:inline-block; width:8px; height:8px;
+  border-radius:50%; background:#00aa44; margin-right:5px;
+  animation:pulse 1.5s infinite; }
+@keyframes pulse {
+  0%,100%{opacity:1} 50%{opacity:0.4}
+}
+
 </style>
 </head>
 <body>
+
+
+<!-- INDICADOR ONLINE -->
+<div id="online-indicator">
+  <span id="online-dot"></span>
+  <span id="online-txt">Conectado</span>
+</div>
+
+<!-- LOBBY OVERLAY -->
+<div id="lobby-overlay">
+  <div id="lobby-box">
+    <h2>🎯 GATO CIRCULAR</h2>
+    <p>Juego multijugador online</p>
+
+    <div id="lobby-paso-inicio">
+      <button class="lobby-btn" id="btn-crear">+ CREAR PARTIDA</button>
+      <button class="lobby-btn" id="btn-unirse">↗ UNIRSE A PARTIDA</button>
+    </div>
+
+    <div id="lobby-paso-crear" style="display:none">
+      <p>Comparte este código con tu amigo:</p>
+      <div id="sala-codigo">----</div>
+      <button id="btn-copiar">📋 COPIAR CÓDIGO</button>
+      <hr class="lobby-sep">
+      <div id="lobby-status">⏳ Esperando que tu amigo se conecte...</div>
+    </div>
+
+    <div id="lobby-paso-unirse" style="display:none">
+      <p>Ingresa el código que te dio tu amigo:</p>
+      <input id="lobby-input" maxlength="4" placeholder="ABCD" />
+      <button class="lobby-btn" id="btn-confirmar-codigo"
+        style="background:linear-gradient(135deg,#005500,#009933);color:#fff">
+        ✔ CONECTAR
+      </button>
+      <div id="lobby-status-unirse"></div>
+    </div>
+
+  </div>
+</div>
 
 <div id="app">
   <!-- PANEL IZQ -->
@@ -148,8 +251,8 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',Arial,sans-se
         <!-- Anillos concéntricos -->
         <circle cx="240" cy="240" r="195" fill="none" stroke="#505050" stroke-width="1.5"/>
         <circle cx="240" cy="240" r="145" fill="none" stroke="#505050" stroke-width="1.5"/>
-        <circle cx="240" cy="240" r="105" fill="none" stroke="#505050" stroke-width="1.5"/>
-        <circle cx="240" cy="240" r="65"  fill="none" stroke="#505050" stroke-width="1.5"/>
+        <circle cx="240" cy="240" r="95"  fill="none" stroke="#505050" stroke-width="1.5"/>
+        <circle cx="240" cy="240" r="48"  fill="none" stroke="#505050" stroke-width="1.5"/>
 
         <!-- 8 Radios (separadores de casillas) -->
         <line x1="240" y1="240" x2="240" y2="45"  stroke="#505050" stroke-width="1.5"/>
@@ -236,19 +339,19 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',Arial,sans-se
 const CX = 240, CY = 240;
 
 const RING_RADII = {
-  D: { i: 25,  o: 65  },
-  C: { i: 65,  o: 105 },
-  B: { i: 105, o: 145 },
+  D: { i: 0,   o: 48  },
+  C: { i: 48,  o: 95  },
+  B: { i: 95,  o: 145 },
   A: { i: 145, o: 195 }
 };
 
 // Radio de la ficha circular en cada anillo
-const FICHA_R = { A: 13, B: 13, C: 13, D: 12 };
+const FICHA_R = { A: 17, B: 16, C: 13, D: 9 };
 
 // Centroide del sector (donde va la ficha)
 function centroide(anillo, i) {
   const { i: ri, o: ro } = RING_RADII[anillo];
-  const r = (ri + ro) / 2;  // centroide natural
+  const r = (ri + ro) / 2;
   const a1 = (i * 45 - 90) * Math.PI / 180;
   const a2 = ((i + 1) * 45 - 90) * Math.PI / 180;
   const a = (a1 + a2) / 2;
@@ -327,6 +430,7 @@ function renderTablero() {
       sector.setAttribute("d", sectorPath(anillo, i));
       sector.setAttribute("fill", "transparent");
       sector.setAttribute("stroke", "none");
+      sector.dataset.id = id;
       sector.style.cursor = estado || terminado ? "default" : "pointer";
       if(!estado && !terminado) {
         sector.addEventListener("click", () => manejarClic(id));
@@ -354,7 +458,7 @@ function renderTablero() {
         const lbl = document.createElementNS(svgNS, "text");
         lbl.setAttribute("x", pos.x.toFixed(2));
         lbl.setAttribute("y", pos.y.toFixed(2));
-        lbl.setAttribute("font-size", "9");
+        lbl.setAttribute("font-size", anillo==="D" ? "7.5" : anillo==="C" ? "8.5" : "9.5");
         lbl.classList.add("cell-lbl");
         lbl.textContent = id;
         lbl.style.pointerEvents = "none";
@@ -366,7 +470,7 @@ function renderTablero() {
         const txt = document.createElementNS(svgNS, "text");
         txt.setAttribute("x", pos.x.toFixed(2));
         txt.setAttribute("y", pos.y.toFixed(2));
-        txt.setAttribute("font-size", anillo==="D" ? "11" : "12");
+        txt.setAttribute("font-size", anillo==="D" ? "9" : anillo==="C" ? "11" : "13");
         txt.classList.add("token-txt", estado.toLowerCase());
         txt.textContent = estado;
         g.appendChild(circ);
@@ -430,6 +534,21 @@ function declararGanador(j) {
 // ── BOTONES ──
 document.getElementById("btn-nueva").onclick = () => inicializar();
 
+// Exponer globalmente para el módulo Firebase
+window.tablero      = tablero;
+window.turno        = turno;
+window.terminado    = terminado;
+window.fichasX      = fichasX;
+window.fichasO      = fichasO;
+window.jugadas      = jugadas;
+window.renderTablero   = renderTablero;
+window.actualizarUI    = actualizarUI;
+window.buscarVictoria  = buscarVictoria;
+window.resaltarGanadores = resaltarGanadores;
+window.mostrarModal    = mostrarModal;
+window.manejarClic     = manejarClic;
+
+
 document.getElementById("btn-sortear").onclick = () => {
   if(jugadas > 0) { mostrarModal("Sorteo","Solo puedes sortear al inicio de la partida."); return; }
   turno = Math.random() < .5 ? "X" : "O";
@@ -480,5 +599,280 @@ document.getElementById("overlay").onclick = () => {
 
 inicializar();
 </script>
+
+<!-- FIREBASE SDK -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, set, get, onValue, update, remove }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyB580pNeqc-VMxaafC1LUBWCQM_aW26emY",
+  authDomain: "gato-circular.firebaseapp.com",
+  projectId: "gato-circular",
+  storageBucket: "gato-circular.firebasestorage.app",
+  messagingSenderId: "1029841004696",
+  appId: "1:1029841004696:web:f784ab513dd301d58a48ed",
+  databaseURL: "https://gato-circular-default-rtdb.firebaseio.com"
+};
+
+const app   = initializeApp(firebaseConfig);
+const db    = getDatabase(app);
+
+// ── ESTADO MULTIJUGADOR ──
+let miRol       = null;   // "X" o "O"
+let codigoSala  = null;
+let salaRef     = null;
+let escuchando  = false;
+
+// ── UTILIDADES ──
+function codigoAleatorio() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let c = '';
+  for(let i=0;i<4;i++) c += chars[Math.floor(Math.random()*chars.length)];
+  return c;
+}
+
+function mostrarPaso(paso) {
+  document.getElementById('lobby-paso-inicio').style.display  = paso==='inicio'  ? '' : 'none';
+  document.getElementById('lobby-paso-crear').style.display   = paso==='crear'   ? '' : 'none';
+  document.getElementById('lobby-paso-unirse').style.display  = paso==='unirse'  ? '' : 'none';
+}
+
+// ── CREAR PARTIDA ──
+document.getElementById('btn-crear').addEventListener('click', async () => {
+  codigoSala = codigoAleatorio();
+  salaRef    = ref(db, 'salas/' + codigoSala);
+
+  // Estado inicial en Firebase
+  await set(salaRef, {
+    tablero:    Object.fromEntries(
+                  ['A','B','C','D'].flatMap(a =>
+                    [0,1,2,3,4,5,6,7].map(i => [a+i, null])
+                  )
+                ),
+    turno:      'X',
+    terminado:  false,
+    ganador:    null,
+    jugadas:    0,
+    jugador1:   'esperando',
+    jugador2:   'esperando',
+    createdAt:  Date.now()
+  });
+
+  miRol = 'X';
+  document.getElementById('sala-codigo').textContent = codigoSala;
+  mostrarPaso('crear');
+  escucharSala();
+});
+
+// ── COPIAR CÓDIGO ──
+document.getElementById('btn-copiar').addEventListener('click', () => {
+  navigator.clipboard.writeText(codigoSala).then(() => {
+    document.getElementById('btn-copiar').textContent = '✓ COPIADO!';
+    setTimeout(() => document.getElementById('btn-copiar').textContent = '📋 COPIAR CÓDIGO', 2000);
+  });
+});
+
+// ── UNIRSE A PARTIDA ──
+document.getElementById('btn-unirse').addEventListener('click', () => {
+  mostrarPaso('unirse');
+  document.getElementById('lobby-input').focus();
+});
+
+document.getElementById('lobby-input').addEventListener('input', e => {
+  e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'');
+});
+
+document.getElementById('btn-confirmar-codigo').addEventListener('click', async () => {
+  const codigo = document.getElementById('lobby-input').value.trim().toUpperCase();
+  if(codigo.length !== 4) {
+    document.getElementById('lobby-status-unirse').textContent = '⚠️ El código debe tener 4 caracteres.';
+    return;
+  }
+
+  salaRef = ref(db, 'salas/' + codigo);
+  const snap = await get(salaRef);
+
+  if(!snap.exists()) {
+    document.getElementById('lobby-status-unirse').textContent = '❌ Sala no encontrada. Verifica el código.';
+    return;
+  }
+
+  const data = snap.val();
+  if(data.jugador2 !== 'esperando') {
+    document.getElementById('lobby-status-unirse').textContent = '❌ Esta sala ya está completa.';
+    return;
+  }
+
+  codigoSala = codigo;
+  miRol = 'O';
+  await update(salaRef, { jugador2: 'listo' });
+  escucharSala();
+});
+
+// ── ESCUCHAR CAMBIOS EN FIREBASE ──
+function escucharSala() {
+  if(escuchando) return;
+  escuchando = true;
+
+  onValue(salaRef, (snap) => {
+    if(!snap.exists()) return;
+    const data = snap.val();
+
+    // Jugador 2 se unió → arrancar juego para Jugador 1
+    if(miRol === 'X' && data.jugador2 === 'listo' &&
+       document.getElementById('lobby-overlay').style.display !== 'none') {
+      iniciarJuegoOnline(data);
+    }
+
+    // Jugador 2 ve que la sala existe → arrancar juego
+    if(miRol === 'O' && data.jugador1 === 'esperando') {
+      update(salaRef, { jugador1: 'listo' });
+      iniciarJuegoOnline(data);
+    }
+
+    // Sincronizar estado del tablero durante el juego
+    if(document.getElementById('lobby-overlay').style.display === 'none') {
+      sincronizarEstado(data);
+    }
+  });
+}
+
+// ── INICIAR JUEGO ONLINE ──
+function iniciarJuegoOnline(data) {
+  document.getElementById('lobby-overlay').style.display = 'none';
+  document.getElementById('online-indicator').style.display = 'block';
+
+  // Parchar la función manejarClic para enviar a Firebase
+  window._manejarClicOriginal = window.manejarClic || manejarClic;
+  window.manejarClicOnline = async (id) => {
+    // Solo puede jugar si es su turno
+    const snap = await get(salaRef);
+    const estado = snap.val();
+    if(estado.turno !== miRol) return;
+    if(estado.tablero[id] !== null) return;
+    if(estado.terminado) return;
+
+    // Calcular nuevo estado
+    const nuevoTablero = {...estado.tablero, [id]: miRol};
+    const nuevasFichasX = miRol==='X' ? (estado.fichasX||16)-1 : (estado.fichasX||16);
+    const nuevasFichasO = miRol==='O' ? (estado.fichasO||16)-1 : (estado.fichasO||16);
+    const nuevoTurno    = miRol==='X' ? 'O' : 'X';
+    const nuevasJugadas = (estado.jugadas||0) + 1;
+
+    await update(salaRef, {
+      tablero:  nuevoTablero,
+      turno:    nuevoTurno,
+      jugadas:  nuevasJugadas,
+      fichasX:  nuevasFichasX,
+      fichasO:  nuevasFichasO,
+    });
+  };
+
+  // Reemplazar event listeners del tablero
+  document.getElementById('fichas-layer').addEventListener('click', e => {
+    const g = e.target.closest('[data-id]');
+    if(g) window.manejarClicOnline(g.dataset.id);
+  });
+  document.getElementById('sectors-layer').addEventListener('click', e => {
+    const path = e.target;
+    // Encontrar la casilla más cercana por posición
+    const id = path.dataset && path.dataset.id;
+    if(id) window.manejarClicOnline(id);
+  });
+
+  // Mostrar rol del jugador
+  const rolTxt = miRol === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)';
+  document.getElementById('turno-msg').textContent = `Tú eres: ${rolTxt}`;
+  document.getElementById('online-txt').textContent = `Sala: ${codigoSala} | Tú: ${miRol}`;
+
+  sincronizarEstado(data);
+}
+
+// ── SINCRONIZAR ESTADO DESDE FIREBASE AL TABLERO LOCAL ──
+function sincronizarEstado(data) {
+  if(!data || !data.tablero) return;
+
+  // Actualizar tablero local
+  Object.assign(window.tablero, data.tablero); tablero = window.tablero;
+  turno      = data.turno     || 'X';
+  terminado  = data.terminado || false;
+  fichasX    = data.fichasX   !== undefined ? data.fichasX : 16;
+  fichasO    = data.fichasO   !== undefined ? data.fichasO : 16;
+  jugadas    = data.jugadas   || 0;
+
+  renderTablero();
+  actualizarUI();
+
+  // Indicar si es tu turno
+  if(!terminado) {
+    if(turno === miRol) {
+      document.getElementById('turno-msg').textContent = '🟢 ¡ES TU TURNO! Haz clic en una casilla.';
+    } else {
+      document.getElementById('turno-msg').textContent = '⏳ Esperando jugada del oponente...';
+    }
+  }
+
+  // Victoria detectada
+  if(data.terminado && data.ganador) {
+    const nombre = data.ganador==='X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)';
+    const lineas = buscarVictoria(data.ganador);
+    if(lineas.length > 0) resaltarGanadores(lineas);
+    const esTuyo = data.ganador === miRol;
+    setTimeout(()=>{
+      mostrarModal(
+        esTuyo ? '🏆 ¡GANASTE!' : '😔 Perdiste',
+        esTuyo
+          ? `¡Felicitaciones! Ganaste con ${lineas.length} línea(s) ganadora(s).`
+          : `${nombre} ganó esta partida. ¡Mejor suerte la próxima!`
+      );
+    }, 300);
+  }
+}
+
+// ── BOTONES EN MODO ONLINE ──
+// Reclamar victoria online
+document.getElementById('btn-reclamar').addEventListener('click', async () => {
+  if(!salaRef) return; // modo local, ya tiene su handler
+  const snap = await get(salaRef);
+  const data = snap.val();
+  if(!data || data.terminado) { mostrarModal('Partida terminada','Inicia una nueva partida.'); return; }
+  if((data.jugadas||0) < 7) { mostrarModal('Muy pronto','Se requieren al menos 7 jugadas.'); return; }
+
+  // Solo puede reclamar el jugador que acaba de jugar (turno opuesto al actual)
+  const jugadorQueReclama = data.turno === 'X' ? 'O' : 'X';
+  if(jugadorQueReclama !== miRol) {
+    mostrarModal('No es tu turno','Solo puedes reclamar después de tu jugada.'); return;
+  }
+  Object.assign(window.tablero, data.tablero); tablero = window.tablero;
+  const lineas = buscarVictoria(miRol);
+  if(lineas.length > 0) {
+    await update(salaRef, { terminado: true, ganador: miRol,
+      victoriasX: miRol==='X' ? (data.victoriasX||0)+1 : (data.victoriasX||0),
+      victoriasO: miRol==='O' ? (data.victoriasO||0)+1 : (data.victoriasO||0)
+    });
+  } else {
+    mostrarModal('Sin victoria','No tienes 4 en línea todavía.');
+  }
+}, { capture: true });
+
+// Nueva partida online
+document.getElementById('btn-nueva').addEventListener('click', async () => {
+  if(!salaRef) return;
+  await set(salaRef, {
+    tablero:    Object.fromEntries(
+                  ['A','B','C','D'].flatMap(a =>
+                    [0,1,2,3,4,5,6,7].map(i => [a+i, null])
+                  )
+                ),
+    turno:      'X', terminado:false, ganador:null,
+    jugadas:0, fichasX:16, fichasO:16,
+    jugador1:'listo', jugador2:'listo', createdAt:Date.now()
+  });
+}, { capture: true });
+
+</script>
+
 </body>
 </html>
