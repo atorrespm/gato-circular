@@ -196,6 +196,40 @@ hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
   font-size:10px;text-align:center;line-height:16px;
   font-family:'Orbitron',sans-serif;font-weight:700;
 }
+
+/* ── MODO SELECCIÓN DE VICTORIA ── */
+.ficha-seleccionada-x {
+  stroke: #ffdd00 !important;
+  stroke-width: 3 !important;
+  fill: #3a2a00 !important;
+  filter: drop-shadow(0 0 8px rgba(255,220,0,0.9)) !important;
+}
+.ficha-seleccionada-o {
+  stroke: #ffdd00 !important;
+  stroke-width: 3 !important;
+  fill: #1a2a00 !important;
+  filter: drop-shadow(0 0 8px rgba(255,220,0,0.9)) !important;
+}
+#modo-reclamo-banner {
+  display:none;
+  background: linear-gradient(135deg,#2a2000,#3a3000);
+  border: 2px solid #ffdd00;
+  border-radius: 8px;
+  padding: 8px 16px;
+  text-align: center;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 12px;
+  color: #ffdd00;
+  letter-spacing: 1px;
+  margin-top: 6px;
+  width: 100%;
+  max-width: 1080px;
+}
+#contador-seleccion {
+  font-size: 18px;
+  font-weight: 900;
+  margin-left: 8px;
+}
 </style>
 </head>
 <body>
@@ -849,24 +883,149 @@ async function jugarOnline(id) {
 }
 
 // ── RECLAMAR VICTORIA ──
+// ── ESTADO DE RECLAMO ──
+let modoReclamo   = false;
+let fichasSeleccionadas = []; // ids de fichas marcadas por el jugador
+
+function activarModoReclamo() {
+  modoReclamo = true;
+  fichasSeleccionadas = [];
+  $('modo-reclamo-banner').style.display = 'block';
+  $('contador-seleccion').textContent = '0/4';
+  // Desbloquear tablero solo para selección (no para jugar)
+  $('tablero-block').style.display = 'none';
+  $('tablero-svg').style.opacity = '1';
+}
+
+function desactivarModoReclamo() {
+  modoReclamo = false;
+  fichasSeleccionadas = [];
+  $('modo-reclamo-banner').style.display = 'none';
+  // Volver a bloquear (no es turno del reclamante)
+  bloquearTablero(true);
+  // Limpiar resaltados amarillos
+  document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o')
+    .forEach(el => {
+      el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
+    });
+}
+
 $('btn-reclamar').addEventListener('click', async e => {
   if(!juegoIniciado) return;
   e.stopImmediatePropagation();
+
+  // Si ya estamos en modo reclamo, cancelar
+  if(modoReclamo) {
+    desactivarModoReclamo();
+    gc().mostrarModal('Reclamo cancelado', 'El reclamo fue cancelado. El juego continúa.');
+    return;
+  }
+
   const snap = await get(salaRef);
   const d = snap.val();
   if(!d || d.terminado) { gc().mostrarModal('Partida terminada', 'Inicia nueva partida.'); return; }
   if((d.jugadas || 0) < 7) { gc().mostrarModal('Muy pronto', 'Mínimo 7 jugadas para reclamar.'); return; }
-  const jugReclama = d.turno === 'X' ? 'O' : 'X';
-  if(jugReclama !== miRol) {
-    gc().mostrarModal('Espera', 'Solo puedes reclamar justo después de tu jugada.'); return;
+
+  // Puede reclamar en cualquier momento (no solo después de su jugada)
+  // pero solo puede seleccionar sus propias fichas
+  activarModoReclamo();
+  gc().mostrarModal('🏆 Modo Reclamo activo',
+    'Selecciona las 4 fichas que forman tu línea ganadora,\nluego pulsa CONFIRMAR.\n\nPulsa RECLAMAR VICTORIA de nuevo para cancelar.');
+}, true);
+
+// ── INTERCEPTAR CLIC EN MODO RECLAMO ──
+// Se agrega como listener adicional en el tablero-svg
+$('tablero-svg').addEventListener('click', e => {
+  if(!modoReclamo) return;
+  e.stopImmediatePropagation();
+
+  let el = e.target;
+  while(el && el.id !== 'tablero-svg') {
+    if(el.dataset && el.dataset.id) {
+      seleccionarFichaReclamo(el.dataset.id);
+      return;
+    }
+    el = el.parentElement;
   }
-  const t = tblCompleto(d.tablero);
-  gc().tablero = t;
-  const lineas = gc().buscarVictoria(miRol);
-  if(lineas.length > 0) {
+}, false); // false = bubble, después del capture de jugarOnline
+
+function seleccionarFichaReclamo(id) {
+  // Solo fichas propias
+  const snap_t = gc().tablero;
+  if(snap_t[id] !== miRol) {
+    gc().mostrarModal('Ficha inválida', 'Solo puedes seleccionar tus propias fichas.');
+    return;
+  }
+  // Alternar selección
+  const idx = fichasSeleccionadas.indexOf(id);
+  if(idx >= 0) {
+    // Deseleccionar
+    fichasSeleccionadas.splice(idx, 1);
+    const circ = document.querySelector(`#fichas-layer [data-id="${id}"] circle`);
+    if(circ) {
+      circ.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
+      circ.classList.add(miRol==='X'?'ficha-x':'ficha-o');
+    }
+  } else {
+    if(fichasSeleccionadas.length >= 4) {
+      gc().mostrarModal('Ya tienes 4 fichas','Deselecciona una antes de agregar otra.');
+      return;
+    }
+    fichasSeleccionadas.push(id);
+    const circ = document.querySelector(`#fichas-layer [data-id="${id}"] circle`);
+    if(circ) {
+      circ.classList.remove('ficha-x','ficha-o');
+      circ.classList.add(miRol==='X'?'ficha-seleccionada-x':'ficha-seleccionada-o');
+    }
+  }
+  $('contador-seleccion').textContent = fichasSeleccionadas.length + '/4';
+}
+
+// ── CONFIRMAR VICTORIA ──
+$('btn-confirmar').addEventListener('click', async e => {
+  if(!juegoIniciado) return;
+  e.stopImmediatePropagation();
+
+  if(!modoReclamo) {
+    gc().mostrarModal('Sin reclamo activo', 'Primero pulsa RECLAMAR VICTORIA y selecciona tus 4 fichas.');
+    return;
+  }
+  if(fichasSeleccionadas.length !== 4) {
+    gc().mostrarModal('Faltan fichas', 'Debes seleccionar exactamente 4 fichas para confirmar.');
+    return;
+  }
+
+  // Verificar si las 4 fichas seleccionadas forman una línea ganadora válida
+  const TODAS_LINEAS = [
+    // Radiales
+    ...[0,1,2,3,4,5,6,7].map(i=>['A'+i,'B'+i,'C'+i,'D'+i]),
+    // Circulares
+    ...['A','B','C','D'].flatMap(a=>[0,1,2,3,4,5,6,7].map(i=>[a+i,a+((i+1)%8),a+((i+2)%8),a+((i+3)%8)])),
+    // Espirales horarias
+    ...[0,1,2,3,4,5,6,7].map(i=>['A'+i,'B'+((i+1)%8),'C'+((i+2)%8),'D'+((i+3)%8)]),
+    // Espirales antihorarias
+    ...[0,1,2,3,4,5,6,7].map(i=>['A'+i,'B'+((i+7)%8),'C'+((i+6)%8),'D'+((i+5)%8)]),
+  ];
+
+  const selSet = new Set(fichasSeleccionadas);
+  const esValida = TODAS_LINEAS.some(linea =>
+    linea.length === 4 && linea.every(c => selSet.has(c))
+  );
+
+  if(esValida) {
+    // ¡Victoria válida!
+    desactivarModoReclamo();
+    // Resaltar las fichas ganadoras
+    fichasSeleccionadas.forEach(id => {
+      const circ = document.querySelector(\`#fichas-layer [data-id="\${id}"] circle\`);
+      if(circ) circ.classList.add(miRol==='X'?'ficha-winner-x':'ficha-winner-o');
+    });
     await update(salaRef, { terminado: true, ganador: miRol });
   } else {
-    gc().mostrarModal('Sin victoria', 'No tienes 4 en línea todavía.');
+    // Línea inválida — volver al juego
+    desactivarModoReclamo();
+    gc().mostrarModal('❌ Línea inválida',
+      'Las 4 fichas seleccionadas no forman una línea ganadora válida.\nEl juego continúa.');
   }
 }, true);
 
@@ -993,6 +1152,12 @@ $('btn-sortear').addEventListener('click', async e => {
 
 </script>
 
+
+<!-- BANNER MODO RECLAMO -->
+<div id="modo-reclamo-banner">
+  🏆 MODO RECLAMO: Selecciona las 4 fichas de tu línea ganadora
+  <span id="contador-seleccion">0/4</span> — luego pulsa CONFIRMAR
+</div>
 
 <!-- CHAT EN TIEMPO REAL -->
 <div id="chat-container" style="display:none">
