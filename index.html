@@ -1017,7 +1017,7 @@ $('btn-confirmar').addEventListener('click', async e => {
     desactivarModoReclamo();
     // Resaltar las fichas ganadoras
     fichasSeleccionadas.forEach(id => {
-      const circ = document.querySelector(\`#fichas-layer [data-id="\${id}"] circle\`);
+      const circ = document.querySelector(`#fichas-layer [data-id="${id}"] circle`);
       if(circ) circ.classList.add(miRol==='X'?'ficha-winner-x':'ficha-winner-o');
     });
     await update(salaRef, { terminado: true, ganador: miRol });
