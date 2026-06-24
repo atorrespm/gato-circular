@@ -714,7 +714,7 @@ $('lbtn-conectar').onclick = async () => {
   codigoSala = cod;
   miRol = 'O';
   salaRef = ref(db, 'salas/' + cod);
-  await update(salaRef, { j2: 'online' });
+  await update(salaRef, { j2: 'online', j1: 'online' }); // forzar arranque para ambos
   escuchar();
 };
 
@@ -735,9 +735,18 @@ function escuchar() {
       iniciarChat();
     }
 
-    // Jugador 2 llegó → confirmar j1 también listo
+    // Jugador 1: confirmar si jugador 2 llegó
     if(!juegoIniciado && miRol === 'X' && d.j2 === 'online') {
       update(salaRef, { j1: 'online' });
+    }
+    // Jugador 2: arrancar si j1 ya estaba online
+    if(!juegoIniciado && miRol === 'O' && d.j1 === 'online' && d.j2 === 'online') {
+      juegoIniciado = true;
+      $('lobby-overlay').style.display = 'none';
+      $('online-ind').style.display    = 'block';
+      $('online-txt').textContent = 'Sala: ' + codigoSala + ' · Tú: Jugador 2 (O)';
+      bloquearTablero(true);
+      iniciarChat();
     }
 
     // Sincronizar tablero
@@ -906,28 +915,30 @@ function agregarMensaje(texto, tipo, autor) {
 
 function iniciarChat() {
   $('chat-container').style.display = 'block';
-  // Abrir chat por defecto
   chatAbierto = true;
   $('chat-body').style.display = 'flex';
   $('chat-toggle-icon').textContent = '▲';
 
-  // Escuchar mensajes nuevos
+  // Marca de tiempo para ignorar mensajes anteriores al conectarse
+  const tsInicio = Date.now();
+  const vistos = new Set(); // evitar duplicados
+
   const chatRef = ref(db, 'salas/' + codigoSala + '/chat');
-  let primeraCarga = true;
   onValue(chatRef, snap => {
-    if(primeraCarga) { primeraCarga = false; return; } // ignorar histórico
     if(!snap.exists()) return;
     const msgs = snap.val();
-    // Solo el último mensaje (el más reciente)
-    const keys = Object.keys(msgs).sort();
-    const ultimo = msgs[keys[keys.length - 1]];
-    if(ultimo.rol !== miRol) {
+    // Ordenar por timestamp (las keys son timestamps)
+    Object.keys(msgs).sort().forEach(k => {
+      if(vistos.has(k)) return;       // ya mostrado
+      const m = msgs[k];
+      if(m.ts < tsInicio) return;     // anterior a nuestra conexión
+      vistos.add(k);
+      if(m.rol === miRol) return;     // propio — ya lo mostramos al enviar
       const nombreOtro = miRol === 'X' ? 'Jugador 2 (O)' : 'Jugador 1 (X)';
-      agregarMensaje(ultimo.texto, 'otro', nombreOtro);
-    }
+      agregarMensaje(m.texto, 'otro', nombreOtro);
+    });
   });
 
-  // Enviar mensaje
   $('chat-send').onclick = enviarMensaje;
   $('chat-input').onkeydown = e => { if(e.key === 'Enter') enviarMensaje(); };
 }
