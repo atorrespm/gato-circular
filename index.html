@@ -506,26 +506,9 @@ document.getElementById("btn-sortear").onclick = () => {
   mostrarModal("¡SORTEO!", `Comienza el Jugador ${turno==="X" ? "1 (X)" : "2 (O)"}`);
 };
 
-document.getElementById("btn-reclamar").onclick = () => {
-  if(terminado) { mostrarModal("Partida terminada","Inicia una nueva partida."); return; }
-  if(jugadas < 7) { mostrarModal("Muy pronto","Se requieren al menos 7 jugadas para reclamar victoria."); return; }
-  const jAnt = turno==="X" ? "O" : "X";
-  if(buscarVictoria(jAnt).length > 0) {
-    pendienteConfirm = jAnt;
-    const n = jAnt==="X" ? "1" : "2";
-    mostrarModal("⚠️ RECLAMAR VICTORIA",
-      `Jugador ${n} (${jAnt}) reclama victoria.\nPresiona CONFIRMAR para validarla.`, "RECLAMAR");
-  } else {
-    mostrarModal("Sin victoria aún","El jugador que acaba de jugar no tiene 4 en línea todavía.");
-  }
-};
-
-document.getElementById("btn-confirmar").onclick = () => {
-  if(terminado || jugadas < 7) return;
-  const jAnt = turno==="X" ? "O" : "X";
-  if(buscarVictoria(jAnt).length > 0) declararGanador(jAnt);
-  else mostrarModal("Sin victoria","No hay línea ganadora confirmada aún.");
-};
+// btn-reclamar y btn-confirmar manejados por el modulo Firebase
+document.getElementById("btn-reclamar").onclick = () => {};
+document.getElementById("btn-confirmar").onclick = () => {};
 
 // ── MODAL ──
 function mostrarModal(titulo, cuerpo, btnTxt="ACEPTAR") {
@@ -723,6 +706,29 @@ function aplicarEstado(d) {
   } else if(d.fase === 'esperando_sorteo' || !d.turno) {
     bloquearTablero(true);
     $('turno-msg').textContent = 'Pulsa SORTEAR PARTIDA para comenzar.';
+    // Si acaba de llegar un sorteo y soy el oponente, mostrarlo
+    if(d.ultimo_sorteo && !window._sorteoMostrado) {
+      window._sorteoMostrado = d.ultimo_sorteo;
+      gc().mostrarModal('SORTEO!',
+        'Comienza el ' + (d.ultimo_sorteo === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)'));
+    }
+  } else if(d.fase === 'jugando' && d.ultimo_sorteo && window._sorteoMostrado !== d.ultimo_sorteo + '_ok') {
+    // Nuevo sorteo — mostrarlo al oponente (quien no sorteó)
+    if(d.turno && d.ultimo_sorteo) {
+      const fueYo = (miRol === 'X' && d.ultimo_sorteo === 'X') || (miRol === 'O' && d.ultimo_sorteo === 'O');
+      if(!fueYo && window._sorteoMostrado !== d.ultimo_sorteo) {
+        window._sorteoMostrado = d.ultimo_sorteo;
+        gc().mostrarModal('SORTEO!',
+          'Comienza el ' + (d.ultimo_sorteo === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)'));
+      } else if(fueYo) {
+        window._sorteoMostrado = d.ultimo_sorteo;
+      }
+    }
+    const esMiTurno = g.turno === miRol;
+    bloquearTablero(!esMiTurno);
+    $('turno-msg').textContent = esMiTurno
+      ? 'ES TU TURNO! Haz clic en una casilla.'
+      : 'Esperando jugada del oponente...';
   } else if(d.fase === 'reclamo') {
     // Hay un reclamo activo
     bloquearTablero(true);
@@ -744,6 +750,7 @@ function aplicarEstado(d) {
       }
     }
   } else {
+    // Fase jugando normal
     const esMiTurno = g.turno === miRol;
     bloquearTablero(!esMiTurno);
     $('turno-msg').textContent = esMiTurno
@@ -829,7 +836,16 @@ $('btn-reclamar').addEventListener('click', async e => {
 
   // Cancelar reclamo activo
   if(modoReclamo) {
-    desactivarModoReclamo(true);  // cancela en Firebase tb
+    desactivarModoReclamo(false);
+    // Restaurar fase jugando en Firebase para desbloquear ambos
+    const snapC = await get(salaRef);
+    const dC = snapC.val();
+    await update(salaRef, {
+      fase: 'jugando',
+      reclamante: null,
+      reclamo_fichas: null,
+      reclamo: null
+    });
     gc().mostrarModal('Reclamo cancelado', 'El reclamo fue cancelado. El juego continua.');
     return;
   }
@@ -973,7 +989,9 @@ $('btn-sortear').addEventListener('click', async e => {
     gc().mostrarModal('Sorteo', 'Solo se puede sortear al inicio de la partida.'); return;
   }
   const primero = Math.random() < 0.5 ? 'X' : 'O';
-  await update(salaRef, { turno: primero, fase: 'jugando' });
+  // Guardar resultado sorteo en Firebase — ambos jugadores lo verán via aplicarEstado
+  await update(salaRef, { turno: primero, fase: 'jugando', ultimo_sorteo: primero });
+  // Mostrar al jugador que sorteó
   gc().mostrarModal('SORTEO!',
     'Comienza el ' + (primero === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)'));
 }, true);
