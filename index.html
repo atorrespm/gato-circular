@@ -676,7 +676,8 @@ $('lbtn-crear').onclick = async () => {
   salaRef = ref(db, 'salas/' + codigoSala);
   await set(salaRef, {
     tablero:   tblVacio(),
-    turno:     'X',
+    turno:     null,
+    fase:      'esperando_sorteo',
     terminado: false,
     ganador:   null,
     jugadas:   0,
@@ -771,15 +772,22 @@ function aplicarEstado(d) {
   g.renderTablero();
   g.actualizarUI();
 
-  // Bloquear/desbloquear tablero según turno
-  if(!g.terminado) {
+  // Bloquear/desbloquear según fase y turno
+  if(d.terminado) {
+    // Partida terminada — bloquear ambos
+    bloquearTablero(true);
+    $('turno-msg').textContent = '🏁 Partida terminada. Pulsa Nueva Partida.';
+  } else if(d.fase === 'esperando_sorteo' || !d.turno) {
+    // Entre partidas — bloqueado hasta sorteo
+    bloquearTablero(true);
+    $('turno-msg').textContent = '⏳ Pulsa SORTEAR PARTIDA para comenzar.';
+  } else {
+    // Jugando — desbloquear solo al jugador con el turno
     const esMiTurno = g.turno === miRol;
     bloquearTablero(!esMiTurno);
     $('turno-msg').textContent = esMiTurno
       ? '🟢 ¡ES TU TURNO! Haz clic en una casilla.'
       : '⏳ Esperando jugada del oponente...';
-  } else {
-    bloquearTablero(true);
   }
 
   // Victoria
@@ -825,7 +833,7 @@ async function jugarOnline(id) {
   const d = snap.val();
   const t = tblCompleto(d.tablero);   // <-- FIX CLAVE: reconstruir nulls
 
-  if(d.terminado || t[id] !== null || d.turno !== miRol) return;
+  if(d.terminado || d.fase === 'esperando_sorteo' || t[id] !== null || d.turno !== miRol) return;
 
   t[id] = miRol;   // marcar la jugada
 
@@ -866,9 +874,16 @@ $('btn-reclamar').addEventListener('click', async e => {
 $('btn-nueva').addEventListener('click', async e => {
   if(!juegoIniciado) return;
   e.stopImmediatePropagation();
+  // Limpiar tablero pero dejar en fase 'esperando_sorteo' — ambos bloqueados
   await update(salaRef, {
-    tablero: tblVacio(), turno: 'X', terminado: false,
-    ganador: null, jugadas: 0, fichasX: 16, fichasO: 16
+    tablero:    tblVacio(),
+    turno:      null,
+    fase:       'esperando_sorteo',
+    terminado:  false,
+    ganador:    null,
+    jugadas:    0,
+    fichasX:    16,
+    fichasO:    16
   });
 }, true);
 
@@ -963,11 +978,15 @@ $('btn-sortear').addEventListener('click', async e => {
   e.stopImmediatePropagation();
   const snap = await get(salaRef);
   const d = snap.val();
-  if((d.jugadas || 0) > 0) {
+  // Solo se puede sortear si no hay jugadas y estamos en fase esperando_sorteo o inicio
+  if((d.jugadas || 0) > 0 && d.fase !== 'esperando_sorteo') {
     gc().mostrarModal('Sorteo', 'Solo se puede sortear al inicio de la partida.'); return;
   }
   const primero = Math.random() < .5 ? 'X' : 'O';
-  await update(salaRef, { turno: primero });
+  await update(salaRef, {
+    turno: primero,
+    fase:  'jugando'
+  });
   gc().mostrarModal('¡SORTEO!',
     'Comienza el ' + (primero === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)'));
 }, true);
