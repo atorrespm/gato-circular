@@ -130,6 +130,72 @@ hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
 }
 #tablero-wrap{position:relative;}
 
+
+/* ── CHAT ── */
+#chat-container{
+  width:100%;max-width:1080px;
+  background:#1a1a1a;border:2px solid #333;
+  border-radius:10px;margin-top:4px;overflow:hidden;
+}
+#chat-header{
+  background:#222;padding:7px 14px;
+  font-family:'Orbitron',sans-serif;font-size:11px;
+  color:var(--gold);letter-spacing:2px;
+  display:flex;align-items:center;gap:8px;
+  cursor:pointer;user-select:none;
+}
+#chat-header span{font-size:14px;}
+#chat-toggle-icon{margin-left:auto;color:#666;font-size:13px;}
+#chat-body{display:none;flex-direction:column;}
+#chat-msgs{
+  height:130px;overflow-y:auto;padding:10px 12px;
+  display:flex;flex-direction:column;gap:6px;
+  scroll-behavior:smooth;
+}
+#chat-msgs::-webkit-scrollbar{width:4px;}
+#chat-msgs::-webkit-scrollbar-thumb{background:#333;border-radius:2px;}
+.chat-msg{
+  max-width:78%;padding:6px 10px;border-radius:8px;
+  font-size:12px;line-height:1.4;word-break:break-word;
+}
+.chat-msg.yo{
+  align-self:flex-end;
+  background:#1a2a3a;border:1px solid var(--blue);color:#cce;
+  border-bottom-right-radius:2px;
+}
+.chat-msg.otro{
+  align-self:flex-start;
+  background:#2a1a1a;border:1px solid var(--red);color:#ecc;
+  border-bottom-left-radius:2px;
+}
+.chat-msg.sistema{
+  align-self:center;color:#666;font-size:11px;
+  background:none;border:none;font-style:italic;
+}
+.chat-autor{font-size:10px;opacity:0.6;margin-bottom:2px;}
+#chat-input-row{
+  display:flex;gap:6px;padding:8px 10px;
+  border-top:1px solid #2a2a2a;background:#1e1e1e;
+}
+#chat-input{
+  flex:1;background:#111;border:1px solid #333;border-radius:6px;
+  padding:7px 10px;color:#ddd;font-family:'Rajdhani',sans-serif;
+  font-size:13px;outline:none;
+}
+#chat-input:focus{border-color:#444;}
+#chat-send{
+  padding:7px 14px;background:linear-gradient(135deg,#003070,#0055bb);
+  color:#fff;border:none;border-radius:6px;cursor:pointer;
+  font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;
+  letter-spacing:1px;transition:filter .2s;
+}
+#chat-send:hover{filter:brightness(1.2);}
+#chat-badge{
+  display:none;background:var(--red);color:#fff;
+  border-radius:50%;width:16px;height:16px;
+  font-size:10px;text-align:center;line-height:16px;
+  font-family:'Orbitron',sans-serif;font-weight:700;
+}
 </style>
 </head>
 <body>
@@ -666,6 +732,7 @@ function escuchar() {
       $('online-txt').textContent = 'Sala: ' + codigoSala +
         ' · Tú: ' + (miRol === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)');
       bloquearTablero(true); // bloqueado hasta sorteo o primera jugada
+      iniciarChat();
     }
 
     // Jugador 2 llegó → confirmar j1 también listo
@@ -796,6 +863,89 @@ $('btn-nueva').addEventListener('click', async e => {
   });
 }, true);
 
+// ── CHAT ──
+let chatAbierto = false;
+let mensajesNoLeidos = 0;
+
+window.toggleChat = function() {
+  chatAbierto = !chatAbierto;
+  $('chat-body').style.display = chatAbierto ? 'flex' : 'none';
+  $('chat-toggle-icon').textContent = chatAbierto ? '▲' : '▼';
+  if(chatAbierto) {
+    mensajesNoLeidos = 0;
+    $('chat-badge').style.display = 'none';
+    $('chat-badge').textContent = '';
+    // Scroll al último mensaje
+    const msgs = $('chat-msgs');
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+};
+
+function agregarMensaje(texto, tipo, autor) {
+  const msgs = $('chat-msgs');
+  const div = document.createElement('div');
+  div.classList.add('chat-msg', tipo);
+  if(autor) {
+    const aut = document.createElement('div');
+    aut.classList.add('chat-autor');
+    aut.textContent = autor;
+    div.appendChild(aut);
+  }
+  const txt = document.createTextNode(texto);
+  div.appendChild(txt);
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+
+  // Badge si el chat está cerrado y es mensaje del otro
+  if(!chatAbierto && tipo === 'otro') {
+    mensajesNoLeidos++;
+    $('chat-badge').textContent = mensajesNoLeidos;
+    $('chat-badge').style.display = 'block';
+  }
+}
+
+function iniciarChat() {
+  $('chat-container').style.display = 'block';
+  // Abrir chat por defecto
+  chatAbierto = true;
+  $('chat-body').style.display = 'flex';
+  $('chat-toggle-icon').textContent = '▲';
+
+  // Escuchar mensajes nuevos
+  const chatRef = ref(db, 'salas/' + codigoSala + '/chat');
+  let primeraCarga = true;
+  onValue(chatRef, snap => {
+    if(primeraCarga) { primeraCarga = false; return; } // ignorar histórico
+    if(!snap.exists()) return;
+    const msgs = snap.val();
+    // Solo el último mensaje (el más reciente)
+    const keys = Object.keys(msgs).sort();
+    const ultimo = msgs[keys[keys.length - 1]];
+    if(ultimo.rol !== miRol) {
+      const nombreOtro = miRol === 'X' ? 'Jugador 2 (O)' : 'Jugador 1 (X)';
+      agregarMensaje(ultimo.texto, 'otro', nombreOtro);
+    }
+  });
+
+  // Enviar mensaje
+  $('chat-send').onclick = enviarMensaje;
+  $('chat-input').onkeydown = e => { if(e.key === 'Enter') enviarMensaje(); };
+}
+
+async function enviarMensaje() {
+  const input = $('chat-input');
+  const texto = input.value.trim();
+  if(!texto) return;
+  input.value = '';
+
+  const nombreYo = miRol === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)';
+  agregarMensaje(texto, 'yo', 'Tú');
+
+  // Guardar en Firebase
+  const chatRef = ref(db, 'salas/' + codigoSala + '/chat/' + Date.now());
+  await set(chatRef, { rol: miRol, texto, ts: Date.now() });
+}
+
 // ── SORTEAR PARTIDA ──
 $('btn-sortear').addEventListener('click', async e => {
   if(!juegoIniciado) return;
@@ -812,6 +962,25 @@ $('btn-sortear').addEventListener('click', async e => {
 }, true);
 
 </script>
+
+
+<!-- CHAT EN TIEMPO REAL -->
+<div id="chat-container" style="display:none">
+  <div id="chat-header" onclick="toggleChat()">
+    <span>💬</span> CHAT DE PARTIDA
+    <div id="chat-badge"></div>
+    <span id="chat-toggle-icon">▼</span>
+  </div>
+  <div id="chat-body">
+    <div id="chat-msgs">
+      <div class="chat-msg sistema">El chat está activo. ¡Saludos a tu oponente!</div>
+    </div>
+    <div id="chat-input-row">
+      <input id="chat-input" placeholder="Escribe un mensaje..." maxlength="200" autocomplete="off"/>
+      <button id="chat-send">ENVIAR</button>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>
