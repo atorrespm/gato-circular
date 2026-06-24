@@ -123,6 +123,13 @@ hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
 #online-ind{display:none;position:fixed;top:8px;right:10px;z-index:50;background:#1a1a1a;border:1px solid #333;border-radius:20px;padding:4px 11px;font-size:11px;color:#aaa;font-family:'Rajdhani',sans-serif;}
 #online-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#00aa44;margin-right:5px;animation:blink 1.5s infinite;}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+/* Bloqueo de tablero cuando no es el turno */
+#tablero-block{
+  display:none;position:absolute;inset:0;
+  border-radius:50%;z-index:10;cursor:not-allowed;
+}
+#tablero-wrap{position:relative;}
+
 </style>
 </head>
 <body>
@@ -182,6 +189,7 @@ hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
   <!-- TABLERO -->
   <main id="zona-tablero">
     <div id="tablero-wrap">
+      <div id="tablero-block"></div>
       <svg id="tablero-svg" viewBox="0 0 480 480" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <radialGradient id="board-grad" cx="50%" cy="50%">
@@ -657,6 +665,7 @@ function escuchar() {
       $('online-ind').style.display    = 'block';
       $('online-txt').textContent = 'Sala: ' + codigoSala +
         ' · Tú: ' + (miRol === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)');
+      bloquearTablero(true); // bloqueado hasta sorteo o primera jugada
     }
 
     // Jugador 2 llegó → confirmar j1 también listo
@@ -686,11 +695,15 @@ function aplicarEstado(d) {
   g.renderTablero();
   g.actualizarUI();
 
-  // Mensaje de turno
+  // Bloquear/desbloquear tablero según turno
   if(!g.terminado) {
-    $('turno-msg').textContent = g.turno === miRol
+    const esMiTurno = g.turno === miRol;
+    bloquearTablero(!esMiTurno);
+    $('turno-msg').textContent = esMiTurno
       ? '🟢 ¡ES TU TURNO! Haz clic en una casilla.'
       : '⏳ Esperando jugada del oponente...';
+  } else {
+    bloquearTablero(true);
   }
 
   // Victoria
@@ -705,6 +718,14 @@ function aplicarEstado(d) {
         : (d.ganador === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)') + ' ganó esta partida.'
     ), 400);
   }
+}
+
+// ── BLOQUEO DE TABLERO ──
+function bloquearTablero(bloqueado) {
+  const b = $('tablero-block');
+  const s = $('tablero-svg');
+  b.style.display = bloqueado ? 'block' : 'none';
+  s.style.opacity = bloqueado ? '0.85' : '1';
 }
 
 // ── JUGADA ONLINE ──
@@ -732,6 +753,7 @@ async function jugarOnline(id) {
 
   t[id] = miRol;   // marcar la jugada
 
+  bloquearTablero(true); // bloquear inmediatamente al jugar
   await set(ref(db, 'salas/' + codigoSala), {
     ...d,
     tablero: t,
