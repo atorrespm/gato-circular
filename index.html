@@ -102,7 +102,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',Arial,sans-se
 #btn-modal{margin-top:14px;padding:9px 22px;background:var(--gold);color:#111;
   border:none;border-radius:5px;font-family:'Orbitron',sans-serif;font-weight:700;cursor:pointer;font-size:12px}
 
-/* ── LOBBY MULTIJUGADOR ── */
+/* ── LOBBY ── */
 #lobby-overlay{
   display:flex;position:fixed;inset:0;
   background:rgba(0,0,0,0.93);z-index:200;
@@ -128,7 +128,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',Arial,sans-se
 .lbtn:hover{filter:brightness(1.2);transform:translateY(-1px);}
 #lbtn-crear {background:linear-gradient(135deg,#7a0000,#cc2200);color:#fff;}
 #lbtn-unirse{background:linear-gradient(135deg,#003070,#0055bb);color:#fff;}
-#lbtn-volver{background:#2a2a2a;color:#aaa;font-size:11px;margin-top:6px;}
+#lbtn-volver,#lbtn-volver2{background:#2a2a2a;color:#888;font-size:11px;margin-top:4px;}
 #lobby-codigo{
   font-family:'Orbitron',sans-serif;font-size:30px;font-weight:900;
   color:var(--gold);letter-spacing:7px;margin:10px 0;
@@ -150,9 +150,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',Arial,sans-se
 #lbtn-conectar{background:linear-gradient(135deg,#005500,#009933);color:#fff;}
 .lstatus{font-size:12px;color:#aaa;margin-top:10px;min-height:18px;line-height:1.5;}
 .lstatus.err{color:#e05050;}
-.lstatus.ok{color:#44cc66;}
 hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
-
 /* Indicador online */
 #online-ind{
   display:none;position:fixed;top:8px;right:10px;z-index:50;
@@ -162,31 +160,25 @@ hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
 }
 #online-dot{
   display:inline-block;width:7px;height:7px;border-radius:50%;
-  background:#00aa44;margin-right:5px;
-  animation:blink 1.5s infinite;
+  background:#00aa44;margin-right:5px;animation:blink 1.5s infinite;
 }
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+/* Bloquear clics cuando no es tu turno */
+#tablero-svg.bloqueado{cursor:not-allowed;}
 </style>
 </head>
 <body>
 
 
-<!-- INDICADOR ONLINE -->
 <div id="online-ind"><span id="online-dot"></span><span id="online-txt">Conectado</span></div>
-
-<!-- LOBBY -->
 <div id="lobby-overlay">
   <div id="lobby-box">
     <h2>🎯 GATO CIRCULAR</h2>
     <p class="sub">Multijugador online</p>
-
-    <!-- PASO 1: INICIO -->
     <div id="lp-inicio">
       <button class="lbtn" id="lbtn-crear">+ CREAR PARTIDA</button>
       <button class="lbtn" id="lbtn-unirse">↗ UNIRSE A PARTIDA</button>
     </div>
-
-    <!-- PASO 2: SALA CREADA -->
     <div id="lp-crear" style="display:none">
       <p style="font-size:12px;color:#aaa">Comparte este código con tu amigo:</p>
       <div id="lobby-codigo">----</div>
@@ -195,8 +187,6 @@ hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
       <div class="lstatus" id="lst-crear">⏳ Esperando que tu amigo se conecte...</div>
       <button class="lbtn" id="lbtn-volver">← Volver</button>
     </div>
-
-    <!-- PASO 3: UNIRSE -->
     <div id="lp-unirse" style="display:none">
       <p style="font-size:12px;color:#aaa">Ingresa el código de tu amigo:</p>
       <input id="lobby-input" maxlength="4" placeholder="ABCD"/>
@@ -204,7 +194,6 @@ hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
       <div class="lstatus" id="lst-unirse"></div>
       <button class="lbtn" id="lbtn-volver2">← Volver</button>
     </div>
-
   </div>
 </div>
 
@@ -582,19 +571,27 @@ document.getElementById("overlay").onclick = () => {
 };
 
 inicializar();
-
-// Exponer para el módulo Firebase
-window.tablero           = tablero;
-window.turno             = turno;
-window.terminado         = terminado;
-window.fichasX           = fichasX;
-window.fichasO           = fichasO;
-window.jugadas           = jugadas;
-window.renderTablero     = renderTablero;
-window.actualizarUI      = actualizarUI;
-window.buscarVictoria    = buscarVictoria;
-window.resaltarGanadores = resaltarGanadores;
-window.mostrarModal      = mostrarModal;
+window._gc = {
+  get tablero()           { return tablero; },
+  set tablero(v)          { Object.keys(v).forEach(k=>tablero[k]=v[k]); },
+  get turno()             { return turno; },
+  set turno(v)            { turno=v; },
+  get terminado()         { return terminado; },
+  set terminado(v)        { terminado=v; },
+  get fichasX()           { return fichasX; },
+  set fichasX(v)          { fichasX=v; },
+  get fichasO()           { return fichasO; },
+  set fichasO(v)          { fichasO=v; },
+  get jugadas()           { return jugadas; },
+  set jugadas(v)          { jugadas=v; },
+  renderTablero,
+  actualizarUI,
+  buscarVictoria,
+  resaltarGanadores,
+  mostrarModal,
+  declararGanador,
+  inicializar,
+};
 </script>
 
 <script type="module">
@@ -603,8 +600,7 @@ import { initializeApp }
 import { getDatabase, ref, set, get, onValue, update }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-// ── CONFIG FIREBASE ──
-const fb = initializeApp({
+const db = getDatabase(initializeApp({
   apiKey:            "AIzaSyB580pNeqc-VMxaafC1LUBWCQM_aW26emY",
   authDomain:        "gato-circular.firebaseapp.com",
   projectId:         "gato-circular",
@@ -612,204 +608,213 @@ const fb = initializeApp({
   messagingSenderId: "1029841004696",
   appId:             "1:1029841004696:web:f784ab513dd301d58a48ed",
   databaseURL:       "https://gato-circular-default-rtdb.firebaseio.com"
-});
-const db = getDatabase(fb);
+}));
 
-// ── ESTADO ──
-let miRol = null, codigoSala = null, salaRef = null;
-
-// ── HELPERS DOM ──
+const gc = () => window._gc;
 const $  = id => document.getElementById(id);
-const mostrarPaso = p => {
-  $('lp-inicio').style.display  = p==='inicio'  ? '' : 'none';
-  $('lp-crear').style.display   = p==='crear'   ? '' : 'none';
-  $('lp-unirse').style.display  = p==='unirse'  ? '' : 'none';
-};
 
-function tableroInicial() {
-  const t = {};
-  ['A','B','C','D'].forEach(a => {
-    for(let i=0;i<8;i++) t[a+i] = null;
-  });
+let miRol=null, salaRef=null, codigoSala=null, juegoIniciado=false;
+
+// ── TABLERO INICIAL ──
+function tableroVacio() {
+  const t={};
+  ['A','B','C','D'].forEach(a=>{for(let i=0;i<8;i++) t[a+i]=null;});
   return t;
 }
 
-// ── CREAR PARTIDA ──
+// ── MOSTRAR PASO LOBBY ──
+function paso(p){
+  $('lp-inicio').style.display = p==='inicio' ?'':'none';
+  $('lp-crear').style.display  = p==='crear'  ?'':'none';
+  $('lp-unirse').style.display = p==='unirse' ?'':'none';
+}
+
+// ── CREAR ──
 $('lbtn-crear').onclick = async () => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  codigoSala = Array.from({length:4}, ()=>chars[Math.floor(Math.random()*chars.length)]).join('');
-  miRol = 'X';
-  salaRef = ref(db, 'salas/' + codigoSala);
-  await set(salaRef, {
-    tablero: tableroInicial(), turno:'X', terminado:false,
+  const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  codigoSala = Array.from({length:4},()=>chars[Math.floor(Math.random()*chars.length)]).join('');
+  miRol='X';
+  salaRef = ref(db,'salas/'+codigoSala);
+  await set(salaRef,{
+    tablero:tableroVacio(), turno:'X', terminado:false,
     ganador:null, jugadas:0, fichasX:16, fichasO:16,
-    j1:'esperando', j2:'esperando', ts: Date.now()
+    j1:'online', j2:'espera', ts:Date.now()
   });
   $('lobby-codigo').textContent = codigoSala;
-  mostrarPaso('crear');
-  escucharSala();
+  paso('crear');
+  escuchar();
 };
 
-$('lbtn-copiar').onclick = () => {
+$('lbtn-copiar').onclick = ()=>{
   navigator.clipboard.writeText(codigoSala);
-  $('lbtn-copiar').textContent = '✓ COPIADO!';
-  setTimeout(()=>$('lbtn-copiar').textContent='📋 COPIAR CÓDIGO', 2000);
+  $('lbtn-copiar').textContent='✓ COPIADO!';
+  setTimeout(()=>$('lbtn-copiar').textContent='📋 COPIAR CÓDIGO',2000);
 };
-
-$('lbtn-volver').onclick  = () => mostrarPaso('inicio');
-$('lbtn-volver2').onclick = () => mostrarPaso('inicio');
+$('lbtn-volver').onclick  = ()=>paso('inicio');
+$('lbtn-volver2').onclick = ()=>paso('inicio');
 
 // ── UNIRSE ──
-$('lbtn-unirse').onclick = () => { mostrarPaso('unirse'); $('lobby-input').focus(); };
-$('lobby-input').oninput = e => {
-  e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'');
+$('lbtn-unirse').onclick = ()=>{ paso('unirse'); $('lobby-input').focus(); };
+$('lobby-input').oninput = e=>{
+  e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'');
 };
-
-$('lbtn-conectar').onclick = async () => {
-  const cod = $('lobby-input').value.trim().toUpperCase();
+$('lbtn-conectar').onclick = async ()=>{
+  const cod=$('lobby-input').value.trim().toUpperCase();
   if(cod.length!==4){ $('lst-unirse').textContent='⚠️ Código de 4 caracteres.'; return; }
-  const snap = await get(ref(db,'salas/'+cod));
+  const snap=await get(ref(db,'salas/'+cod));
   if(!snap.exists()){ $('lst-unirse').textContent='❌ Sala no encontrada.'; return; }
-  const d = snap.val();
-  if(d.j2!=='esperando'){ $('lst-unirse').textContent='❌ Sala ya está llena.'; return; }
-  codigoSala = cod;
-  miRol = 'O';
-  salaRef = ref(db,'salas/'+cod);
-  await update(salaRef, {j2:'listo'});
-  escucharSala();
+  const d=snap.val();
+  if(d.j2!=='espera'){ $('lst-unirse').textContent='❌ Sala ya está llena.'; return; }
+  codigoSala=cod; miRol='O';
+  salaRef=ref(db,'salas/'+cod);
+  await update(salaRef,{j2:'online'});
+  escuchar();
 };
 
-// ── ESCUCHAR SALA ──
-function escucharSala() {
-  onValue(salaRef, snap => {
+// ── LISTENER PRINCIPAL ──
+function escuchar(){
+  onValue(salaRef, snap=>{
     if(!snap.exists()) return;
-    const d = snap.val();
+    const d=snap.val();
 
-    const lobbyVisible = $('lobby-overlay').style.display !== 'none';
-
-    // Arrancar juego cuando ambos estén listos
-    if(lobbyVisible) {
-      const ambosList = (miRol==='X' && d.j2==='listo') ||
-                        (miRol==='O' && d.j1==='esperando');
-      if(miRol==='X' && d.j2==='listo') {
-        update(salaRef, {j1:'listo'});
-        arrancarJuego();
-      }
-      if(miRol==='O' && d.j1==='listo') {
-        arrancarJuego();
-      }
-      // Actualizar status sala de espera
-      if(miRol==='X') $('lst-crear').textContent = '⏳ Esperando que tu amigo se conecte...';
-    } else {
-      // Juego en curso — sincronizar
-      sincronizar(d);
+    // ── Arrancar juego cuando ambos estén online ──
+    if(!juegoIniciado && d.j1==='online' && d.j2==='online'){
+      juegoIniciado=true;
+      $('lobby-overlay').style.display='none';
+      $('online-ind').style.display='block';
+      $('online-txt').textContent=
+        'Sala: '+codigoSala+' · Tú: '+(miRol==='X'?'Jugador 1 (X)':'Jugador 2 (O)');
     }
+
+    // ── Jugador 2 se une → notificar a jugador 1 ──
+    if(!juegoIniciado && miRol==='X' && d.j2==='online'){
+      update(salaRef,{j1:'online'}); // ya está online, confirmar
+    }
+
+    // ── Sincronizar estado del juego ──
+    if(juegoIniciado) aplicarEstado(d);
   });
 }
 
-// ── ARRANCAR JUEGO ──
-function arrancarJuego() {
-  $('lobby-overlay').style.display = 'none';
-  $('online-ind').style.display = 'block';
-  $('online-txt').textContent = 'Sala: ' + codigoSala + ' · Tú: ' + (miRol==='X'?'Jugador 1':'Jugador 2');
-}
+// ── APLICAR ESTADO FIREBASE AL TABLERO ──
+function aplicarEstado(d){
+  if(!d||!d.tablero) return;
+  const g=gc();
 
-// ── INTERCEPTAR CLICS EN EL TABLERO ──
-// Sobreescribir manejarClic del juego local con versión online
-document.getElementById('fichas-layer').addEventListener('click', async e => {
-  if(!salaRef) return;
-  const g = e.target.closest('[data-id]');
-  if(!g) return;
-  await jugarOnline(g.dataset.id);
-}, true);
+  // Copiar tablero
+  Object.keys(d.tablero).forEach(k=>{ g.tablero[k]=d.tablero[k]; });
+  g.turno     = d.turno     ?? 'X';
+  g.terminado = d.terminado ?? false;
+  g.fichasX   = d.fichasX   ?? 16;
+  g.fichasO   = d.fichasO   ?? 16;
+  g.jugadas   = d.jugadas   ?? 0;
 
-document.getElementById('sectors-layer').addEventListener('click', async e => {
-  if(!salaRef) return;
-  // Buscar data-id en el path o por posición
-  let el = e.target;
-  while(el && !el.dataset.id && el !== document.body) el = el.parentElement;
-  if(el && el.dataset.id) await jugarOnline(el.dataset.id);
-}, true);
+  g.renderTablero();
+  g.actualizarUI();
 
-async function jugarOnline(id) {
-  const snap = await get(salaRef);
-  if(!snap.exists()) return;
-  const d = snap.val();
-  if(d.terminado || d.tablero[id] !== null || d.turno !== miRol) return;
-
-  const nuevoTablero = Object.assign({}, d.tablero, {[id]: miRol});
-  await update(salaRef, {
-    tablero:  nuevoTablero,
-    turno:    miRol==='X' ? 'O' : 'X',
-    jugadas:  (d.jugadas||0)+1,
-    fichasX:  miRol==='X' ? (d.fichasX||16)-1 : (d.fichasX||16),
-    fichasO:  miRol==='O' ? (d.fichasO||16)-1 : (d.fichasO||16),
-  });
-}
-
-// ── SINCRONIZAR ESTADO FIREBASE → TABLERO LOCAL ──
-function sincronizar(d) {
-  if(!d || !d.tablero) return;
-
-  // Acceder a las variables del juego via window
-  Object.keys(d.tablero).forEach(k => { window.tablero[k] = d.tablero[k]; });
-  window.turno     = d.turno     || 'X';
-  window.terminado = d.terminado || false;
-  window.fichasX   = d.fichasX !== undefined ? d.fichasX : 16;
-  window.fichasO   = d.fichasO !== undefined ? d.fichasO : 16;
-  window.jugadas   = d.jugadas  || 0;
-
-  window.renderTablero();
-  window.actualizarUI();
-
-  // Mensaje de turno
-  const msg = document.getElementById('turno-msg');
-  if(!window.terminado) {
-    msg.textContent = window.turno === miRol
-      ? '🟢 ¡ES TU TURNO!'
-      : '⏳ Esperando al oponente...';
+  // Mensaje de turno personalizado
+  if(!g.terminado){
+    const esMiTurno = g.turno===miRol;
+    $('turno-msg').textContent = esMiTurno
+      ? '🟢 ¡ES TU TURNO! Haz clic en una casilla.'
+      : '⏳ Esperando jugada del oponente...';
+    // Bloquear visualmente si no es tu turno
+    const svg=$('tablero-svg');
+    if(esMiTurno) svg.classList.remove('bloqueado');
+    else          svg.classList.add('bloqueado');
   }
 
   // Victoria
-  if(d.terminado && d.ganador) {
-    const lineas = window.buscarVictoria(d.ganador);
-    if(lineas.length) window.resaltarGanadores(lineas);
-    const esTuyo = d.ganador === miRol;
-    setTimeout(()=> window.mostrarModal(
-      esTuyo ? '🏆 ¡GANASTE!' : '😔 Perdiste',
+  if(d.terminado && d.ganador && !g.terminado){
+    g.terminado=true;
+    const lineas=g.buscarVictoria(d.ganador);
+    if(lineas.length) g.resaltarGanadores(lineas);
+    const esTuyo=d.ganador===miRol;
+    setTimeout(()=>g.mostrarModal(
+      esTuyo?'🏆 ¡GANASTE!':'😔 Perdiste',
       esTuyo
         ? '¡Felicitaciones! Ganaste la partida.'
-        : (d.ganador==='X'?'Jugador 1 (X)':'Jugador 2 (O)') + ' ganó esta partida.'
-    ), 300);
+        : (d.ganador==='X'?'Jugador 1 (X)':'Jugador 2 (O)')+' ganó esta partida.'
+    ),400);
   }
 }
 
-// ── RECLAMAR VICTORIA ONLINE ──
-document.getElementById('btn-reclamar').addEventListener('click', async () => {
-  if(!salaRef) return;
-  const snap = await get(salaRef);
-  const d = snap.val();
-  if(!d || d.terminado) return;
-  if((d.jugadas||0) < 7) { window.mostrarModal('Muy pronto','Mínimo 7 jugadas.'); return; }
-  const jugReclama = d.turno === 'X' ? 'O' : 'X';
-  if(jugReclama !== miRol) { window.mostrarModal('No es tu turno','Solo puedes reclamar después de tu jugada.'); return; }
-  Object.keys(d.tablero).forEach(k => { window.tablero[k] = d.tablero[k]; });
-  const lineas = window.buscarVictoria(miRol);
-  if(lineas.length > 0) {
-    await update(salaRef, { terminado:true, ganador:miRol });
-  } else {
-    window.mostrarModal('Sin victoria','No tienes 4 en línea todavía.');
+// ── INTERCEPTAR CLICS EN EL TABLERO ──
+document.getElementById('tablero-svg').addEventListener('click', async e=>{
+  if(!juegoIniciado) return;
+  const g=gc();
+  if(g.terminado) return;
+  if(g.turno!==miRol) return; // bloquear si no es tu turno
+
+  // Buscar data-id en el elemento o su padre
+  let el=e.target;
+  while(el && el.id!=='tablero-svg'){
+    if(el.dataset && el.dataset.id){ await jugar(el.dataset.id); return; }
+    el=el.parentElement;
   }
 }, true);
 
-// ── NUEVA PARTIDA ONLINE ──
-document.getElementById('btn-nueva').addEventListener('click', async () => {
-  if(!salaRef) return;
-  await update(salaRef, {
-    tablero: tableroInicial(), turno:'X', terminado:false,
-    ganador:null, jugadas:0, fichasX:16, fichasO:16
+async function jugar(id){
+  const snap=await get(salaRef);
+  if(!snap.exists()) return;
+  const d=snap.val();
+  if(d.terminado||d.tablero[id]!==null||d.turno!==miRol) return;
+
+  await update(salaRef,{
+    ['tablero/'+id]: miRol,
+    turno:   miRol==='X'?'O':'X',
+    jugadas: (d.jugadas||0)+1,
+    fichasX: miRol==='X'?(d.fichasX??16)-1:(d.fichasX??16),
+    fichasO: miRol==='O'?(d.fichasO??16)-1:(d.fichasO??16),
   });
-}, true);
+}
+
+// ── RECLAMAR VICTORIA ──
+$('btn-reclamar').addEventListener('click', async e=>{
+  if(!juegoIniciado) return;
+  e.stopImmediatePropagation();
+  const snap=await get(salaRef);
+  const d=snap.val();
+  if(!d||d.terminado){gc().mostrarModal('Partida terminada','Inicia nueva partida.');return;}
+  if((d.jugadas||0)<7){gc().mostrarModal('Muy pronto','Mínimo 7 jugadas para reclamar.');return;}
+  // Solo puede reclamar el jugador cuyo turno ACABA de pasar
+  const jugReclama = d.turno==='X'?'O':'X';
+  if(jugReclama!==miRol){
+    gc().mostrarModal('Espera','Solo puedes reclamar justo después de tu jugada.');return;
+  }
+  // Verificar victoria con el tablero actual
+  const tbl=d.tablero;
+  Object.keys(tbl).forEach(k=>gc().tablero[k]=tbl[k]);
+  const lineas=gc().buscarVictoria(miRol);
+  if(lineas.length>0){
+    await update(salaRef,{terminado:true,ganador:miRol});
+  } else {
+    gc().mostrarModal('Sin victoria','No tienes 4 en línea todavía.');
+  }
+},true);
+
+// ── NUEVA PARTIDA ──
+$('btn-nueva').addEventListener('click', async e=>{
+  if(!juegoIniciado) return;
+  e.stopImmediatePropagation();
+  await update(salaRef,{
+    tablero:tableroVacio(),turno:'X',terminado:false,
+    ganador:null,jugadas:0,fichasX:16,fichasO:16
+  });
+},true);
+
+// ── SORTEAR PARTIDA ──
+$('btn-sortear').addEventListener('click', async e=>{
+  if(!juegoIniciado) return;
+  e.stopImmediatePropagation();
+  const snap=await get(salaRef);
+  const d=snap.val();
+  if((d.jugadas||0)>0){gc().mostrarModal('Sorteo','Solo al inicio de la partida.');return;}
+  const primero=Math.random()<.5?'X':'O';
+  await update(salaRef,{turno:primero});
+  gc().mostrarModal('¡SORTEO!',
+    'Comienza el '+(primero==='X'?'Jugador 1 (X)':'Jugador 2 (O)'));
+},true);
 
 </script>
 
