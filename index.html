@@ -102,7 +102,6 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',Arial,sans-se
 #btn-modal{margin-top:14px;padding:9px 22px;background:var(--gold);color:#111;
   border:none;border-radius:5px;font-family:'Orbitron',sans-serif;font-weight:700;cursor:pointer;font-size:12px}
 
-/* ── LOBBY ── */
 #lobby-overlay{display:flex;position:fixed;inset:0;background:rgba(0,0,0,0.93);z-index:200;align-items:center;justify-content:center;}
 #lobby-box{background:linear-gradient(135deg,#1a1a1a,#252525);border:2px solid var(--gold);border-radius:14px;padding:32px 36px;text-align:center;width:340px;box-shadow:0 0 50px rgba(0,0,0,0.9);}
 #lobby-box h2{font-family:'Orbitron',sans-serif;font-size:17px;color:var(--gold);margin-bottom:4px;letter-spacing:2px;}
@@ -112,154 +111,68 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',Arial,sans-se
 #lbtn-crear{background:linear-gradient(135deg,#7a0000,#cc2200);color:#fff;}
 #lbtn-unirse{background:linear-gradient(135deg,#003070,#0055bb);color:#fff;}
 #lbtn-volver,#lbtn-volver2{background:#2a2a2a;color:#888;font-size:11px;margin-top:4px;}
-#lobby-codigo{font-family:'Orbitron',sans-serif;font-size:30px;font-weight:900;color:var(--gold);letter-spacing:7px;margin:10px 0;text-shadow:0 0 14px rgba(200,168,75,0.6);}
-#lbtn-copiar{background:#222;color:var(--gold);border:1px solid var(--gold);padding:6px 16px;border-radius:5px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:1px;}
-#lbtn-copiar:hover{background:#333;}
+#lobby-codigo{font-family:'Orbitron',sans-serif;font-size:30px;font-weight:900;color:var(--gold);letter-spacing:7px;margin:10px 0;}
+#lbtn-copiar{background:#222;color:var(--gold);border:1px solid var(--gold);padding:6px 16px;border-radius:5px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:10px;}
 #lobby-input{width:100%;padding:11px 14px;margin-bottom:10px;background:#111;border:2px solid #444;border-radius:7px;color:#fff;font-family:'Orbitron',sans-serif;font-size:20px;text-align:center;letter-spacing:5px;text-transform:uppercase;}
 #lobby-input:focus{outline:none;border-color:var(--gold);}
 #lbtn-conectar{background:linear-gradient(135deg,#005500,#009933);color:#fff;}
-.lstatus{font-size:12px;color:#aaa;margin-top:10px;min-height:18px;line-height:1.5;}
+.lstatus{font-size:12px;color:#aaa;margin-top:10px;min-height:18px;}
 hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
 #online-ind{display:none;position:fixed;top:8px;right:10px;z-index:50;background:#1a1a1a;border:1px solid #333;border-radius:20px;padding:4px 11px;font-size:11px;color:#aaa;font-family:'Rajdhani',sans-serif;}
 #online-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#00aa44;margin-right:5px;animation:blink 1.5s infinite;}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
-/* Bloqueo de tablero cuando no es el turno */
-#tablero-block{
-  display:none;position:absolute;inset:0;
-  border-radius:50%;z-index:10;cursor:not-allowed;
-}
+#tablero-block{display:none;position:absolute;inset:0;border-radius:50%;z-index:10;cursor:not-allowed;}
 #tablero-wrap{position:relative;}
-
-
-/* ── CHAT ── */
-#chat-container{
-  width:100%;max-width:1080px;
-  background:#1a1a1a;border:2px solid #333;
-  border-radius:10px;margin-top:4px;overflow:hidden;
-}
-#chat-header{
-  background:#222;padding:7px 14px;
-  font-family:'Orbitron',sans-serif;font-size:11px;
-  color:var(--gold);letter-spacing:2px;
-  display:flex;align-items:center;gap:8px;
-  cursor:pointer;user-select:none;
-}
-#chat-header span{font-size:14px;}
+.ficha-seleccionada-x{stroke:#ffdd00!important;stroke-width:3!important;fill:#3a2a00!important;filter:drop-shadow(0 0 8px rgba(255,220,0,0.9))!important;}
+.ficha-seleccionada-o{stroke:#ffdd00!important;stroke-width:3!important;fill:#1a2a00!important;filter:drop-shadow(0 0 8px rgba(255,220,0,0.9))!important;}
+#modo-reclamo-banner{display:none;background:linear-gradient(135deg,#2a2000,#3a3000);border:2px solid #ffdd00;border-radius:8px;padding:8px 16px;text-align:center;font-family:'Orbitron',sans-serif;font-size:12px;color:#ffdd00;letter-spacing:1px;margin-top:6px;width:100%;max-width:1080px;}
+#contador-seleccion{font-size:18px;font-weight:900;margin-left:8px;}
+#chat-container{width:100%;max-width:1080px;background:#1a1a1a;border:2px solid #333;border-radius:10px;margin-top:4px;overflow:hidden;display:none;}
+#chat-header{background:#222;padding:7px 14px;font-family:'Orbitron',sans-serif;font-size:11px;color:var(--gold);letter-spacing:2px;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;}
 #chat-toggle-icon{margin-left:auto;color:#666;font-size:13px;}
 #chat-body{display:none;flex-direction:column;}
-#chat-msgs{
-  height:130px;overflow-y:auto;padding:10px 12px;
-  display:flex;flex-direction:column;gap:6px;
-  scroll-behavior:smooth;
-}
-#chat-msgs::-webkit-scrollbar{width:4px;}
-#chat-msgs::-webkit-scrollbar-thumb{background:#333;border-radius:2px;}
-.chat-msg{
-  max-width:78%;padding:6px 10px;border-radius:8px;
-  font-size:12px;line-height:1.4;word-break:break-word;
-}
-.chat-msg.yo{
-  align-self:flex-end;
-  background:#1a2a3a;border:1px solid var(--blue);color:#cce;
-  border-bottom-right-radius:2px;
-}
-.chat-msg.otro{
-  align-self:flex-start;
-  background:#2a1a1a;border:1px solid var(--red);color:#ecc;
-  border-bottom-left-radius:2px;
-}
-.chat-msg.sistema{
-  align-self:center;color:#666;font-size:11px;
-  background:none;border:none;font-style:italic;
-}
+#chat-msgs{height:130px;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:6px;scroll-behavior:smooth;}
+.chat-msg{max-width:78%;padding:6px 10px;border-radius:8px;font-size:12px;line-height:1.4;word-break:break-word;}
+.chat-msg.yo{align-self:flex-end;background:#1a2a3a;border:1px solid var(--blue);color:#cce;border-bottom-right-radius:2px;}
+.chat-msg.otro{align-self:flex-start;background:#2a1a1a;border:1px solid var(--red);color:#ecc;border-bottom-left-radius:2px;}
+.chat-msg.sistema{align-self:center;color:#666;font-size:11px;background:none;border:none;font-style:italic;}
 .chat-autor{font-size:10px;opacity:0.6;margin-bottom:2px;}
-#chat-input-row{
-  display:flex;gap:6px;padding:8px 10px;
-  border-top:1px solid #2a2a2a;background:#1e1e1e;
-}
-#chat-input{
-  flex:1;background:#111;border:1px solid #333;border-radius:6px;
-  padding:7px 10px;color:#ddd;font-family:'Rajdhani',sans-serif;
-  font-size:13px;outline:none;
-}
-#chat-input:focus{border-color:#444;}
-#chat-send{
-  padding:7px 14px;background:linear-gradient(135deg,#003070,#0055bb);
-  color:#fff;border:none;border-radius:6px;cursor:pointer;
-  font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;
-  letter-spacing:1px;transition:filter .2s;
-}
-#chat-send:hover{filter:brightness(1.2);}
-#chat-badge{
-  display:none;background:var(--red);color:#fff;
-  border-radius:50%;width:16px;height:16px;
-  font-size:10px;text-align:center;line-height:16px;
-  font-family:'Orbitron',sans-serif;font-weight:700;
-}
-
-/* ── MODO SELECCIÓN DE VICTORIA ── */
-.ficha-seleccionada-x {
-  stroke: #ffdd00 !important;
-  stroke-width: 3 !important;
-  fill: #3a2a00 !important;
-  filter: drop-shadow(0 0 8px rgba(255,220,0,0.9)) !important;
-}
-.ficha-seleccionada-o {
-  stroke: #ffdd00 !important;
-  stroke-width: 3 !important;
-  fill: #1a2a00 !important;
-  filter: drop-shadow(0 0 8px rgba(255,220,0,0.9)) !important;
-}
-#modo-reclamo-banner {
-  display:none;
-  background: linear-gradient(135deg,#2a2000,#3a3000);
-  border: 2px solid #ffdd00;
-  border-radius: 8px;
-  padding: 8px 16px;
-  text-align: center;
-  font-family: 'Orbitron', sans-serif;
-  font-size: 12px;
-  color: #ffdd00;
-  letter-spacing: 1px;
-  margin-top: 6px;
-  width: 100%;
-  max-width: 1080px;
-}
-#contador-seleccion {
-  font-size: 18px;
-  font-weight: 900;
-  margin-left: 8px;
-}
+#chat-input-row{display:flex;gap:6px;padding:8px 10px;border-top:1px solid #2a2a2a;background:#1e1e1e;}
+#chat-input{flex:1;background:#111;border:1px solid #333;border-radius:6px;padding:7px 10px;color:#ddd;font-family:'Rajdhani',sans-serif;font-size:13px;outline:none;}
+#chat-send{padding:7px 14px;background:linear-gradient(135deg,#003070,#0055bb);color:#fff;border:none;border-radius:6px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;}
+#chat-badge{display:none;background:var(--red);color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;text-align:center;line-height:16px;font-family:'Orbitron',sans-serif;font-weight:700;}
 </style>
 </head>
 <body>
 
+
 <div id="online-ind"><span id="online-dot"></span><span id="online-txt">Conectado</span></div>
 <div id="lobby-overlay">
   <div id="lobby-box">
-    <h2>🎯 GATO CIRCULAR</h2>
+    <h2>GATO CIRCULAR</h2>
     <p class="sub">Multijugador online</p>
     <div id="lp-inicio">
       <button class="lbtn" id="lbtn-crear">+ CREAR PARTIDA</button>
-      <button class="lbtn" id="lbtn-unirse">↗ UNIRSE A PARTIDA</button>
+      <button class="lbtn" id="lbtn-unirse">UNIRSE A PARTIDA</button>
     </div>
     <div id="lp-crear" style="display:none">
-      <p style="font-size:12px;color:#aaa">Comparte este código con tu amigo:</p>
+      <p style="font-size:12px;color:#aaa">Comparte este codigo con tu amigo:</p>
       <div id="lobby-codigo">----</div>
-      <button id="lbtn-copiar">📋 COPIAR CÓDIGO</button>
+      <button id="lbtn-copiar">COPIAR CODIGO</button>
       <hr class="lsep">
-      <div class="lstatus" id="lst-crear">⏳ Esperando que tu amigo se conecte...</div>
-      <button class="lbtn" id="lbtn-volver">← Volver</button>
+      <div class="lstatus" id="lst-crear">Esperando que tu amigo se conecte...</div>
+      <button class="lbtn" id="lbtn-volver">Volver</button>
     </div>
     <div id="lp-unirse" style="display:none">
-      <p style="font-size:12px;color:#aaa">Ingresa el código de tu amigo:</p>
+      <p style="font-size:12px;color:#aaa">Ingresa el codigo de tu amigo:</p>
       <input id="lobby-input" maxlength="4" placeholder="ABCD"/>
-      <button class="lbtn" id="lbtn-conectar">✔ CONECTAR</button>
+      <button class="lbtn" id="lbtn-conectar">CONECTAR</button>
       <div class="lstatus" id="lst-unirse"></div>
-      <button class="lbtn" id="lbtn-volver2">← Volver</button>
+      <button class="lbtn" id="lbtn-volver2">Volver</button>
     </div>
   </div>
 </div>
+
 <div id="app">
   <!-- PANEL IZQ -->
   <aside>
@@ -635,7 +548,6 @@ document.getElementById("overlay").onclick = () => {
 };
 
 inicializar();
-// Exponer API global para el módulo Firebase
 window._gc = {
   get tablero()    { return tablero; },
   set tablero(v)   { Object.keys(v).forEach(k => tablero[k] = v[k]); },
@@ -649,14 +561,30 @@ window._gc = {
   set fichasO(v)   { fichasO = v; },
   get jugadas()    { return jugadas; },
   set jugadas(v)   { jugadas = v; },
-  renderTablero,
-  actualizarUI,
-  buscarVictoria,
-  resaltarGanadores,
-  mostrarModal,
-  inicializar,
+  renderTablero, actualizarUI, buscarVictoria, resaltarGanadores, mostrarModal, inicializar,
 };
 </script>
+
+<div id="modo-reclamo-banner">
+  MODO RECLAMO: Selecciona las 4 fichas de tu linea ganadora
+  <span id="contador-seleccion">0/4</span> luego pulsa CONFIRMAR
+</div>
+<div id="chat-container">
+  <div id="chat-header" onclick="toggleChat()">
+    <span>CHAT DE PARTIDA</span>
+    <div id="chat-badge"></div>
+    <span id="chat-toggle-icon">V</span>
+  </div>
+  <div id="chat-body">
+    <div id="chat-msgs">
+      <div class="chat-msg sistema">Chat activo. Saluda a tu oponente!</div>
+    </div>
+    <div id="chat-input-row">
+      <input id="chat-input" placeholder="Escribe un mensaje..." maxlength="200" autocomplete="off"/>
+      <button id="chat-send">ENVIAR</button>
+    </div>
+  </div>
+</div>
 
 <script type="module">
 import { initializeApp }
@@ -674,12 +602,10 @@ const db = getDatabase(initializeApp({
   databaseURL:       "https://gato-circular-default-rtdb.firebaseio.com"
 }));
 
-// ── UTILIDADES ──
 const gc  = () => window._gc;
 const $   = id => document.getElementById(id);
 const ANILLOS = ['A','B','C','D'];
 
-// Firebase elimina keys con valor null — siempre reconstruir tablero completo
 function tblCompleto(parcial) {
   const t = {};
   ANILLOS.forEach(a => {
@@ -690,13 +616,12 @@ function tblCompleto(parcial) {
   });
   return t;
 }
-
 function tblVacio() { return tblCompleto({}); }
 
-// ── ESTADO MULTIJUGADOR ──
 let miRol = null, salaRef = null, codigoSala = null, juegoIniciado = false;
+let modoReclamo = false, fichasSeleccionadas = [];
 
-// ── LOBBY ──
+// LOBBY
 function paso(p) {
   $('lp-inicio').style.display = p === 'inicio' ? '' : 'none';
   $('lp-crear').style.display  = p === 'crear'  ? '' : 'none';
@@ -709,17 +634,9 @@ $('lbtn-crear').onclick = async () => {
   miRol = 'X';
   salaRef = ref(db, 'salas/' + codigoSala);
   await set(salaRef, {
-    tablero:   tblVacio(),
-    turno:     null,
-    fase:      'esperando_sorteo',
-    terminado: false,
-    ganador:   null,
-    jugadas:   0,
-    fichasX:   16,
-    fichasO:   16,
-    j1:        'online',
-    j2:        'espera',
-    ts:        Date.now()
+    tablero:   tblVacio(), turno: null, fase: 'esperando_sorteo',
+    terminado: false, ganador: null, jugadas: 0, fichasX: 16, fichasO: 16,
+    j1: 'online', j2: 'espera', ts: Date.now()
   });
   $('lobby-codigo').textContent = codigoSala;
   paso('crear');
@@ -728,10 +645,9 @@ $('lbtn-crear').onclick = async () => {
 
 $('lbtn-copiar').onclick = () => {
   navigator.clipboard.writeText(codigoSala);
-  $('lbtn-copiar').textContent = '✓ COPIADO!';
-  setTimeout(() => $('lbtn-copiar').textContent = '📋 COPIAR CÓDIGO', 2000);
+  $('lbtn-copiar').textContent = 'COPIADO!';
+  setTimeout(() => $('lbtn-copiar').textContent = 'COPIAR CODIGO', 2000);
 };
-
 $('lbtn-volver').onclick  = () => paso('inicio');
 $('lbtn-volver2').onclick = () => paso('inicio');
 
@@ -742,157 +658,126 @@ $('lobby-input').oninput = e => {
 
 $('lbtn-conectar').onclick = async () => {
   const cod = $('lobby-input').value.trim().toUpperCase();
-  if(cod.length !== 4) { $('lst-unirse').textContent = '⚠️ Código de 4 caracteres.'; return; }
+  if(cod.length !== 4) { $('lst-unirse').textContent = 'Codigo de 4 caracteres.'; return; }
   const snap = await get(ref(db, 'salas/' + cod));
-  if(!snap.exists())           { $('lst-unirse').textContent = '❌ Sala no encontrada.'; return; }
-  if(snap.val().j2 !== 'espera') { $('lst-unirse').textContent = '❌ Sala ya está llena.'; return; }
-  codigoSala = cod;
-  miRol = 'O';
+  if(!snap.exists())             { $('lst-unirse').textContent = 'Sala no encontrada.'; return; }
+  if(snap.val().j2 !== 'espera') { $('lst-unirse').textContent = 'Sala ya esta llena.'; return; }
+  codigoSala = cod; miRol = 'O';
   salaRef = ref(db, 'salas/' + cod);
-  await update(salaRef, { j2: 'online', j1: 'online' }); // forzar arranque para ambos
+  await update(salaRef, { j2: 'online', j1: 'online' });
   escuchar();
 };
 
-// ── LISTENER PRINCIPAL ──
+// LISTENER PRINCIPAL
 function escuchar() {
   onValue(salaRef, snap => {
     if(!snap.exists()) return;
     const d = snap.val();
 
-    // Arrancar cuando ambos estén online
     if(!juegoIniciado && d.j1 === 'online' && d.j2 === 'online') {
       juegoIniciado = true;
       $('lobby-overlay').style.display = 'none';
       $('online-ind').style.display    = 'block';
-      $('online-txt').textContent = 'Sala: ' + codigoSala +
-        ' · Tú: ' + (miRol === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)');
-      bloquearTablero(true); // bloqueado hasta sorteo o primera jugada
+      $('online-txt').textContent = 'Sala: ' + codigoSala + ' Tu: ' + (miRol === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)');
+      bloquearTablero(true);
       iniciarChat();
     }
-
-    // Jugador 1: confirmar si jugador 2 llegó
     if(!juegoIniciado && miRol === 'X' && d.j2 === 'online') {
       update(salaRef, { j1: 'online' });
     }
-    // Jugador 2: arrancar si j1 ya estaba online
     if(!juegoIniciado && miRol === 'O' && d.j1 === 'online' && d.j2 === 'online') {
       juegoIniciado = true;
       $('lobby-overlay').style.display = 'none';
       $('online-ind').style.display    = 'block';
-      $('online-txt').textContent = 'Sala: ' + codigoSala + ' · Tú: Jugador 2 (O)';
+      $('online-txt').textContent = 'Sala: ' + codigoSala + ' Tu: Jugador 2 (O)';
       bloquearTablero(true);
       iniciarChat();
     }
-
-    // Sincronizar tablero
     if(juegoIniciado) aplicarEstado(d);
   });
 }
 
-// ── APLICAR ESTADO AL TABLERO LOCAL ──
+// BLOQUEO
+function bloquearTablero(bloqueado) {
+  $('tablero-block').style.display = bloqueado ? 'block' : 'none';
+  $('tablero-svg').style.opacity   = bloqueado ? '0.85' : '1';
+}
+
+// APLICAR ESTADO
 function aplicarEstado(d) {
   if(!d) return;
   const g = gc();
-
-  // Reconstruir tablero (Firebase omite nulls)
   const t = tblCompleto(d.tablero);
-  g.tablero    = t;          // usa el setter que copia key a key
-  g.turno      = d.turno     ?? 'X';
-  g.terminado  = d.terminado ?? false;
-  g.fichasX    = d.fichasX   ?? 16;
-  g.fichasO    = d.fichasO   ?? 16;
-  g.jugadas    = d.jugadas   ?? 0;
-
+  g.tablero   = t;
+  g.turno     = d.turno     != null ? d.turno : 'X';
+  g.terminado = d.terminado != null ? d.terminado : false;
+  g.fichasX   = d.fichasX   != null ? d.fichasX : 16;
+  g.fichasO   = d.fichasO   != null ? d.fichasO : 16;
+  g.jugadas   = d.jugadas   != null ? d.jugadas : 0;
   g.renderTablero();
   g.actualizarUI();
 
-  // Bloquear/desbloquear según fase y turno
   if(d.terminado) {
-    // Partida terminada — bloquear ambos
     bloquearTablero(true);
-    $('turno-msg').textContent = '🏁 Partida terminada. Pulsa Nueva Partida.';
+    $('turno-msg').textContent = 'Partida terminada. Pulsa Nueva Partida.';
   } else if(d.fase === 'esperando_sorteo' || !d.turno) {
-    // Entre partidas — bloqueado hasta sorteo
     bloquearTablero(true);
-    $('turno-msg').textContent = '⏳ Pulsa SORTEAR PARTIDA para comenzar.';
+    $('turno-msg').textContent = 'Pulsa SORTEAR PARTIDA para comenzar.';
   } else {
-    // Jugando — desbloquear solo al jugador con el turno
     const esMiTurno = g.turno === miRol;
     bloquearTablero(!esMiTurno);
     $('turno-msg').textContent = esMiTurno
-      ? '🟢 ¡ES TU TURNO! Haz clic en una casilla.'
-      : '⏳ Esperando jugada del oponente...';
+      ? 'ES TU TURNO! Haz clic en una casilla.'
+      : 'Esperando jugada del oponente...';
   }
 
-  // Victoria
   if(d.terminado && d.ganador) {
     const lineas = gc().buscarVictoria(d.ganador);
     if(lineas.length) gc().resaltarGanadores(lineas);
     const esTuyo = d.ganador === miRol;
     setTimeout(() => gc().mostrarModal(
-      esTuyo ? '🏆 ¡GANASTE!' : '😔 Perdiste',
-      esTuyo
-        ? '¡Felicitaciones! Ganaste la partida.'
-        : (d.ganador === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)') + ' ganó esta partida.'
+      esTuyo ? 'GANASTE!' : 'Perdiste',
+      esTuyo ? 'Felicitaciones! Ganaste la partida.'
+             : (d.ganador === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)') + ' gano esta partida.'
     ), 400);
   }
 }
 
-// ── BLOQUEO DE TABLERO ──
-function bloquearTablero(bloqueado) {
-  const b = $('tablero-block');
-  const s = $('tablero-svg');
-  b.style.display = bloqueado ? 'block' : 'none';
-  s.style.opacity = bloqueado ? '0.85' : '1';
-}
-
-// ── JUGADA ONLINE ──
+// JUGADA ONLINE
 $('tablero-svg').addEventListener('click', async e => {
+  if(modoReclamo) return;
   if(!juegoIniciado || gc().terminado || gc().turno !== miRol) return;
-  // Buscar data-id subiendo por el árbol DOM
   let el = e.target;
   while(el && el.id !== 'tablero-svg') {
-    if(el.dataset && el.dataset.id) {
-      await jugarOnline(el.dataset.id);
-      return;
-    }
+    if(el.dataset && el.dataset.id) { await jugarOnline(el.dataset.id); return; }
     el = el.parentElement;
   }
 }, true);
 
 async function jugarOnline(id) {
-  // Leer estado fresco de Firebase
   const snap = await get(salaRef);
   if(!snap.exists()) return;
   const d = snap.val();
-  const t = tblCompleto(d.tablero);   // <-- FIX CLAVE: reconstruir nulls
-
+  const t = tblCompleto(d.tablero);
   if(d.terminado || d.fase === 'esperando_sorteo' || t[id] !== null || d.turno !== miRol) return;
-
-  t[id] = miRol;   // marcar la jugada
-
-  bloquearTablero(true); // bloquear inmediatamente al jugar
-  await set(ref(db, 'salas/' + codigoSala), {
-    ...d,
+  t[id] = miRol;
+  bloquearTablero(true);
+  await set(ref(db, 'salas/' + codigoSala), Object.assign({}, d, {
     tablero: t,
     turno:   miRol === 'X' ? 'O' : 'X',
+    fase:    'jugando',
     jugadas: (d.jugadas || 0) + 1,
-    fichasX: miRol === 'X' ? (d.fichasX ?? 16) - 1 : (d.fichasX ?? 16),
-    fichasO: miRol === 'O' ? (d.fichasO ?? 16) - 1 : (d.fichasO ?? 16),
-  });
+    fichasX: miRol === 'X' ? (d.fichasX != null ? d.fichasX : 16) - 1 : (d.fichasX != null ? d.fichasX : 16),
+    fichasO: miRol === 'O' ? (d.fichasO != null ? d.fichasO : 16) - 1 : (d.fichasO != null ? d.fichasO : 16),
+  }));
 }
 
-// ── RECLAMAR VICTORIA ──
-// ── ESTADO DE RECLAMO ──
-let modoReclamo   = false;
-let fichasSeleccionadas = []; // ids de fichas marcadas por el jugador
-
+// MODO RECLAMO
 function activarModoReclamo() {
   modoReclamo = true;
   fichasSeleccionadas = [];
   $('modo-reclamo-banner').style.display = 'block';
   $('contador-seleccion').textContent = '0/4';
-  // Desbloquear tablero solo para selección (no para jugar)
   $('tablero-block').style.display = 'none';
   $('tablero-svg').style.opacity = '1';
 }
@@ -901,164 +786,145 @@ function desactivarModoReclamo() {
   modoReclamo = false;
   fichasSeleccionadas = [];
   $('modo-reclamo-banner').style.display = 'none';
-  // Volver a bloquear (no es turno del reclamante)
   bloquearTablero(true);
-  // Limpiar resaltados amarillos
-  document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o')
-    .forEach(el => {
-      el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
-    });
+  document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el => {
+    el.classList.remove('ficha-seleccionada-x', 'ficha-seleccionada-o');
+  });
 }
 
 $('btn-reclamar').addEventListener('click', async e => {
   if(!juegoIniciado) return;
   e.stopImmediatePropagation();
-
-  // Si ya estamos en modo reclamo, cancelar
   if(modoReclamo) {
     desactivarModoReclamo();
-    gc().mostrarModal('Reclamo cancelado', 'El reclamo fue cancelado. El juego continúa.');
+    gc().mostrarModal('Reclamo cancelado', 'El reclamo fue cancelado. El juego continua.');
     return;
   }
-
   const snap = await get(salaRef);
   const d = snap.val();
   if(!d || d.terminado) { gc().mostrarModal('Partida terminada', 'Inicia nueva partida.'); return; }
-  if((d.jugadas || 0) < 7) { gc().mostrarModal('Muy pronto', 'Mínimo 7 jugadas para reclamar.'); return; }
-
-  // Puede reclamar en cualquier momento (no solo después de su jugada)
-  // pero solo puede seleccionar sus propias fichas
+  if((d.jugadas || 0) < 7) { gc().mostrarModal('Muy pronto', 'Minimo 7 jugadas para reclamar.'); return; }
   activarModoReclamo();
-  gc().mostrarModal('🏆 Modo Reclamo activo',
-    'Selecciona las 4 fichas que forman tu línea ganadora,\nluego pulsa CONFIRMAR.\n\nPulsa RECLAMAR VICTORIA de nuevo para cancelar.');
+  gc().mostrarModal('Modo Reclamo activo',
+    'Selecciona las 4 fichas de tu linea ganadora y pulsa CONFIRMAR. Pulsa RECLAMAR VICTORIA de nuevo para cancelar.');
 }, true);
 
-// ── INTERCEPTAR CLIC EN MODO RECLAMO ──
-// Se agrega como listener adicional en el tablero-svg
 $('tablero-svg').addEventListener('click', e => {
   if(!modoReclamo) return;
   e.stopImmediatePropagation();
-
   let el = e.target;
   while(el && el.id !== 'tablero-svg') {
-    if(el.dataset && el.dataset.id) {
-      seleccionarFichaReclamo(el.dataset.id);
-      return;
-    }
+    if(el.dataset && el.dataset.id) { seleccionarFichaReclamo(el.dataset.id); return; }
     el = el.parentElement;
   }
-}, false); // false = bubble, después del capture de jugarOnline
+}, false);
 
 function seleccionarFichaReclamo(id) {
-  // Solo fichas propias
   const snap_t = gc().tablero;
   if(snap_t[id] !== miRol) {
-    gc().mostrarModal('Ficha inválida', 'Solo puedes seleccionar tus propias fichas.');
+    gc().mostrarModal('Ficha invalida', 'Solo puedes seleccionar tus propias fichas.');
     return;
   }
-  // Alternar selección
   const idx = fichasSeleccionadas.indexOf(id);
   if(idx >= 0) {
-    // Deseleccionar
     fichasSeleccionadas.splice(idx, 1);
-    const circ = document.querySelector(`#fichas-layer [data-id="${id}"] circle`);
+    const circ = document.querySelector('[data-id="' + id + '"] circle');
     if(circ) {
-      circ.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
-      circ.classList.add(miRol==='X'?'ficha-x':'ficha-o');
+      circ.classList.remove('ficha-seleccionada-x', 'ficha-seleccionada-o');
+      circ.classList.add(miRol === 'X' ? 'ficha-x' : 'ficha-o');
     }
   } else {
     if(fichasSeleccionadas.length >= 4) {
-      gc().mostrarModal('Ya tienes 4 fichas','Deselecciona una antes de agregar otra.');
+      gc().mostrarModal('Ya tienes 4 fichas', 'Deselecciona una antes de agregar otra.');
       return;
     }
     fichasSeleccionadas.push(id);
-    const circ = document.querySelector(`#fichas-layer [data-id="${id}"] circle`);
+    const circ = document.querySelector('[data-id="' + id + '"] circle');
     if(circ) {
-      circ.classList.remove('ficha-x','ficha-o');
-      circ.classList.add(miRol==='X'?'ficha-seleccionada-x':'ficha-seleccionada-o');
+      circ.classList.remove('ficha-x', 'ficha-o');
+      circ.classList.add(miRol === 'X' ? 'ficha-seleccionada-x' : 'ficha-seleccionada-o');
     }
   }
   $('contador-seleccion').textContent = fichasSeleccionadas.length + '/4';
 }
 
-// ── CONFIRMAR VICTORIA ──
+// LINEAS GANADORAS
+const TODAS_LINEAS = (function() {
+  const lineas = [];
+  for(let i = 0; i < 8; i++) lineas.push(['A'+i,'B'+i,'C'+i,'D'+i]);
+  ['A','B','C','D'].forEach(a => {
+    for(let i = 0; i < 8; i++)
+      lineas.push([a+i, a+((i+1)%8), a+((i+2)%8), a+((i+3)%8)]);
+  });
+  for(let i = 0; i < 8; i++) lineas.push(['A'+i,'B'+((i+1)%8),'C'+((i+2)%8),'D'+((i+3)%8)]);
+  for(let i = 0; i < 8; i++) lineas.push(['A'+i,'B'+((i+7)%8),'C'+((i+6)%8),'D'+((i+5)%8)]);
+  return lineas;
+})();
+
 $('btn-confirmar').addEventListener('click', async e => {
   if(!juegoIniciado) return;
   e.stopImmediatePropagation();
-
   if(!modoReclamo) {
-    gc().mostrarModal('Sin reclamo activo', 'Primero pulsa RECLAMAR VICTORIA y selecciona tus 4 fichas.');
+    gc().mostrarModal('Sin reclamo activo', 'Primero pulsa RECLAMAR VICTORIA y selecciona 4 fichas.');
     return;
   }
   if(fichasSeleccionadas.length !== 4) {
-    gc().mostrarModal('Faltan fichas', 'Debes seleccionar exactamente 4 fichas para confirmar.');
+    gc().mostrarModal('Faltan fichas', 'Debes seleccionar exactamente 4 fichas.');
     return;
   }
-
-  // Verificar si las 4 fichas seleccionadas forman una línea ganadora válida
-  const TODAS_LINEAS = [
-    // Radiales
-    ...[0,1,2,3,4,5,6,7].map(i=>['A'+i,'B'+i,'C'+i,'D'+i]),
-    // Circulares
-    ...['A','B','C','D'].flatMap(a=>[0,1,2,3,4,5,6,7].map(i=>[a+i,a+((i+1)%8),a+((i+2)%8),a+((i+3)%8)])),
-    // Espirales horarias
-    ...[0,1,2,3,4,5,6,7].map(i=>['A'+i,'B'+((i+1)%8),'C'+((i+2)%8),'D'+((i+3)%8)]),
-    // Espirales antihorarias
-    ...[0,1,2,3,4,5,6,7].map(i=>['A'+i,'B'+((i+7)%8),'C'+((i+6)%8),'D'+((i+5)%8)]),
-  ];
-
   const selSet = new Set(fichasSeleccionadas);
-  const esValida = TODAS_LINEAS.some(linea =>
-    linea.length === 4 && linea.every(c => selSet.has(c))
-  );
-
+  const esValida = TODAS_LINEAS.some(linea => linea.every(c => selSet.has(c)));
   if(esValida) {
-    // ¡Victoria válida!
+    const ganadas = fichasSeleccionadas.slice();
     desactivarModoReclamo();
-    // Resaltar las fichas ganadoras
-    fichasSeleccionadas.forEach(id => {
-      const circ = document.querySelector(`#fichas-layer [data-id="${id}"] circle`);
-      if(circ) circ.classList.add(miRol==='X'?'ficha-winner-x':'ficha-winner-o');
+    ganadas.forEach(id => {
+      const circ = document.querySelector('[data-id="' + id + '"] circle');
+      if(circ) circ.classList.add(miRol === 'X' ? 'ficha-winner-x' : 'ficha-winner-o');
     });
     await update(salaRef, { terminado: true, ganador: miRol });
   } else {
-    // Línea inválida — volver al juego
     desactivarModoReclamo();
-    gc().mostrarModal('❌ Línea inválida',
-      'Las 4 fichas seleccionadas no forman una línea ganadora válida.\nEl juego continúa.');
+    gc().mostrarModal('Linea invalida', 'Las 4 fichas no forman una linea ganadora valida. El juego continua.');
   }
 }, true);
 
-// ── NUEVA PARTIDA ──
+// NUEVA PARTIDA
 $('btn-nueva').addEventListener('click', async e => {
   if(!juegoIniciado) return;
   e.stopImmediatePropagation();
-  // Limpiar tablero pero dejar en fase 'esperando_sorteo' — ambos bloqueados
   await update(salaRef, {
-    tablero:    tblVacio(),
-    turno:      null,
-    fase:       'esperando_sorteo',
-    terminado:  false,
-    ganador:    null,
-    jugadas:    0,
-    fichasX:    16,
-    fichasO:    16
+    tablero: tblVacio(), turno: null, fase: 'esperando_sorteo',
+    terminado: false, ganador: null, jugadas: 0, fichasX: 16, fichasO: 16
   });
 }, true);
 
-// ── CHAT ──
+// SORTEAR PARTIDA
+$('btn-sortear').addEventListener('click', async e => {
+  if(!juegoIniciado) return;
+  e.stopImmediatePropagation();
+  const snap = await get(salaRef);
+  const d = snap.val();
+  if((d.jugadas || 0) > 0 && d.fase !== 'esperando_sorteo') {
+    gc().mostrarModal('Sorteo', 'Solo se puede sortear al inicio de la partida.'); return;
+  }
+  const primero = Math.random() < 0.5 ? 'X' : 'O';
+  await update(salaRef, { turno: primero, fase: 'jugando' });
+  gc().mostrarModal('SORTEO!',
+    'Comienza el ' + (primero === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)'));
+}, true);
+
+// CHAT
 let chatAbierto = false;
 let mensajesNoLeidos = 0;
 
 window.toggleChat = function() {
   chatAbierto = !chatAbierto;
   $('chat-body').style.display = chatAbierto ? 'flex' : 'none';
-  $('chat-toggle-icon').textContent = chatAbierto ? '▲' : '▼';
+  $('chat-toggle-icon').textContent = chatAbierto ? 'A' : 'V';
   if(chatAbierto) {
     mensajesNoLeidos = 0;
     $('chat-badge').style.display = 'none';
     $('chat-badge').textContent = '';
-    // Scroll al último mensaje
     const msgs = $('chat-msgs');
     msgs.scrollTop = msgs.scrollHeight;
   }
@@ -1074,12 +940,9 @@ function agregarMensaje(texto, tipo, autor) {
     aut.textContent = autor;
     div.appendChild(aut);
   }
-  const txt = document.createTextNode(texto);
-  div.appendChild(txt);
+  div.appendChild(document.createTextNode(texto));
   msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
-
-  // Badge si el chat está cerrado y es mensaje del otro
   if(!chatAbierto && tipo === 'otro') {
     mensajesNoLeidos++;
     $('chat-badge').textContent = mensajesNoLeidos;
@@ -1091,28 +954,23 @@ function iniciarChat() {
   $('chat-container').style.display = 'block';
   chatAbierto = true;
   $('chat-body').style.display = 'flex';
-  $('chat-toggle-icon').textContent = '▲';
-
-  // Marca de tiempo para ignorar mensajes anteriores al conectarse
+  $('chat-toggle-icon').textContent = 'A';
   const tsInicio = Date.now();
-  const vistos = new Set(); // evitar duplicados
-
+  const vistos = new Set();
   const chatRef = ref(db, 'salas/' + codigoSala + '/chat');
   onValue(chatRef, snap => {
     if(!snap.exists()) return;
     const msgs = snap.val();
-    // Ordenar por timestamp (las keys son timestamps)
     Object.keys(msgs).sort().forEach(k => {
-      if(vistos.has(k)) return;       // ya mostrado
+      if(vistos.has(k)) return;
       const m = msgs[k];
-      if(m.ts < tsInicio) return;     // anterior a nuestra conexión
+      if(m.ts < tsInicio) return;
       vistos.add(k);
-      if(m.rol === miRol) return;     // propio — ya lo mostramos al enviar
+      if(m.rol === miRol) return;
       const nombreOtro = miRol === 'X' ? 'Jugador 2 (O)' : 'Jugador 1 (X)';
       agregarMensaje(m.texto, 'otro', nombreOtro);
     });
   });
-
   $('chat-send').onclick = enviarMensaje;
   $('chat-input').onkeydown = e => { if(e.key === 'Enter') enviarMensaje(); };
 }
@@ -1122,60 +980,12 @@ async function enviarMensaje() {
   const texto = input.value.trim();
   if(!texto) return;
   input.value = '';
-
-  const nombreYo = miRol === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)';
-  agregarMensaje(texto, 'yo', 'Tú');
-
-  // Guardar en Firebase
-  const chatRef = ref(db, 'salas/' + codigoSala + '/chat/' + Date.now());
-  await set(chatRef, { rol: miRol, texto, ts: Date.now() });
+  agregarMensaje(texto, 'yo', 'Tu');
+  await set(ref(db, 'salas/' + codigoSala + '/chat/' + Date.now()),
+    { rol: miRol, texto: texto, ts: Date.now() });
 }
 
-// ── SORTEAR PARTIDA ──
-$('btn-sortear').addEventListener('click', async e => {
-  if(!juegoIniciado) return;
-  e.stopImmediatePropagation();
-  const snap = await get(salaRef);
-  const d = snap.val();
-  // Solo se puede sortear si no hay jugadas y estamos en fase esperando_sorteo o inicio
-  if((d.jugadas || 0) > 0 && d.fase !== 'esperando_sorteo') {
-    gc().mostrarModal('Sorteo', 'Solo se puede sortear al inicio de la partida.'); return;
-  }
-  const primero = Math.random() < .5 ? 'X' : 'O';
-  await update(salaRef, {
-    turno: primero,
-    fase:  'jugando'
-  });
-  gc().mostrarModal('¡SORTEO!',
-    'Comienza el ' + (primero === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)'));
-}, true);
-
 </script>
-
-
-<!-- BANNER MODO RECLAMO -->
-<div id="modo-reclamo-banner">
-  🏆 MODO RECLAMO: Selecciona las 4 fichas de tu línea ganadora
-  <span id="contador-seleccion">0/4</span> — luego pulsa CONFIRMAR
-</div>
-
-<!-- CHAT EN TIEMPO REAL -->
-<div id="chat-container" style="display:none">
-  <div id="chat-header" onclick="toggleChat()">
-    <span>💬</span> CHAT DE PARTIDA
-    <div id="chat-badge"></div>
-    <span id="chat-toggle-icon">▼</span>
-  </div>
-  <div id="chat-body">
-    <div id="chat-msgs">
-      <div class="chat-msg sistema">El chat está activo. ¡Saludos a tu oponente!</div>
-    </div>
-    <div id="chat-input-row">
-      <input id="chat-input" placeholder="Escribe un mensaje..." maxlength="200" autocomplete="off"/>
-      <button id="chat-send">ENVIAR</button>
-    </div>
-  </div>
-</div>
 
 </body>
 </html>
