@@ -103,72 +103,29 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',Arial,sans-se
   border:none;border-radius:5px;font-family:'Orbitron',sans-serif;font-weight:700;cursor:pointer;font-size:12px}
 
 /* ── LOBBY ── */
-#lobby-overlay{
-  display:flex;position:fixed;inset:0;
-  background:rgba(0,0,0,0.93);z-index:200;
-  align-items:center;justify-content:center;
-}
-#lobby-box{
-  background:linear-gradient(135deg,#1a1a1a,#252525);
-  border:2px solid var(--gold);border-radius:14px;
-  padding:32px 36px;text-align:center;width:340px;
-  box-shadow:0 0 50px rgba(0,0,0,0.9);
-}
-#lobby-box h2{
-  font-family:'Orbitron',sans-serif;font-size:17px;
-  color:var(--gold);margin-bottom:4px;letter-spacing:2px;
-}
+#lobby-overlay{display:flex;position:fixed;inset:0;background:rgba(0,0,0,0.93);z-index:200;align-items:center;justify-content:center;}
+#lobby-box{background:linear-gradient(135deg,#1a1a1a,#252525);border:2px solid var(--gold);border-radius:14px;padding:32px 36px;text-align:center;width:340px;box-shadow:0 0 50px rgba(0,0,0,0.9);}
+#lobby-box h2{font-family:'Orbitron',sans-serif;font-size:17px;color:var(--gold);margin-bottom:4px;letter-spacing:2px;}
 #lobby-box .sub{font-size:12px;color:#777;margin-bottom:20px;}
-.lbtn{
-  display:block;width:100%;padding:13px;
-  font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;
-  border:none;border-radius:7px;cursor:pointer;margin-bottom:10px;
-  letter-spacing:1px;transition:filter .2s,transform .1s;
-}
+.lbtn{display:block;width:100%;padding:13px;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;border:none;border-radius:7px;cursor:pointer;margin-bottom:10px;letter-spacing:1px;transition:filter .2s,transform .1s;}
 .lbtn:hover{filter:brightness(1.2);transform:translateY(-1px);}
-#lbtn-crear {background:linear-gradient(135deg,#7a0000,#cc2200);color:#fff;}
+#lbtn-crear{background:linear-gradient(135deg,#7a0000,#cc2200);color:#fff;}
 #lbtn-unirse{background:linear-gradient(135deg,#003070,#0055bb);color:#fff;}
 #lbtn-volver,#lbtn-volver2{background:#2a2a2a;color:#888;font-size:11px;margin-top:4px;}
-#lobby-codigo{
-  font-family:'Orbitron',sans-serif;font-size:30px;font-weight:900;
-  color:var(--gold);letter-spacing:7px;margin:10px 0;
-  text-shadow:0 0 14px rgba(200,168,75,0.6);
-}
-#lbtn-copiar{
-  background:#222;color:var(--gold);border:1px solid var(--gold);
-  padding:6px 16px;border-radius:5px;cursor:pointer;
-  font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:1px;
-}
+#lobby-codigo{font-family:'Orbitron',sans-serif;font-size:30px;font-weight:900;color:var(--gold);letter-spacing:7px;margin:10px 0;text-shadow:0 0 14px rgba(200,168,75,0.6);}
+#lbtn-copiar{background:#222;color:var(--gold);border:1px solid var(--gold);padding:6px 16px;border-radius:5px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:1px;}
 #lbtn-copiar:hover{background:#333;}
-#lobby-input{
-  width:100%;padding:11px 14px;margin-bottom:10px;
-  background:#111;border:2px solid #444;border-radius:7px;
-  color:#fff;font-family:'Orbitron',sans-serif;
-  font-size:20px;text-align:center;letter-spacing:5px;text-transform:uppercase;
-}
+#lobby-input{width:100%;padding:11px 14px;margin-bottom:10px;background:#111;border:2px solid #444;border-radius:7px;color:#fff;font-family:'Orbitron',sans-serif;font-size:20px;text-align:center;letter-spacing:5px;text-transform:uppercase;}
 #lobby-input:focus{outline:none;border-color:var(--gold);}
 #lbtn-conectar{background:linear-gradient(135deg,#005500,#009933);color:#fff;}
 .lstatus{font-size:12px;color:#aaa;margin-top:10px;min-height:18px;line-height:1.5;}
-.lstatus.err{color:#e05050;}
 hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
-/* Indicador online */
-#online-ind{
-  display:none;position:fixed;top:8px;right:10px;z-index:50;
-  background:#1a1a1a;border:1px solid #333;border-radius:20px;
-  padding:4px 11px;font-size:11px;color:#aaa;
-  font-family:'Rajdhani',sans-serif;
-}
-#online-dot{
-  display:inline-block;width:7px;height:7px;border-radius:50%;
-  background:#00aa44;margin-right:5px;animation:blink 1.5s infinite;
-}
+#online-ind{display:none;position:fixed;top:8px;right:10px;z-index:50;background:#1a1a1a;border:1px solid #333;border-radius:20px;padding:4px 11px;font-size:11px;color:#aaa;font-family:'Rajdhani',sans-serif;}
+#online-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#00aa44;margin-right:5px;animation:blink 1.5s infinite;}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
-/* Bloquear clics cuando no es tu turno */
-#tablero-svg.bloqueado{cursor:not-allowed;}
 </style>
 </head>
 <body>
-
 
 <div id="online-ind"><span id="online-dot"></span><span id="online-txt">Conectado</span></div>
 <div id="lobby-overlay">
@@ -196,7 +153,6 @@ hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
     </div>
   </div>
 </div>
-
 <div id="app">
   <!-- PANEL IZQ -->
   <aside>
@@ -571,25 +527,25 @@ document.getElementById("overlay").onclick = () => {
 };
 
 inicializar();
+// Exponer API global para el módulo Firebase
 window._gc = {
-  get tablero()           { return tablero; },
-  set tablero(v)          { Object.keys(v).forEach(k=>tablero[k]=v[k]); },
-  get turno()             { return turno; },
-  set turno(v)            { turno=v; },
-  get terminado()         { return terminado; },
-  set terminado(v)        { terminado=v; },
-  get fichasX()           { return fichasX; },
-  set fichasX(v)          { fichasX=v; },
-  get fichasO()           { return fichasO; },
-  set fichasO(v)          { fichasO=v; },
-  get jugadas()           { return jugadas; },
-  set jugadas(v)          { jugadas=v; },
+  get tablero()    { return tablero; },
+  set tablero(v)   { Object.keys(v).forEach(k => tablero[k] = v[k]); },
+  get turno()      { return turno; },
+  set turno(v)     { turno = v; },
+  get terminado()  { return terminado; },
+  set terminado(v) { terminado = v; },
+  get fichasX()    { return fichasX; },
+  set fichasX(v)   { fichasX = v; },
+  get fichasO()    { return fichasO; },
+  set fichasO(v)   { fichasO = v; },
+  get jugadas()    { return jugadas; },
+  set jugadas(v)   { jugadas = v; },
   renderTablero,
   actualizarUI,
   buscarVictoria,
   resaltarGanadores,
   mostrarModal,
-  declararGanador,
   inicializar,
 };
 </script>
@@ -610,211 +566,228 @@ const db = getDatabase(initializeApp({
   databaseURL:       "https://gato-circular-default-rtdb.firebaseio.com"
 }));
 
-const gc = () => window._gc;
-const $  = id => document.getElementById(id);
+// ── UTILIDADES ──
+const gc  = () => window._gc;
+const $   = id => document.getElementById(id);
+const ANILLOS = ['A','B','C','D'];
 
-let miRol=null, salaRef=null, codigoSala=null, juegoIniciado=false;
-
-// ── TABLERO INICIAL ──
-function tableroVacio() {
-  const t={};
-  ['A','B','C','D'].forEach(a=>{for(let i=0;i<8;i++) t[a+i]=null;});
+// Firebase elimina keys con valor null — siempre reconstruir tablero completo
+function tblCompleto(parcial) {
+  const t = {};
+  ANILLOS.forEach(a => {
+    for(let i = 0; i < 8; i++) {
+      const k = a + i;
+      t[k] = (parcial && parcial[k] != null) ? parcial[k] : null;
+    }
+  });
   return t;
 }
 
-// ── MOSTRAR PASO LOBBY ──
-function paso(p){
-  $('lp-inicio').style.display = p==='inicio' ?'':'none';
-  $('lp-crear').style.display  = p==='crear'  ?'':'none';
-  $('lp-unirse').style.display = p==='unirse' ?'':'none';
+function tblVacio() { return tblCompleto({}); }
+
+// ── ESTADO MULTIJUGADOR ──
+let miRol = null, salaRef = null, codigoSala = null, juegoIniciado = false;
+
+// ── LOBBY ──
+function paso(p) {
+  $('lp-inicio').style.display = p === 'inicio' ? '' : 'none';
+  $('lp-crear').style.display  = p === 'crear'  ? '' : 'none';
+  $('lp-unirse').style.display = p === 'unirse' ? '' : 'none';
 }
 
-// ── CREAR ──
 $('lbtn-crear').onclick = async () => {
-  const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  codigoSala = Array.from({length:4},()=>chars[Math.floor(Math.random()*chars.length)]).join('');
-  miRol='X';
-  salaRef = ref(db,'salas/'+codigoSala);
-  await set(salaRef,{
-    tablero:tableroVacio(), turno:'X', terminado:false,
-    ganador:null, jugadas:0, fichasX:16, fichasO:16,
-    j1:'online', j2:'espera', ts:Date.now()
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  codigoSala = Array.from({length:4}, () => chars[Math.floor(Math.random()*chars.length)]).join('');
+  miRol = 'X';
+  salaRef = ref(db, 'salas/' + codigoSala);
+  await set(salaRef, {
+    tablero:   tblVacio(),
+    turno:     'X',
+    terminado: false,
+    ganador:   null,
+    jugadas:   0,
+    fichasX:   16,
+    fichasO:   16,
+    j1:        'online',
+    j2:        'espera',
+    ts:        Date.now()
   });
   $('lobby-codigo').textContent = codigoSala;
   paso('crear');
   escuchar();
 };
 
-$('lbtn-copiar').onclick = ()=>{
+$('lbtn-copiar').onclick = () => {
   navigator.clipboard.writeText(codigoSala);
-  $('lbtn-copiar').textContent='✓ COPIADO!';
-  setTimeout(()=>$('lbtn-copiar').textContent='📋 COPIAR CÓDIGO',2000);
+  $('lbtn-copiar').textContent = '✓ COPIADO!';
+  setTimeout(() => $('lbtn-copiar').textContent = '📋 COPIAR CÓDIGO', 2000);
 };
-$('lbtn-volver').onclick  = ()=>paso('inicio');
-$('lbtn-volver2').onclick = ()=>paso('inicio');
 
-// ── UNIRSE ──
-$('lbtn-unirse').onclick = ()=>{ paso('unirse'); $('lobby-input').focus(); };
-$('lobby-input').oninput = e=>{
-  e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'');
+$('lbtn-volver').onclick  = () => paso('inicio');
+$('lbtn-volver2').onclick = () => paso('inicio');
+
+$('lbtn-unirse').onclick = () => { paso('unirse'); $('lobby-input').focus(); };
+$('lobby-input').oninput = e => {
+  e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
 };
-$('lbtn-conectar').onclick = async ()=>{
-  const cod=$('lobby-input').value.trim().toUpperCase();
-  if(cod.length!==4){ $('lst-unirse').textContent='⚠️ Código de 4 caracteres.'; return; }
-  const snap=await get(ref(db,'salas/'+cod));
-  if(!snap.exists()){ $('lst-unirse').textContent='❌ Sala no encontrada.'; return; }
-  const d=snap.val();
-  if(d.j2!=='espera'){ $('lst-unirse').textContent='❌ Sala ya está llena.'; return; }
-  codigoSala=cod; miRol='O';
-  salaRef=ref(db,'salas/'+cod);
-  await update(salaRef,{j2:'online'});
+
+$('lbtn-conectar').onclick = async () => {
+  const cod = $('lobby-input').value.trim().toUpperCase();
+  if(cod.length !== 4) { $('lst-unirse').textContent = '⚠️ Código de 4 caracteres.'; return; }
+  const snap = await get(ref(db, 'salas/' + cod));
+  if(!snap.exists())           { $('lst-unirse').textContent = '❌ Sala no encontrada.'; return; }
+  if(snap.val().j2 !== 'espera') { $('lst-unirse').textContent = '❌ Sala ya está llena.'; return; }
+  codigoSala = cod;
+  miRol = 'O';
+  salaRef = ref(db, 'salas/' + cod);
+  await update(salaRef, { j2: 'online' });
   escuchar();
 };
 
 // ── LISTENER PRINCIPAL ──
-function escuchar(){
-  onValue(salaRef, snap=>{
+function escuchar() {
+  onValue(salaRef, snap => {
     if(!snap.exists()) return;
-    const d=snap.val();
+    const d = snap.val();
 
-    // ── Arrancar juego cuando ambos estén online ──
-    if(!juegoIniciado && d.j1==='online' && d.j2==='online'){
-      juegoIniciado=true;
-      $('lobby-overlay').style.display='none';
-      $('online-ind').style.display='block';
-      $('online-txt').textContent=
-        'Sala: '+codigoSala+' · Tú: '+(miRol==='X'?'Jugador 1 (X)':'Jugador 2 (O)');
+    // Arrancar cuando ambos estén online
+    if(!juegoIniciado && d.j1 === 'online' && d.j2 === 'online') {
+      juegoIniciado = true;
+      $('lobby-overlay').style.display = 'none';
+      $('online-ind').style.display    = 'block';
+      $('online-txt').textContent = 'Sala: ' + codigoSala +
+        ' · Tú: ' + (miRol === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)');
     }
 
-    // ── Jugador 2 se une → notificar a jugador 1 ──
-    if(!juegoIniciado && miRol==='X' && d.j2==='online'){
-      update(salaRef,{j1:'online'}); // ya está online, confirmar
+    // Jugador 2 llegó → confirmar j1 también listo
+    if(!juegoIniciado && miRol === 'X' && d.j2 === 'online') {
+      update(salaRef, { j1: 'online' });
     }
 
-    // ── Sincronizar estado del juego ──
+    // Sincronizar tablero
     if(juegoIniciado) aplicarEstado(d);
   });
 }
 
-// ── APLICAR ESTADO FIREBASE AL TABLERO ──
-function aplicarEstado(d){
-  if(!d||!d.tablero) return;
-  const g=gc();
+// ── APLICAR ESTADO AL TABLERO LOCAL ──
+function aplicarEstado(d) {
+  if(!d) return;
+  const g = gc();
 
-  // Copiar tablero
-  Object.keys(d.tablero).forEach(k=>{ g.tablero[k]=d.tablero[k]; });
-  g.turno     = d.turno     ?? 'X';
-  g.terminado = d.terminado ?? false;
-  g.fichasX   = d.fichasX   ?? 16;
-  g.fichasO   = d.fichasO   ?? 16;
-  g.jugadas   = d.jugadas   ?? 0;
+  // Reconstruir tablero (Firebase omite nulls)
+  const t = tblCompleto(d.tablero);
+  g.tablero    = t;          // usa el setter que copia key a key
+  g.turno      = d.turno     ?? 'X';
+  g.terminado  = d.terminado ?? false;
+  g.fichasX    = d.fichasX   ?? 16;
+  g.fichasO    = d.fichasO   ?? 16;
+  g.jugadas    = d.jugadas   ?? 0;
 
   g.renderTablero();
   g.actualizarUI();
 
-  // Mensaje de turno personalizado
-  if(!g.terminado){
-    const esMiTurno = g.turno===miRol;
-    $('turno-msg').textContent = esMiTurno
+  // Mensaje de turno
+  if(!g.terminado) {
+    $('turno-msg').textContent = g.turno === miRol
       ? '🟢 ¡ES TU TURNO! Haz clic en una casilla.'
       : '⏳ Esperando jugada del oponente...';
-    // Bloquear visualmente si no es tu turno
-    const svg=$('tablero-svg');
-    if(esMiTurno) svg.classList.remove('bloqueado');
-    else          svg.classList.add('bloqueado');
   }
 
   // Victoria
-  if(d.terminado && d.ganador && !g.terminado){
-    g.terminado=true;
-    const lineas=g.buscarVictoria(d.ganador);
-    if(lineas.length) g.resaltarGanadores(lineas);
-    const esTuyo=d.ganador===miRol;
-    setTimeout(()=>g.mostrarModal(
-      esTuyo?'🏆 ¡GANASTE!':'😔 Perdiste',
+  if(d.terminado && d.ganador) {
+    const lineas = gc().buscarVictoria(d.ganador);
+    if(lineas.length) gc().resaltarGanadores(lineas);
+    const esTuyo = d.ganador === miRol;
+    setTimeout(() => gc().mostrarModal(
+      esTuyo ? '🏆 ¡GANASTE!' : '😔 Perdiste',
       esTuyo
         ? '¡Felicitaciones! Ganaste la partida.'
-        : (d.ganador==='X'?'Jugador 1 (X)':'Jugador 2 (O)')+' ganó esta partida.'
-    ),400);
+        : (d.ganador === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)') + ' ganó esta partida.'
+    ), 400);
   }
 }
 
-// ── INTERCEPTAR CLICS EN EL TABLERO ──
-document.getElementById('tablero-svg').addEventListener('click', async e=>{
-  if(!juegoIniciado) return;
-  const g=gc();
-  if(g.terminado) return;
-  if(g.turno!==miRol) return; // bloquear si no es tu turno
-
-  // Buscar data-id en el elemento o su padre
-  let el=e.target;
-  while(el && el.id!=='tablero-svg'){
-    if(el.dataset && el.dataset.id){ await jugar(el.dataset.id); return; }
-    el=el.parentElement;
+// ── JUGADA ONLINE ──
+$('tablero-svg').addEventListener('click', async e => {
+  if(!juegoIniciado || gc().terminado || gc().turno !== miRol) return;
+  // Buscar data-id subiendo por el árbol DOM
+  let el = e.target;
+  while(el && el.id !== 'tablero-svg') {
+    if(el.dataset && el.dataset.id) {
+      await jugarOnline(el.dataset.id);
+      return;
+    }
+    el = el.parentElement;
   }
 }, true);
 
-async function jugar(id){
-  const snap=await get(salaRef);
+async function jugarOnline(id) {
+  // Leer estado fresco de Firebase
+  const snap = await get(salaRef);
   if(!snap.exists()) return;
-  const d=snap.val();
-  if(d.terminado||d.tablero[id]!==null||d.turno!==miRol) return;
+  const d = snap.val();
+  const t = tblCompleto(d.tablero);   // <-- FIX CLAVE: reconstruir nulls
 
-  await update(salaRef,{
-    ['tablero/'+id]: miRol,
-    turno:   miRol==='X'?'O':'X',
-    jugadas: (d.jugadas||0)+1,
-    fichasX: miRol==='X'?(d.fichasX??16)-1:(d.fichasX??16),
-    fichasO: miRol==='O'?(d.fichasO??16)-1:(d.fichasO??16),
+  if(d.terminado || t[id] !== null || d.turno !== miRol) return;
+
+  t[id] = miRol;   // marcar la jugada
+
+  await set(ref(db, 'salas/' + codigoSala), {
+    ...d,
+    tablero: t,
+    turno:   miRol === 'X' ? 'O' : 'X',
+    jugadas: (d.jugadas || 0) + 1,
+    fichasX: miRol === 'X' ? (d.fichasX ?? 16) - 1 : (d.fichasX ?? 16),
+    fichasO: miRol === 'O' ? (d.fichasO ?? 16) - 1 : (d.fichasO ?? 16),
   });
 }
 
 // ── RECLAMAR VICTORIA ──
-$('btn-reclamar').addEventListener('click', async e=>{
+$('btn-reclamar').addEventListener('click', async e => {
   if(!juegoIniciado) return;
   e.stopImmediatePropagation();
-  const snap=await get(salaRef);
-  const d=snap.val();
-  if(!d||d.terminado){gc().mostrarModal('Partida terminada','Inicia nueva partida.');return;}
-  if((d.jugadas||0)<7){gc().mostrarModal('Muy pronto','Mínimo 7 jugadas para reclamar.');return;}
-  // Solo puede reclamar el jugador cuyo turno ACABA de pasar
-  const jugReclama = d.turno==='X'?'O':'X';
-  if(jugReclama!==miRol){
-    gc().mostrarModal('Espera','Solo puedes reclamar justo después de tu jugada.');return;
+  const snap = await get(salaRef);
+  const d = snap.val();
+  if(!d || d.terminado) { gc().mostrarModal('Partida terminada', 'Inicia nueva partida.'); return; }
+  if((d.jugadas || 0) < 7) { gc().mostrarModal('Muy pronto', 'Mínimo 7 jugadas para reclamar.'); return; }
+  const jugReclama = d.turno === 'X' ? 'O' : 'X';
+  if(jugReclama !== miRol) {
+    gc().mostrarModal('Espera', 'Solo puedes reclamar justo después de tu jugada.'); return;
   }
-  // Verificar victoria con el tablero actual
-  const tbl=d.tablero;
-  Object.keys(tbl).forEach(k=>gc().tablero[k]=tbl[k]);
-  const lineas=gc().buscarVictoria(miRol);
-  if(lineas.length>0){
-    await update(salaRef,{terminado:true,ganador:miRol});
+  const t = tblCompleto(d.tablero);
+  gc().tablero = t;
+  const lineas = gc().buscarVictoria(miRol);
+  if(lineas.length > 0) {
+    await update(salaRef, { terminado: true, ganador: miRol });
   } else {
-    gc().mostrarModal('Sin victoria','No tienes 4 en línea todavía.');
+    gc().mostrarModal('Sin victoria', 'No tienes 4 en línea todavía.');
   }
-},true);
+}, true);
 
 // ── NUEVA PARTIDA ──
-$('btn-nueva').addEventListener('click', async e=>{
+$('btn-nueva').addEventListener('click', async e => {
   if(!juegoIniciado) return;
   e.stopImmediatePropagation();
-  await update(salaRef,{
-    tablero:tableroVacio(),turno:'X',terminado:false,
-    ganador:null,jugadas:0,fichasX:16,fichasO:16
+  await update(salaRef, {
+    tablero: tblVacio(), turno: 'X', terminado: false,
+    ganador: null, jugadas: 0, fichasX: 16, fichasO: 16
   });
-},true);
+}, true);
 
 // ── SORTEAR PARTIDA ──
-$('btn-sortear').addEventListener('click', async e=>{
+$('btn-sortear').addEventListener('click', async e => {
   if(!juegoIniciado) return;
   e.stopImmediatePropagation();
-  const snap=await get(salaRef);
-  const d=snap.val();
-  if((d.jugadas||0)>0){gc().mostrarModal('Sorteo','Solo al inicio de la partida.');return;}
-  const primero=Math.random()<.5?'X':'O';
-  await update(salaRef,{turno:primero});
+  const snap = await get(salaRef);
+  const d = snap.val();
+  if((d.jugadas || 0) > 0) {
+    gc().mostrarModal('Sorteo', 'Solo se puede sortear al inicio de la partida.'); return;
+  }
+  const primero = Math.random() < .5 ? 'X' : 'O';
+  await update(salaRef, { turno: primero });
   gc().mostrarModal('¡SORTEO!',
-    'Comienza el '+(primero==='X'?'Jugador 1 (X)':'Jugador 2 (O)'));
-},true);
+    'Comienza el ' + (primero === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)'));
+}, true);
 
 </script>
 
