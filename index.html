@@ -725,6 +725,20 @@ function aplicarEstado(d) {
       $('btn-sortear').style.pointerEvents = 'auto';
     }
   } else if(d.fase === 'jugando') {
+    // Restaurar botones si volvemos de un reclamo cancelado/invalido
+    ['btn-nueva','btn-reclamar','btn-confirmar'].forEach(id => {
+      $(id).style.opacity = '';
+      $(id).style.pointerEvents = '';
+    });
+    // Limpiar fichas amarillas del reclamo cancelado
+    document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el => {
+      const g = el.closest('[data-id]');
+      if(g) {
+        const cid = g.dataset.id;
+        el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
+        if(gc().tablero[cid]) el.classList.add(gc().tablero[cid]==='X'?'ficha-x':'ficha-o');
+      }
+    });
     // Detectar sorteo nuevo por sorteo_id único
     if(d.sorteo_id && window._sorteoMostrado !== d.sorteo_id) {
       window._sorteoMostrado = d.sorteo_id;
@@ -750,17 +764,39 @@ function aplicarEstado(d) {
       // Soy yo quien reclama — el modo reclamo local ya está activo
       $('turno-msg').textContent = 'RECLAMO ACTIVO: selecciona tus 4 fichas ganadoras.';
     } else {
-      // Es el oponente quien reclama — mostrar aviso si no lo hemos mostrado
-      if(!modoReclamo) {
-        $('turno-msg').textContent = 'Tu oponente esta reclamando victoria. Espera...';
-        // Mostrar modal de aviso al oponente (solo una vez)
-        const keyAviso = 'aviso_reclamo_' + (d.ts || '');
-        if(!window._avisoReclamoMostrado || window._avisoReclamoMostrado !== keyAviso) {
-          window._avisoReclamoMostrado = keyAviso;
-          gc().mostrarModal('Reclamo de victoria',
-            'Tu oponente (' + (d.reclamante === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)') +
-            ') esta reclamando una linea ganadora. Espera el resultado.');
-        }
+      // Es el oponente quien reclama
+      $('turno-msg').textContent = 'Tu oponente esta marcando su linea ganadora...';
+      // Bloquear TODOS los botones al oponente durante el reclamo
+      ['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'].forEach(id => {
+        $(id).style.opacity = '0.3';
+        $(id).style.pointerEvents = 'none';
+      });
+      // Mostrar modal de aviso al oponente (solo una vez)
+      const keyAviso = 'aviso_reclamo_' + (d.reclamo_ts || d.ts || '');
+      if(!window._avisoReclamoMostrado || window._avisoReclamoMostrado !== keyAviso) {
+        window._avisoReclamoMostrado = keyAviso;
+        gc().mostrarModal('Reclamo de victoria',
+          'Tu oponente (' + (d.reclamante === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)') +
+          ') esta reclamando una linea ganadora. Observa su seleccion en el tablero.');
+      }
+      // Mostrar fichas que va marcando el reclamante en tiempo real
+      if(d.fichas_marcadas_reclamo) {
+        // Limpiar marcas anteriores del oponente
+        document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el => {
+          const parentId = el.closest('[data-id]') && el.closest('[data-id]').dataset.id;
+          if(parentId && !d.fichas_marcadas_reclamo.includes(parentId)) {
+            el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
+            if(gc().tablero[parentId]) el.classList.add(gc().tablero[parentId]==='X'?'ficha-x':'ficha-o');
+          }
+        });
+        // Iluminar fichas marcadas por el reclamante
+        d.fichas_marcadas_reclamo.forEach(id => {
+          const circ = document.querySelector('[data-id="' + id + '"] circle');
+          if(circ) {
+            circ.classList.remove('ficha-x','ficha-o');
+            circ.classList.add(d.reclamante === 'X' ? 'ficha-seleccionada-x' : 'ficha-seleccionada-o');
+          }
+        });
       }
     }
   } else {
@@ -772,9 +808,15 @@ function aplicarEstado(d) {
       : 'Esperando jugada del oponente...';
   }
 
-  if(d.terminado && d.ganador) {
-    const lineas = gc().buscarVictoria(d.ganador);
-    if(lineas.length) gc().resaltarGanadores(lineas);
+  if(d.terminado && d.ganador && !window._victoriaYaMostrada) {
+    window._victoriaYaMostrada = true;
+    // Resaltar SOLO las fichas reclamadas, no todas las lineas ganadoras
+    if(d.fichas_ganadoras_reclamadas && d.fichas_ganadoras_reclamadas.length === 4) {
+      d.fichas_ganadoras_reclamadas.forEach(id => {
+        const circ = document.querySelector('[data-id="' + id + '"] circle');
+        if(circ) circ.classList.add(d.ganador === 'X' ? 'ficha-winner-x' : 'ficha-winner-o');
+      });
+    }
     const esTuyo = d.ganador === miRol;
     setTimeout(() => gc().mostrarModal(
       esTuyo ? 'GANASTE!' : 'Perdiste',
@@ -858,7 +900,13 @@ $('btn-reclamar').addEventListener('click', async e => {
       fase: 'jugando',
       reclamante: null,
       reclamo_fichas: null,
-      reclamo: null
+      reclamo: null,
+      fichas_marcadas_reclamo: null
+    });
+    // Restaurar botones locales
+    ['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'].forEach(id => {
+      $(id).style.opacity = '';
+      $(id).style.pointerEvents = '';
     });
     gc().mostrarModal('Reclamo cancelado', 'El reclamo fue cancelado. El juego continua.');
     return;
@@ -889,7 +937,9 @@ $('btn-reclamar').addEventListener('click', async e => {
   await update(salaRef, {
     fase: 'reclamo',
     reclamante: miRol,
-    reclamo_fichas: fichasGanadoras
+    reclamo_fichas: fichasGanadoras,
+    reclamo_ts: Date.now(),         // ID único de este reclamo
+    fichas_marcadas_reclamo: []     // se irá llenando al marcar
   });
 
   activarModoReclamo(fichasGanadoras);
@@ -927,6 +977,8 @@ function seleccionarFichaReclamo(id) {
       circ.classList.remove('ficha-seleccionada-x', 'ficha-seleccionada-o');
       circ.classList.add(miRol === 'X' ? 'ficha-x' : 'ficha-o');
     }
+    // Sincronizar deseleccion al oponente
+    update(salaRef, { fichas_marcadas_reclamo: fichasSeleccionadas.slice() });
   } else {
     if(fichasSeleccionadas.length >= 4) {
       gc().mostrarModal('Ya tienes 4 fichas', 'Deselecciona una antes de agregar otra.');
@@ -938,6 +990,8 @@ function seleccionarFichaReclamo(id) {
       circ.classList.remove('ficha-x', 'ficha-o');
       circ.classList.add(miRol === 'X' ? 'ficha-seleccionada-x' : 'ficha-seleccionada-o');
     }
+    // Sincronizar seleccion actual al oponente via Firebase
+    update(salaRef, { fichas_marcadas_reclamo: fichasSeleccionadas.slice() });
   }
   $('contador-seleccion').textContent = fichasSeleccionadas.length + '/4';
 }
@@ -975,10 +1029,22 @@ $('btn-confirmar').addEventListener('click', async e => {
       const circ = document.querySelector('[data-id="' + id + '"] circle');
       if(circ) circ.classList.add(miRol === 'X' ? 'ficha-winner-x' : 'ficha-winner-o');
     });
-    await update(salaRef, { terminado: true, ganador: miRol, fase: 'terminado', reclamo: null });
+    // Guardar las 4 fichas reclamadas para que ambos jugadores vean SOLO esas
+    await update(salaRef, {
+      terminado: true, ganador: miRol, fase: 'terminado', reclamo: null,
+      fichas_ganadoras_reclamadas: fichasSeleccionadas.slice()
+    });
   } else {
     desactivarModoReclamo(false);
-    await update(salaRef, { fase: 'jugando', reclamante: null, reclamo_fichas: null });
+    await update(salaRef, {
+      fase: 'jugando', reclamante: null, reclamo_fichas: null,
+      fichas_marcadas_reclamo: null
+    });
+    // Restaurar botones
+    ['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'].forEach(id => {
+      $(id).style.opacity = '';
+      $(id).style.pointerEvents = '';
+    });
     gc().mostrarModal('Linea invalida', 'Las 4 fichas no forman una linea ganadora valida. El juego continua.');
   }
 }, true);
@@ -996,7 +1062,8 @@ $('btn-nueva').addEventListener('click', async e => {
   // Desbloquear btn-sortear visualmente
   $('btn-sortear').style.opacity = '1';
   $('btn-sortear').style.pointerEvents = 'auto';
-  window._sorteoMostrado = null;  // resetear para nueva partida
+  window._sorteoMostrado = null;      // resetear para nueva partida
+  window._victoriaYaMostrada = false; // resetear para nueva partida
 }, true);
 
 // SORTEAR PARTIDA
