@@ -1,3 +1,16 @@
+<!--
+=======================================================================
+  © Junio 2026 - Santiago - Chile
+  Desarrollador: Pedro Alejandro Torres Guerrero
+  Juego de Estrategia Mental: GATO CIRCULAR
+  Todos los derechos reservados.
+
+  Este código fuente, su diseño, lógica, estructura visual y mecánicas
+  de juego son propiedad intelectual exclusiva de su autor.
+  Queda prohibida su reproducción total o parcial, modificación,
+  distribución o uso comercial sin autorización expresa del titular.
+=======================================================================
+-->
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -706,22 +719,23 @@ function aplicarEstado(d) {
   } else if(d.fase === 'esperando_sorteo' || !d.turno) {
     bloquearTablero(true);
     $('turno-msg').textContent = 'Pulsa SORTEAR PARTIDA para comenzar.';
-    // Si acaba de llegar un sorteo y soy el oponente, mostrarlo
-    if(d.ultimo_sorteo && !window._sorteoMostrado) {
-      window._sorteoMostrado = d.ultimo_sorteo;
-      gc().mostrarModal('SORTEO!',
-        'Comienza el ' + (d.ultimo_sorteo === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)'));
+    // Nueva partida detectada — desbloquear btn-sortear para ambos
+    if(!d.sorteo_usado) {
+      $('btn-sortear').style.opacity = '1';
+      $('btn-sortear').style.pointerEvents = 'auto';
     }
-  } else if(d.fase === 'jugando' && d.ultimo_sorteo && window._sorteoMostrado !== d.ultimo_sorteo + '_ok') {
-    // Nuevo sorteo — mostrarlo al oponente (quien no sorteó)
-    if(d.turno && d.ultimo_sorteo) {
-      const fueYo = (miRol === 'X' && d.ultimo_sorteo === 'X') || (miRol === 'O' && d.ultimo_sorteo === 'O');
-      if(!fueYo && window._sorteoMostrado !== d.ultimo_sorteo) {
-        window._sorteoMostrado = d.ultimo_sorteo;
+  } else if(d.fase === 'jugando') {
+    // Detectar sorteo nuevo por sorteo_id único
+    if(d.sorteo_id && window._sorteoMostrado !== d.sorteo_id) {
+      window._sorteoMostrado = d.sorteo_id;
+      // Bloquear btn-sortear para ambos jugadores
+      $('btn-sortear').style.opacity = '0.4';
+      $('btn-sortear').style.pointerEvents = 'none';
+      // Mostrar modal solo al oponente (quien sorteó ya lo vio)
+      const fueYo = d.ultimo_sorteo === miRol;
+      if(!fueYo) {
         gc().mostrarModal('SORTEO!',
           'Comienza el ' + (d.ultimo_sorteo === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)'));
-      } else if(fueYo) {
-        window._sorteoMostrado = d.ultimo_sorteo;
       }
     }
     const esMiTurno = g.turno === miRol;
@@ -973,10 +987,16 @@ $('btn-confirmar').addEventListener('click', async e => {
 $('btn-nueva').addEventListener('click', async e => {
   if(!juegoIniciado) return;
   e.stopImmediatePropagation();
+  // Resetear ultimo_sorteo para que el oponente pueda ver el nuevo sorteo
   await update(salaRef, {
     tablero: tblVacio(), turno: null, fase: 'esperando_sorteo',
-    terminado: false, ganador: null, jugadas: 0, fichasX: 16, fichasO: 16
+    terminado: false, ganador: null, jugadas: 0, fichasX: 16, fichasO: 16,
+    ultimo_sorteo: null, sorteo_usado: false
   });
+  // Desbloquear btn-sortear visualmente
+  $('btn-sortear').style.opacity = '1';
+  $('btn-sortear').style.pointerEvents = 'auto';
+  window._sorteoMostrado = null;  // resetear para nueva partida
 }, true);
 
 // SORTEAR PARTIDA
@@ -985,12 +1005,26 @@ $('btn-sortear').addEventListener('click', async e => {
   e.stopImmediatePropagation();
   const snap = await get(salaRef);
   const d = snap.val();
-  if((d.jugadas || 0) > 0 && d.fase !== 'esperando_sorteo') {
+  // Bloquear si ya se sorteó esta partida
+  if(d.sorteo_usado === true) {
+    gc().mostrarModal('Sorteo ya realizado', 'Ya se sorteó esta partida. Comienza el juego.'); return;
+  }
+  if(d.fase !== 'esperando_sorteo') {
     gc().mostrarModal('Sorteo', 'Solo se puede sortear al inicio de la partida.'); return;
   }
   const primero = Math.random() < 0.5 ? 'X' : 'O';
-  // Guardar resultado sorteo en Firebase — ambos jugadores lo verán via aplicarEstado
-  await update(salaRef, { turno: primero, fase: 'jugando', ultimo_sorteo: primero });
+  // ID único por sorteo para que el oponente lo detecte siempre como nuevo
+  const sorteoId = Date.now().toString();
+  await update(salaRef, {
+    turno: primero,
+    fase: 'jugando',
+    ultimo_sorteo: primero,
+    sorteo_id: sorteoId,     // ID único — garantiza detección en TODAS las partidas
+    sorteo_usado: true        // bloquea nuevos sorteos hasta Nueva Partida
+  });
+  // Bloquear btn-sortear visualmente para quien sorteó
+  $('btn-sortear').style.opacity = '0.4';
+  $('btn-sortear').style.pointerEvents = 'none';
   // Mostrar al jugador que sorteó
   gc().mostrarModal('SORTEO!',
     'Comienza el ' + (primero === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)'));
