@@ -938,16 +938,34 @@ $('btn-reclamar').addEventListener('click', async e => {
 }, true);
 
 // Clic sobre el overlay en modo reclamo
+// Usar coordenadas geometricas para identificar la casilla — mas robusto que DOM traversal
 $('tablero-block').addEventListener('click', e => {
   if(!modoReclamo) return;
-  $('tablero-block').style.pointerEvents = 'none';
-  const debajo = document.elementFromPoint(e.clientX, e.clientY);
-  $('tablero-block').style.pointerEvents = 'auto';
-  if(!debajo) return;
-  let el = debajo;
-  while(el && el.id !== 'tablero-svg') {
-    if(el.dataset && el.dataset.id) { seleccionarFichaReclamo(el.dataset.id); return; }
-    el = el.parentElement;
+  const rect = $('tablero-svg').getBoundingClientRect();
+  // Convertir coordenadas de pantalla a coordenadas SVG (viewBox 0 0 480 480)
+  const svgX = (e.clientX - rect.left) * (480 / rect.width);
+  const svgY = (e.clientY - rect.top)  * (480 / rect.height);
+  // Buscar la casilla mas cercana entre las fichas permitidas
+  const CX = 240, CY = 240;
+  const RING_R = { A: { i:145, o:195 }, B: { i:105, o:145 }, C: { i:65, o:105 }, D: { i:25, o:65 } };
+  let casillaEncontrada = null;
+  let distMin = Infinity;
+  fichasPermitidas.forEach(id => {
+    const anillo = id[0];
+    const num    = parseInt(id[1]);
+    const ri = RING_R[anillo].i, ro = RING_R[anillo].o;
+    const r  = (ri + ro) / 2;
+    const a1 = (num * 45 - 90) * Math.PI / 180;
+    const a2 = ((num + 1) * 45 - 90) * Math.PI / 180;
+    const a  = (a1 + a2) / 2;
+    const cx = CX + r * Math.cos(a);
+    const cy = CY + r * Math.sin(a);
+    const dist = Math.sqrt((svgX - cx) ** 2 + (svgY - cy) ** 2);
+    if(dist < distMin) { distMin = dist; casillaEncontrada = id; }
+  });
+  // Solo seleccionar si el clic fue suficientemente cercano al centroide
+  if(casillaEncontrada && distMin < 25) {
+    seleccionarFichaReclamo(casillaEncontrada);
   }
 });
 
