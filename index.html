@@ -805,9 +805,9 @@ function aplicarEstado(d) {
     }
 
   } else if(d.fase === 'jugando') {
-    // Restaurar botones de reclamo, mantener nueva y sortear bloqueados durante el juego
-    bloquearBotones(['btn-reclamar','btn-confirmar'], false);
+    // SIEMPRE bloquear btn-nueva y btn-sortear durante el juego (para ambos jugadores)
     bloquearBotones(['btn-nueva','btn-sortear'], true);
+    bloquearBotones(['btn-reclamar','btn-confirmar'], false);
 
     // Limpiar fichas amarillas si quedaron de un reclamo cancelado
     document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el => {
@@ -818,12 +818,13 @@ function aplicarEstado(d) {
       if(gc().tablero[cid]) el.classList.add(gc().tablero[cid]==='X'?'ficha-x':'ficha-o');
     });
 
-    // Detectar sorteo nuevo (sorteo_id unico)
+    // Mostrar modal de sorteo al oponente (solo una vez por sorteo_id)
     if(d.sorteo_id && window._sorteoMostrado !== d.sorteo_id) {
       window._sorteoMostrado = d.sorteo_id;
-      bloquearBotones(['btn-sortear','btn-nueva'], true);
-      const fueYo = d.ultimo_sorteo === miRol;
-      if(!fueYo) {
+      // Mostrar solo al jugador que NO sorteó (quien sorteó ya lo vio)
+      // Usamos sorteo_quien para saber quién hizo clic (no quién empieza)
+      const yoSortee = d.sorteo_quien === miRol;
+      if(!yoSortee) {
         gc().mostrarModal('SORTEO!',
           'Comienza el ' + (d.ultimo_sorteo === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)'));
       }
@@ -963,6 +964,11 @@ function seleccionarFichaReclamo(id) {
     if(circ) {
       circ.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
       circ.classList.add(miRol === 'X' ? 'ficha-x' : 'ficha-o');
+      // Limpiar estilos inline forzados
+      circ.style.stroke = '';
+      circ.style.strokeWidth = '';
+      circ.style.fill = '';
+      circ.style.filter = '';
     }
   } else {
     if(fichasSeleccionadas.length >= 4) {
@@ -970,11 +976,16 @@ function seleccionarFichaReclamo(id) {
       return;
     }
     fichasSeleccionadas.push(id);
-    // Iluminar en amarillo en el tablero del RECLAMANTE
+    // Iluminar en amarillo en el tablero del RECLAMANTE (forzar estilo inline)
     const circ = document.querySelector('[data-id="' + id + '"] circle');
     if(circ) {
       circ.classList.remove('ficha-x','ficha-o','ficha-winner-x','ficha-winner-o');
       circ.classList.add(miRol === 'X' ? 'ficha-seleccionada-x' : 'ficha-seleccionada-o');
+      // Forzar estilos inline para garantizar amarillo en ambos roles
+      circ.style.stroke = '#ffdd00';
+      circ.style.strokeWidth = '3';
+      circ.style.fill = miRol === 'X' ? '#3a2a00' : '#1a2a00';
+      circ.style.filter = 'drop-shadow(0 0 8px rgba(255,220,0,0.9))';
     }
   }
   $('contador-seleccion').textContent = fichasSeleccionadas.length + '/4';
@@ -1070,7 +1081,10 @@ $('btn-sortear').addEventListener('click', async e => {
   bloquearBotones(['btn-sortear','btn-nueva'], true);
   await update(salaRef, {
     turno: primero, fase: 'jugando',
-    ultimo_sorteo: primero, sorteo_id: sorteoId, sorteo_usado: true
+    ultimo_sorteo: primero,
+    sorteo_id:     sorteoId,
+    sorteo_usado:  true,
+    sorteo_quien:  miRol    // quién hizo clic en sortear
   });
   gc().mostrarModal('SORTEO!',
     'Comienza el ' + (primero === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)'));
