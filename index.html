@@ -721,8 +721,16 @@ function aplicarEstado(d) {
   g.fichasX   = d.fichasX   != null ? d.fichasX : 16;
   g.fichasO   = d.fichasO   != null ? d.fichasO : 16;
   g.jugadas   = d.jugadas   != null ? d.jugadas : 0;
-  g.renderTablero();
-  g.actualizarUI();
+  // Durante modo reclamo del reclamante: NO re-renderizar el tablero
+  // para evitar que se borren los colores amarillos aplicados.
+  // El oponente sí actualiza normalmente.
+  if(modoReclamo) {
+    // Solo actualizar contadores UI, no el tablero SVG
+    g.actualizarUI();
+  } else {
+    g.renderTablero();
+    g.actualizarUI();
+  }
 
   if(d.terminado) {
     // Partida terminada
