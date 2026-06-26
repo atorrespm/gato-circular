@@ -1,16 +1,3 @@
-<!--
-=======================================================================
-  © Junio 2026 - Santiago - Chile
-  Desarrollador: Pedro Alejandro Torres Guerrero
-  Juego de Estrategia Mental: GATO CIRCULAR
-  Todos los derechos reservados.
-
-  Este código fuente, su diseño, lógica, estructura visual y mecánicas
-  de juego son propiedad intelectual exclusiva de su autor.
-  Queda prohibida su reproducción total o parcial, modificación,
-  distribución o uso comercial sin autorización expresa del titular.
-=======================================================================
--->
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -519,9 +506,26 @@ document.getElementById("btn-sortear").onclick = () => {
   mostrarModal("¡SORTEO!", `Comienza el Jugador ${turno==="X" ? "1 (X)" : "2 (O)"}`);
 };
 
-// btn-reclamar y btn-confirmar manejados por el modulo Firebase
-document.getElementById("btn-reclamar").onclick = () => {};
-document.getElementById("btn-confirmar").onclick = () => {};
+document.getElementById("btn-reclamar").onclick = () => {
+  if(terminado) { mostrarModal("Partida terminada","Inicia una nueva partida."); return; }
+  if(jugadas < 7) { mostrarModal("Muy pronto","Se requieren al menos 7 jugadas para reclamar victoria."); return; }
+  const jAnt = turno==="X" ? "O" : "X";
+  if(buscarVictoria(jAnt).length > 0) {
+    pendienteConfirm = jAnt;
+    const n = jAnt==="X" ? "1" : "2";
+    mostrarModal("⚠️ RECLAMAR VICTORIA",
+      `Jugador ${n} (${jAnt}) reclama victoria.\nPresiona CONFIRMAR para validarla.`, "RECLAMAR");
+  } else {
+    mostrarModal("Sin victoria aún","El jugador que acaba de jugar no tiene 4 en línea todavía.");
+  }
+};
+
+document.getElementById("btn-confirmar").onclick = () => {
+  if(terminado || jugadas < 7) return;
+  const jAnt = turno==="X" ? "O" : "X";
+  if(buscarVictoria(jAnt).length > 0) declararGanador(jAnt);
+  else mostrarModal("Sin victoria","No hay línea ganadora confirmada aún.");
+};
 
 // ── MODAL ──
 function mostrarModal(titulo, cuerpo, btnTxt="ACEPTAR") {
@@ -614,6 +618,18 @@ function tblCompleto(parcial) {
 }
 function tblVacio() { return tblCompleto({}); }
 
+function bloquearTablero(bloqueado) {
+  $('tablero-block').style.display = bloqueado ? 'block' : 'none';
+  $('tablero-svg').style.opacity   = bloqueado ? '0.85' : '1';
+}
+
+function bloquearBotones(ids, bloqueado) {
+  ids.forEach(id => {
+    $(id).style.opacity       = bloqueado ? '0.4' : '';
+    $(id).style.pointerEvents = bloqueado ? 'none' : '';
+  });
+}
+
 let miRol = null, salaRef = null, codigoSala = null, juegoIniciado = false;
 let modoReclamo = false, fichasSeleccionadas = [], fichasPermitidas = new Set();
 
@@ -630,9 +646,10 @@ $('lbtn-crear').onclick = async () => {
   miRol = 'X';
   salaRef = ref(db, 'salas/' + codigoSala);
   await set(salaRef, {
-    tablero:   tblVacio(), turno: null, fase: 'esperando_sorteo',
+    tablero: tblVacio(), turno: null, fase: 'esperando_sorteo',
     terminado: false, ganador: null, jugadas: 0, fichasX: 16, fichasO: 16,
-    j1: 'online', j2: 'espera', ts: Date.now()
+    j1: 'online', j2: 'espera', ts: Date.now(),
+    ultimo_sorteo: null, sorteo_id: null, sorteo_usado: false
   });
   $('lobby-codigo').textContent = codigoSala;
   paso('crear');
@@ -693,12 +710,6 @@ function escuchar() {
   });
 }
 
-// BLOQUEO
-function bloquearTablero(bloqueado) {
-  $('tablero-block').style.display = bloqueado ? 'block' : 'none';
-  $('tablero-svg').style.opacity   = bloqueado ? '0.85' : '1';
-}
-
 // APLICAR ESTADO
 function aplicarEstado(d) {
   if(!d) return;
@@ -714,82 +725,75 @@ function aplicarEstado(d) {
   g.actualizarUI();
 
   if(d.terminado) {
+    // Partida terminada
     bloquearTablero(true);
     $('turno-msg').textContent = 'Partida terminada. Pulsa Nueva Partida.';
+    // Desbloquear btn-nueva para siguiente partida, sortear sigue bloqueado hasta nueva partida
+    $('btn-nueva').style.opacity = '';
+    $('btn-nueva').style.pointerEvents = '';
+    bloquearBotones(['btn-sortear'], true);
+    bloquearBotones(['btn-reclamar','btn-confirmar'], false);
+
+    if(!window._victoriaYaMostrada) {
+      window._victoriaYaMostrada = true;
+      // Resaltar SOLO las fichas reclamadas (no todas las lineas)
+      if(d.fichas_ganadoras_reclamadas && d.fichas_ganadoras_reclamadas.length === 4) {
+        d.fichas_ganadoras_reclamadas.forEach(id => {
+          const circ = document.querySelector('[data-id="' + id + '"] circle');
+          if(circ) {
+            circ.classList.remove('ficha-x','ficha-o','ficha-seleccionada-x','ficha-seleccionada-o');
+            circ.classList.add(d.ganador === 'X' ? 'ficha-winner-x' : 'ficha-winner-o');
+          }
+        });
+      }
+      const esTuyo = d.ganador === miRol;
+      setTimeout(() => gc().mostrarModal(
+        esTuyo ? 'GANASTE!' : 'Perdiste',
+        esTuyo ? 'Felicitaciones! Ganaste la partida.'
+               : (d.ganador === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)') + ' gano esta partida.'
+      ), 400);
+    }
+
   } else if(d.fase === 'esperando_sorteo' || !d.turno) {
     bloquearTablero(true);
     $('turno-msg').textContent = 'Pulsa SORTEAR PARTIDA para comenzar.';
-    // Nueva partida detectada — desbloquear btn-sortear para ambos
+    // Nueva partida: desbloquear sortear, bloquear nueva durante el juego
     if(!d.sorteo_usado) {
-      $('btn-sortear').style.opacity = '1';
-      $('btn-sortear').style.pointerEvents = 'auto';
+      bloquearBotones(['btn-sortear'], false);
     }
-  } else if(d.fase === 'jugando') {
-    // Restaurar botones si volvemos de un reclamo cancelado/invalido
-    ['btn-nueva','btn-reclamar','btn-confirmar'].forEach(id => {
-      $(id).style.opacity = '';
-      $(id).style.pointerEvents = '';
-    });
-    // Limpiar fichas amarillas del reclamo cancelado
-    document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el => {
-      const g = el.closest('[data-id]');
-      if(g) {
-        const cid = g.dataset.id;
-        el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
-        if(gc().tablero[cid]) el.classList.add(gc().tablero[cid]==='X'?'ficha-x':'ficha-o');
-      }
-    });
-    // Detectar sorteo nuevo por sorteo_id único
-    if(d.sorteo_id && window._sorteoMostrado !== d.sorteo_id) {
-      window._sorteoMostrado = d.sorteo_id;
-      // Bloquear btn-sortear para ambos jugadores
-      $('btn-sortear').style.opacity = '0.4';
-      $('btn-sortear').style.pointerEvents = 'none';
-      // Mostrar modal solo al oponente (quien sorteó ya lo vio)
-      const fueYo = d.ultimo_sorteo === miRol;
-      if(!fueYo) {
-        gc().mostrarModal('SORTEO!',
-          'Comienza el ' + (d.ultimo_sorteo === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)'));
-      }
-    }
-    const esMiTurno = g.turno === miRol;
-    bloquearTablero(!esMiTurno);
-    $('turno-msg').textContent = esMiTurno
-      ? 'ES TU TURNO! Haz clic en una casilla.'
-      : 'Esperando jugada del oponente...';
+    bloquearBotones(['btn-reclamar','btn-confirmar'], false);
+
   } else if(d.fase === 'reclamo') {
-    // Hay un reclamo activo
     bloquearTablero(true);
     if(d.reclamante === miRol) {
-      // Soy yo quien reclama — el modo reclamo local ya está activo
       $('turno-msg').textContent = 'RECLAMO ACTIVO: selecciona tus 4 fichas ganadoras.';
     } else {
-      // Es el oponente quien reclama
+      // OPONENTE durante reclamo: bloquear TODOS los botones
+      bloquearBotones(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'], true);
       $('turno-msg').textContent = 'Tu oponente esta marcando su linea ganadora...';
-      // Bloquear TODOS los botones al oponente durante el reclamo
-      ['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'].forEach(id => {
-        $(id).style.opacity = '0.3';
-        $(id).style.pointerEvents = 'none';
-      });
-      // Mostrar modal de aviso al oponente (solo una vez)
-      const keyAviso = 'aviso_reclamo_' + (d.reclamo_ts || d.ts || '');
-      if(!window._avisoReclamoMostrado || window._avisoReclamoMostrado !== keyAviso) {
+
+      // Aviso modal (solo una vez por reclamo)
+      const keyAviso = 'reclamo_' + (d.reclamo_ts || '');
+      if(window._avisoReclamoMostrado !== keyAviso) {
         window._avisoReclamoMostrado = keyAviso;
         gc().mostrarModal('Reclamo de victoria',
           'Tu oponente (' + (d.reclamante === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)') +
-          ') esta reclamando una linea ganadora. Observa su seleccion en el tablero.');
+          ') esta reclamando. Observa las fichas que selecciona en el tablero.');
       }
-      // Mostrar fichas que va marcando el reclamante en tiempo real
+
+      // Mostrar fichas marcadas por el reclamante en tiempo real
       if(d.fichas_marcadas_reclamo) {
-        // Limpiar marcas anteriores del oponente
+        // Limpiar amarillos anteriores que ya no están en la lista
         document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el => {
-          const parentId = el.closest('[data-id]') && el.closest('[data-id]').dataset.id;
-          if(parentId && !d.fichas_marcadas_reclamo.includes(parentId)) {
+          const g2 = el.closest('[data-id]');
+          if(!g2) return;
+          const cid = g2.dataset.id;
+          if(!d.fichas_marcadas_reclamo.includes(cid)) {
             el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
-            if(gc().tablero[parentId]) el.classList.add(gc().tablero[parentId]==='X'?'ficha-x':'ficha-o');
+            if(gc().tablero[cid]) el.classList.add(gc().tablero[cid]==='X'?'ficha-x':'ficha-o');
           }
         });
-        // Iluminar fichas marcadas por el reclamante
+        // Iluminar fichas marcadas
         d.fichas_marcadas_reclamo.forEach(id => {
           const circ = document.querySelector('[data-id="' + id + '"] circle');
           if(circ) {
@@ -799,30 +803,37 @@ function aplicarEstado(d) {
         });
       }
     }
-  } else {
-    // Fase jugando normal
+
+  } else if(d.fase === 'jugando') {
+    // Restaurar botones de reclamo, mantener nueva y sortear bloqueados durante el juego
+    bloquearBotones(['btn-reclamar','btn-confirmar'], false);
+    bloquearBotones(['btn-nueva','btn-sortear'], true);
+
+    // Limpiar fichas amarillas si quedaron de un reclamo cancelado
+    document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el => {
+      const g2 = el.closest('[data-id]');
+      if(!g2) return;
+      const cid = g2.dataset.id;
+      el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
+      if(gc().tablero[cid]) el.classList.add(gc().tablero[cid]==='X'?'ficha-x':'ficha-o');
+    });
+
+    // Detectar sorteo nuevo (sorteo_id unico)
+    if(d.sorteo_id && window._sorteoMostrado !== d.sorteo_id) {
+      window._sorteoMostrado = d.sorteo_id;
+      bloquearBotones(['btn-sortear','btn-nueva'], true);
+      const fueYo = d.ultimo_sorteo === miRol;
+      if(!fueYo) {
+        gc().mostrarModal('SORTEO!',
+          'Comienza el ' + (d.ultimo_sorteo === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)'));
+      }
+    }
+
     const esMiTurno = g.turno === miRol;
     bloquearTablero(!esMiTurno);
     $('turno-msg').textContent = esMiTurno
       ? 'ES TU TURNO! Haz clic en una casilla.'
       : 'Esperando jugada del oponente...';
-  }
-
-  if(d.terminado && d.ganador && !window._victoriaYaMostrada) {
-    window._victoriaYaMostrada = true;
-    // Resaltar SOLO las fichas reclamadas, no todas las lineas ganadoras
-    if(d.fichas_ganadoras_reclamadas && d.fichas_ganadoras_reclamadas.length === 4) {
-      d.fichas_ganadoras_reclamadas.forEach(id => {
-        const circ = document.querySelector('[data-id="' + id + '"] circle');
-        if(circ) circ.classList.add(d.ganador === 'X' ? 'ficha-winner-x' : 'ficha-winner-o');
-      });
-    }
-    const esTuyo = d.ganador === miRol;
-    setTimeout(() => gc().mostrarModal(
-      esTuyo ? 'GANASTE!' : 'Perdiste',
-      esTuyo ? 'Felicitaciones! Ganaste la partida.'
-             : (d.ganador === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)') + ' gano esta partida.'
-    ), 400);
   }
 }
 
@@ -842,7 +853,7 @@ async function jugarOnline(id) {
   if(!snap.exists()) return;
   const d = snap.val();
   const t = tblCompleto(d.tablero);
-  if(d.terminado || d.fase === 'esperando_sorteo' || t[id] !== null || d.turno !== miRol) return;
+  if(d.terminado || d.fase !== 'jugando' || t[id] !== null || d.turno !== miRol) return;
   t[id] = miRol;
   bloquearTablero(true);
   await set(ref(db, 'salas/' + codigoSala), Object.assign({}, d, {
@@ -859,55 +870,38 @@ async function jugarOnline(id) {
 function activarModoReclamo(fichasGanadoras) {
   modoReclamo = true;
   fichasSeleccionadas = [];
-  fichasPermitidas = new Set(fichasGanadoras);  // solo estas se pueden marcar
+  fichasPermitidas = new Set(fichasGanadoras);
   $('modo-reclamo-banner').style.display = 'block';
   $('contador-seleccion').textContent = '0/4';
-  // Bloquear TODO el tablero con el overlay
+  // Desbloquear overlay para poder hacer clic en fichas permitidas
   $('tablero-block').style.display = 'block';
   $('tablero-svg').style.opacity = '1';
-  // Pero marcar visualmente las fichas ganadoras disponibles (sutil highlight)
-  fichasGanadoras.forEach(id => {
-    const circ = document.querySelector('[data-id="' + id + '"] circle');
-    if(circ) circ.style.cursor = 'pointer';
-  });
 }
 
-function desactivarModoReclamo(cancelarEnFirebase) {
+function desactivarModoReclamo() {
   modoReclamo = false;
   fichasSeleccionadas = [];
   fichasPermitidas = new Set();
   $('modo-reclamo-banner').style.display = 'none';
   bloquearTablero(true);
+  // Limpiar fichas amarillas del reclamante
   document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el => {
-    el.classList.remove('ficha-seleccionada-x', 'ficha-seleccionada-o');
+    const g2 = el.closest('[data-id]');
+    if(!g2) return;
+    const cid = g2.dataset.id;
+    el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
+    if(gc().tablero[cid]) el.classList.add(gc().tablero[cid]==='X'?'ficha-x':'ficha-o');
   });
-  if(cancelarEnFirebase && salaRef) {
-    update(salaRef, { reclamo: null });
-  }
 }
 
 $('btn-reclamar').addEventListener('click', async e => {
   if(!juegoIniciado) return;
   e.stopImmediatePropagation();
 
-  // Cancelar reclamo activo
   if(modoReclamo) {
-    desactivarModoReclamo(false);
-    // Restaurar fase jugando en Firebase para desbloquear ambos
-    const snapC = await get(salaRef);
-    const dC = snapC.val();
-    await update(salaRef, {
-      fase: 'jugando',
-      reclamante: null,
-      reclamo_fichas: null,
-      reclamo: null,
-      fichas_marcadas_reclamo: null
-    });
-    // Restaurar botones locales
-    ['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'].forEach(id => {
-      $(id).style.opacity = '';
-      $(id).style.pointerEvents = '';
-    });
+    desactivarModoReclamo();
+    await update(salaRef, { fase: 'jugando', reclamante: null, reclamo_fichas: null, fichas_marcadas_reclamo: null });
+    bloquearBotones(['btn-reclamar','btn-confirmar'], false);
     gc().mostrarModal('Reclamo cancelado', 'El reclamo fue cancelado. El juego continua.');
     return;
   }
@@ -917,29 +911,24 @@ $('btn-reclamar').addEventListener('click', async e => {
   if(!d || d.terminado) { gc().mostrarModal('Partida terminada', 'Inicia nueva partida.'); return; }
   if((d.jugadas || 0) < 7) { gc().mostrarModal('Muy pronto', 'Minimo 7 jugadas para reclamar.'); return; }
 
-  // Calcular fichas ganadoras reales en el tablero actual
   const t = tblCompleto(d.tablero);
   Object.keys(t).forEach(k => gc().tablero[k] = t[k]);
   const lineasGanadoras = gc().buscarVictoria(miRol);
 
   if(lineasGanadoras.length === 0) {
-    gc().mostrarModal('Sin linea ganadora',
-      'No tienes ninguna linea ganadora en el tablero. No puedes reclamar.');
+    gc().mostrarModal('Sin linea ganadora', 'No tienes ninguna linea ganadora. No puedes reclamar.');
     return;
   }
 
-  // Obtener todas las fichas que pertenecen a lineas ganadoras
   const fichasGanadorasSet = new Set();
   lineasGanadoras.forEach(linea => linea.forEach(id => fichasGanadorasSet.add(id)));
   const fichasGanadoras = Array.from(fichasGanadorasSet);
 
-  // Publicar reclamo en Firebase — bloquea al oponente
   await update(salaRef, {
-    fase: 'reclamo',
-    reclamante: miRol,
+    fase: 'reclamo', reclamante: miRol,
     reclamo_fichas: fichasGanadoras,
-    reclamo_ts: Date.now(),         // ID único de este reclamo
-    fichas_marcadas_reclamo: []     // se irá llenando al marcar
+    reclamo_ts: Date.now(),
+    fichas_marcadas_reclamo: []
   });
 
   activarModoReclamo(fichasGanadoras);
@@ -947,10 +936,9 @@ $('btn-reclamar').addEventListener('click', async e => {
     'Selecciona las 4 fichas de tu linea ganadora y pulsa CONFIRMAR. Pulsa RECLAMAR VICTORIA de nuevo para cancelar.');
 }, true);
 
-// Clic sobre el overlay en modo reclamo — redirigir a la ficha debajo
+// Clic sobre el overlay en modo reclamo
 $('tablero-block').addEventListener('click', e => {
   if(!modoReclamo) return;
-  // Obtener el elemento debajo del overlay usando coordinates
   $('tablero-block').style.pointerEvents = 'none';
   const debajo = document.elementFromPoint(e.clientX, e.clientY);
   $('tablero-block').style.pointerEvents = 'auto';
@@ -963,50 +951,47 @@ $('tablero-block').addEventListener('click', e => {
 });
 
 function seleccionarFichaReclamo(id) {
-  // Solo fichas que pertenecen a lineas ganadoras reales
   if(!fichasPermitidas.has(id)) {
-    gc().mostrarModal('Ficha no valida',
-      'Solo puedes seleccionar fichas que pertenezcan a una linea ganadora.');
+    gc().mostrarModal('Ficha no valida', 'Solo puedes seleccionar fichas de lineas ganadoras.');
     return;
   }
   const idx = fichasSeleccionadas.indexOf(id);
   if(idx >= 0) {
+    // Deseleccionar
     fichasSeleccionadas.splice(idx, 1);
     const circ = document.querySelector('[data-id="' + id + '"] circle');
     if(circ) {
-      circ.classList.remove('ficha-seleccionada-x', 'ficha-seleccionada-o');
+      circ.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
       circ.classList.add(miRol === 'X' ? 'ficha-x' : 'ficha-o');
     }
-    // Sincronizar deseleccion al oponente
-    update(salaRef, { fichas_marcadas_reclamo: fichasSeleccionadas.slice() });
   } else {
     if(fichasSeleccionadas.length >= 4) {
       gc().mostrarModal('Ya tienes 4 fichas', 'Deselecciona una antes de agregar otra.');
       return;
     }
     fichasSeleccionadas.push(id);
+    // Iluminar en amarillo en el tablero del RECLAMANTE
     const circ = document.querySelector('[data-id="' + id + '"] circle');
     if(circ) {
-      circ.classList.remove('ficha-x', 'ficha-o');
+      circ.classList.remove('ficha-x','ficha-o','ficha-winner-x','ficha-winner-o');
       circ.classList.add(miRol === 'X' ? 'ficha-seleccionada-x' : 'ficha-seleccionada-o');
     }
-    // Sincronizar seleccion actual al oponente via Firebase
-    update(salaRef, { fichas_marcadas_reclamo: fichasSeleccionadas.slice() });
   }
   $('contador-seleccion').textContent = fichasSeleccionadas.length + '/4';
+  // Sincronizar al oponente en tiempo real
+  update(salaRef, { fichas_marcadas_reclamo: fichasSeleccionadas.slice() });
 }
 
 // LINEAS GANADORAS
 const TODAS_LINEAS = (function() {
-  const lineas = [];
-  for(let i = 0; i < 8; i++) lineas.push(['A'+i,'B'+i,'C'+i,'D'+i]);
+  const L = [];
+  for(let i=0;i<8;i++) L.push(['A'+i,'B'+i,'C'+i,'D'+i]);
   ['A','B','C','D'].forEach(a => {
-    for(let i = 0; i < 8; i++)
-      lineas.push([a+i, a+((i+1)%8), a+((i+2)%8), a+((i+3)%8)]);
+    for(let i=0;i<8;i++) L.push([a+i,a+((i+1)%8),a+((i+2)%8),a+((i+3)%8)]);
   });
-  for(let i = 0; i < 8; i++) lineas.push(['A'+i,'B'+((i+1)%8),'C'+((i+2)%8),'D'+((i+3)%8)]);
-  for(let i = 0; i < 8; i++) lineas.push(['A'+i,'B'+((i+7)%8),'C'+((i+6)%8),'D'+((i+5)%8)]);
-  return lineas;
+  for(let i=0;i<8;i++) L.push(['A'+i,'B'+((i+1)%8),'C'+((i+2)%8),'D'+((i+3)%8)]);
+  for(let i=0;i<8;i++) L.push(['A'+i,'B'+((i+7)%8),'C'+((i+6)%8),'D'+((i+5)%8)]);
+  return L;
 })();
 
 $('btn-confirmar').addEventListener('click', async e => {
@@ -1022,29 +1007,28 @@ $('btn-confirmar').addEventListener('click', async e => {
   }
   const selSet = new Set(fichasSeleccionadas);
   const esValida = TODAS_LINEAS.some(linea => linea.every(c => selSet.has(c)));
+
   if(esValida) {
-    const ganadas = fichasSeleccionadas.slice();
+    const fichasGanadas = fichasSeleccionadas.slice();
     desactivarModoReclamo();
-    ganadas.forEach(id => {
+    // Resaltar winner en el tablero del RECLAMANTE inmediatamente
+    fichasGanadas.forEach(id => {
       const circ = document.querySelector('[data-id="' + id + '"] circle');
-      if(circ) circ.classList.add(miRol === 'X' ? 'ficha-winner-x' : 'ficha-winner-o');
+      if(circ) {
+        circ.classList.remove('ficha-x','ficha-o','ficha-seleccionada-x','ficha-seleccionada-o');
+        circ.classList.add(miRol === 'X' ? 'ficha-winner-x' : 'ficha-winner-o');
+      }
     });
-    // Guardar las 4 fichas reclamadas para que ambos jugadores vean SOLO esas
+    // Guardar en Firebase — oponente verá las fichas winner via aplicarEstado
     await update(salaRef, {
-      terminado: true, ganador: miRol, fase: 'terminado', reclamo: null,
-      fichas_ganadoras_reclamadas: fichasSeleccionadas.slice()
+      terminado: true, ganador: miRol, fase: 'terminado',
+      fichas_ganadoras_reclamadas: fichasGanadas,
+      fichas_marcadas_reclamo: null, reclamante: null
     });
   } else {
-    desactivarModoReclamo(false);
-    await update(salaRef, {
-      fase: 'jugando', reclamante: null, reclamo_fichas: null,
-      fichas_marcadas_reclamo: null
-    });
-    // Restaurar botones
-    ['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'].forEach(id => {
-      $(id).style.opacity = '';
-      $(id).style.pointerEvents = '';
-    });
+    desactivarModoReclamo();
+    await update(salaRef, { fase: 'jugando', reclamante: null, reclamo_fichas: null, fichas_marcadas_reclamo: null });
+    bloquearBotones(['btn-reclamar','btn-confirmar'], false);
     gc().mostrarModal('Linea invalida', 'Las 4 fichas no forman una linea ganadora valida. El juego continua.');
   }
 }, true);
@@ -1053,17 +1037,19 @@ $('btn-confirmar').addEventListener('click', async e => {
 $('btn-nueva').addEventListener('click', async e => {
   if(!juegoIniciado) return;
   e.stopImmediatePropagation();
-  // Resetear ultimo_sorteo para que el oponente pueda ver el nuevo sorteo
+  window._sorteoMostrado     = null;
+  window._victoriaYaMostrada = false;
+  window._avisoReclamoMostrado = null;
   await update(salaRef, {
     tablero: tblVacio(), turno: null, fase: 'esperando_sorteo',
     terminado: false, ganador: null, jugadas: 0, fichasX: 16, fichasO: 16,
-    ultimo_sorteo: null, sorteo_usado: false
+    ultimo_sorteo: null, sorteo_id: null, sorteo_usado: false,
+    fichas_ganadoras_reclamadas: null, fichas_marcadas_reclamo: null,
+    reclamante: null, reclamo_fichas: null
   });
-  // Desbloquear btn-sortear visualmente
-  $('btn-sortear').style.opacity = '1';
-  $('btn-sortear').style.pointerEvents = 'auto';
-  window._sorteoMostrado = null;      // resetear para nueva partida
-  window._victoriaYaMostrada = false; // resetear para nueva partida
+  // Desbloquear sortear, mantener nueva bloqueada hasta el juego
+  bloquearBotones(['btn-sortear'], false);
+  bloquearBotones(['btn-reclamar','btn-confirmar'], false);
 }, true);
 
 // SORTEAR PARTIDA
@@ -1072,34 +1058,26 @@ $('btn-sortear').addEventListener('click', async e => {
   e.stopImmediatePropagation();
   const snap = await get(salaRef);
   const d = snap.val();
-  // Bloquear si ya se sorteó esta partida
   if(d.sorteo_usado === true) {
-    gc().mostrarModal('Sorteo ya realizado', 'Ya se sorteó esta partida. Comienza el juego.'); return;
+    gc().mostrarModal('Sorteo ya realizado', 'Ya se sorteo esta partida. Comienza el juego.'); return;
   }
   if(d.fase !== 'esperando_sorteo') {
     gc().mostrarModal('Sorteo', 'Solo se puede sortear al inicio de la partida.'); return;
   }
   const primero = Math.random() < 0.5 ? 'X' : 'O';
-  // ID único por sorteo para que el oponente lo detecte siempre como nuevo
   const sorteoId = Date.now().toString();
+  // Bloquear btn-sortear y btn-nueva durante el juego
+  bloquearBotones(['btn-sortear','btn-nueva'], true);
   await update(salaRef, {
-    turno: primero,
-    fase: 'jugando',
-    ultimo_sorteo: primero,
-    sorteo_id: sorteoId,     // ID único — garantiza detección en TODAS las partidas
-    sorteo_usado: true        // bloquea nuevos sorteos hasta Nueva Partida
+    turno: primero, fase: 'jugando',
+    ultimo_sorteo: primero, sorteo_id: sorteoId, sorteo_usado: true
   });
-  // Bloquear btn-sortear visualmente para quien sorteó
-  $('btn-sortear').style.opacity = '0.4';
-  $('btn-sortear').style.pointerEvents = 'none';
-  // Mostrar al jugador que sorteó
   gc().mostrarModal('SORTEO!',
     'Comienza el ' + (primero === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)'));
 }, true);
 
 // CHAT
-let chatAbierto = false;
-let mensajesNoLeidos = 0;
+let chatAbierto = false, mensajesNoLeidos = 0;
 
 window.toggleChat = function() {
   chatAbierto = !chatAbierto;
@@ -1109,8 +1087,7 @@ window.toggleChat = function() {
     mensajesNoLeidos = 0;
     $('chat-badge').style.display = 'none';
     $('chat-badge').textContent = '';
-    const msgs = $('chat-msgs');
-    msgs.scrollTop = msgs.scrollHeight;
+    $('chat-msgs').scrollTop = $('chat-msgs').scrollHeight;
   }
 };
 
@@ -1141,8 +1118,7 @@ function iniciarChat() {
   $('chat-toggle-icon').textContent = 'A';
   const tsInicio = Date.now();
   const vistos = new Set();
-  const chatRef = ref(db, 'salas/' + codigoSala + '/chat');
-  onValue(chatRef, snap => {
+  onValue(ref(db, 'salas/' + codigoSala + '/chat'), snap => {
     if(!snap.exists()) return;
     const msgs = snap.val();
     Object.keys(msgs).sort().forEach(k => {
@@ -1151,8 +1127,7 @@ function iniciarChat() {
       if(m.ts < tsInicio) return;
       vistos.add(k);
       if(m.rol === miRol) return;
-      const nombreOtro = miRol === 'X' ? 'Jugador 2 (O)' : 'Jugador 1 (X)';
-      agregarMensaje(m.texto, 'otro', nombreOtro);
+      agregarMensaje(m.texto, 'otro', miRol === 'X' ? 'Jugador 2 (O)' : 'Jugador 1 (X)');
     });
   });
   $('chat-send').onclick = enviarMensaje;
