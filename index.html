@@ -723,13 +723,19 @@ function aplicarEstado(d) {
   g.jugadas   = d.jugadas   != null ? d.jugadas : 0;
   // Durante modo reclamo del reclamante: NO re-renderizar el tablero
   // para evitar que se borren los colores amarillos aplicados.
-  // El oponente sí actualiza normalmente.
   if(modoReclamo) {
-    // Solo actualizar contadores UI, no el tablero SVG
     g.actualizarUI();
   } else {
     g.renderTablero();
     g.actualizarUI();
+  }
+
+  // Actualizar estadisticas en pantalla para ambos jugadores (tiempo real)
+  if(d.victoriasX !== undefined) {
+    document.getElementById('stat-x').textContent = d.victoriasX;
+  }
+  if(d.victoriasO !== undefined) {
+    document.getElementById('stat-o').textContent = d.victoriasO;
   }
 
   if(d.terminado) {
@@ -1057,10 +1063,16 @@ $('btn-confirmar').addEventListener('click', async e => {
       }
     });
     // Guardar en Firebase — oponente verá las fichas winner via aplicarEstado
+    // Leer victorias actuales de Firebase y sumar 1
+    const snapV = await get(salaRef);
+    const dV = snapV.val();
+    const vX = (dV.victoriasX || 0) + (miRol === 'X' ? 1 : 0);
+    const vO = (dV.victoriasO || 0) + (miRol === 'O' ? 1 : 0);
     await update(salaRef, {
       terminado: true, ganador: miRol, fase: 'terminado',
       fichas_ganadoras_reclamadas: fichasGanadas,
-      fichas_marcadas_reclamo: null, reclamante: null
+      fichas_marcadas_reclamo: null, reclamante: null,
+      victoriasX: vX, victoriasO: vO
     });
   } else {
     desactivarModoReclamo();
@@ -1077,12 +1089,17 @@ $('btn-nueva').addEventListener('click', async e => {
   window._sorteoMostrado     = null;
   window._victoriaYaMostrada = false;
   window._avisoReclamoMostrado = null;
+  // Leer victorias actuales para preservarlas entre partidas
+  const snapN = await get(salaRef);
+  const dN = snapN.val();
   await update(salaRef, {
     tablero: tblVacio(), turno: null, fase: 'esperando_sorteo',
     terminado: false, ganador: null, jugadas: 0, fichasX: 16, fichasO: 16,
     ultimo_sorteo: null, sorteo_id: null, sorteo_usado: false,
     fichas_ganadoras_reclamadas: null, fichas_marcadas_reclamo: null,
-    reclamante: null, reclamo_fichas: null
+    reclamante: null, reclamo_fichas: null,
+    victoriasX: dN.victoriasX || 0,   // preservar victorias acumuladas
+    victoriasO: dN.victoriasO || 0
   });
   // Desbloquear sortear, mantener nueva bloqueada hasta el juego
   bloquearBotones(['btn-sortear'], false);
