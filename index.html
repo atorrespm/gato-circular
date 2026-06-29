@@ -287,11 +287,11 @@ hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
         <div><div class="wlbl">Horizontal</div><div class="wlbl2">(Circular)</div></div>
       </div>
       <div class="wtype">
-        <div style="display:flex;flex-direction:column;gap:0px;flex-shrink:0">
-          <div style="display:flex;justify-content:flex-start;padding-left:0px"><div class="wdot"></div></div>
-          <div style="display:flex;justify-content:flex-start;padding-left:6px"><div class="wdot"></div></div>
-          <div style="display:flex;justify-content:flex-start;padding-left:12px"><div class="wdot"></div></div>
-          <div style="display:flex;justify-content:flex-start;padding-left:18px"><div class="wdot"></div></div>
+        <div class="wdots" style="gap:2px">
+          <div class="wdot" style="margin-left:0"></div>
+          <div class="wdot" style="margin-left:8px"></div>
+          <div class="wdot" style="margin-left:8px"></div>
+          <div class="wdot" style="margin-left:2px"></div>
         </div>
         <div><div class="wlbl">Espiral</div><div class="wlbl2">(Por los Vértices)</div></div>
       </div>
@@ -448,12 +448,12 @@ const Reglas = (() => {
    ═══════════════════════════════════════════════════════ */
 const Tablero = (() => {
   function centroide(an, i) {
-    const {i:ri,o:ro}=GC.RING_RADII[an];
-    const r = an==='D' ? 36 : (ri+ro)/2;
-    const a1=(i*45-90)*Math.PI/180;
-    const a2=((i+1)*45-90)*Math.PI/180;
-    const am=(a1+a2)/2;
-    return {x:GC.CX+r*Math.cos(am), y:GC.CY+r*Math.sin(am)};
+    const {i:ri,o:ro} = GC.RING_RADII[an];
+    const r = an==='D' ? 36 : (ri + ro) / 2;
+    const a1 = (i * 45 - 90) * Math.PI / 180;
+    const a2 = ((i + 1) * 45 - 90) * Math.PI / 180;
+    const am = (a1 + a2) / 2;
+    return { x: GC.CX + r * Math.cos(am), y: GC.CY + r * Math.sin(am) };
   }
 
   function sectorPath(an, i) {
@@ -542,11 +542,12 @@ const Tablero = (() => {
     let mejor=null, dMin=Infinity;
     permitidas.forEach(id=>{
       const an=id[0], num=parseInt(id[1]);
-      const {i:ri,o:ro}=GC.RING_RADII[an];
-      const r=an==='D'?36:(ri+ro)/2;
-      const a1=(num*45-90)*Math.PI/180, a2=((num+1)*45-90)*Math.PI/180;
-      const am=(a1+a2)/2;
-      const cx=GC.CX+r*Math.cos(am), cy=GC.CY+r*Math.sin(am);
+      const {i:ri,o:ro} = GC.RING_RADII[an];
+      const r = an==='D' ? 36 : (ri + ro) / 2;
+      const a1 = (num * 45 - 90) * Math.PI / 180;
+      const a2 = ((num + 1) * 45 - 90) * Math.PI / 180;
+      const am = (a1 + a2) / 2;
+      const cx = GC.CX + r * Math.cos(am), cy = GC.CY + r * Math.sin(am);
       const d=Math.sqrt((svgX-cx)**2+(svgY-cy)**2);
       if(d<dMin){dMin=d; mejor=id;}
     });
