@@ -1,3 +1,43 @@
+<!--
+=======================================================================
+  © Junio 2026 - Santiago - Chile
+  Desarrollador: Pedro Alejandro Torres Guerrero
+  Juego de Estrategia Mental: GATO CIRCULAR
+  Todos los derechos reservados.
+
+  Este código fuente, su diseño, lógica, estructura visual y mecánicas
+  de juego son propiedad intelectual exclusiva de su autor.
+  Queda prohibida su reproducción total o parcial, modificación,
+  distribución o uso comercial sin autorización expresa del titular.
+=======================================================================
+
+  ARQUITECTURA MODULAR (archivo único)
+  ─────────────────────────────────────
+  [CSS]
+    M1 · BASE          Variables, reset, layout
+    M2 · TABLERO       SVG, fichas, anillos
+    M3 · PANELES       Paneles laterales, botones, modal
+    M4 · LOBBY         Pantalla de conexión
+    M5 · CHAT          Ventana de chat
+  [JS]
+    M6 · CONFIG        Constantes globales
+    M7 · ESTADO        Estado centralizado del juego
+    M8 · REGLAS        Motor de reglas y líneas ganadoras
+    M9 · TABLERO       Render SVG
+    M10· UI            Interfaz de usuario
+    M11· RECLAMO       Proceso de reclamo de victoria
+    M12· JUEGO         Orquestador principal
+    M13· FIREBASE      Sincronización en tiempo real
+    M14· CHAT          Chat en tiempo real
+    M15· MAIN          Punto de entrada y eventos
+    [FUTURO]
+    M16· CRONOMETRO    Temporizador de jugadas y partidas
+    M17· IA            Motor de inteligencia artificial
+    M18· RANKING       Sistema de puntuación y rankings
+    M19· TORNEOS       Gestión de torneos
+    M20· ESTADISTICAS  Historial y estadísticas avanzadas
+=======================================================================
+-->
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -6,6 +46,10 @@
 <title>Gato Circular</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@500;700&display=swap');
+
+/* ═══════════════════════════════════════════════════════
+   M1 · BASE — Variables globales, reset, layout
+   ═══════════════════════════════════════════════════════ */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
   --bg:#1a1a1a;--panel:#242424;--border:#3a3a3a;
@@ -18,13 +62,39 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',Arial,sans-se
 .panel{background:var(--panel);border:2px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;position:relative}
 .panel::after{content:'';position:absolute;inset:4px;border:1px solid #2c2c2c;border-radius:5px;pointer-events:none}
 .ptitle{font-family:'Orbitron',sans-serif;font-size:13px;letter-spacing:2px;color:var(--gold);text-align:center;margin-bottom:7px;text-transform:uppercase}
+
+/* ═══════════════════════════════════════════════════════
+   M2 · TABLERO CSS — SVG, fichas, anillos, reclamo
+   ═══════════════════════════════════════════════════════ */
+#zona-tablero{display:flex;flex-direction:column;align-items:center;gap:8px}
+#tablero-wrap{width:460px;height:460px;position:relative}
+#tablero-svg{width:100%;height:100%}
+#tablero-block{display:none;position:absolute;inset:0;border-radius:50%;z-index:10;cursor:not-allowed;}
+.cell-sector{fill:#222;stroke:#505050;stroke-width:1.5;cursor:pointer;transition:fill .1s}
+.cell-sector:hover{fill:#2c2c2c}
+.ficha-vacia{fill:#2e2e2e;stroke:#555;stroke-width:1.5;cursor:pointer;transition:fill .1s,stroke .1s;}
+.ficha-vacia:hover{fill:#3c3c3c;stroke:#777}
+.ficha-x{fill:#3a0000;stroke:var(--red);stroke-width:2;cursor:default;filter:drop-shadow(0 0 4px rgba(224,48,48,0.7));}
+.ficha-o{fill:#001624;stroke:var(--blue);stroke-width:2;cursor:default;filter:drop-shadow(0 0 4px rgba(42,159,214,0.7));}
+.ficha-winner-x{stroke:var(--red-g);stroke-width:3;filter:drop-shadow(0 0 7px rgba(255,85,85,0.9))}
+.ficha-winner-o{stroke:var(--blue-g);stroke-width:3;filter:drop-shadow(0 0 7px rgba(68,204,255,0.9))}
+.ficha-seleccionada-x{stroke:#ffdd00!important;stroke-width:3!important;fill:#3a2a00!important;filter:drop-shadow(0 0 8px rgba(255,220,0,0.9))!important;}
+.ficha-seleccionada-o{stroke:#ffdd00!important;stroke-width:3!important;fill:#1a2a00!important;filter:drop-shadow(0 0 8px rgba(255,220,0,0.9))!important;}
+.token-txt{font-family:'Orbitron',sans-serif;font-weight:900;pointer-events:none;dominant-baseline:middle;text-anchor:middle}
+.token-txt.x{fill:var(--red-g)}.token-txt.o{fill:var(--blue-g)}
+.cell-lbl{font-family:'Rajdhani',sans-serif;fill:#555;pointer-events:none;dominant-baseline:middle;text-anchor:middle}
+#modo-reclamo-banner{display:none;background:linear-gradient(135deg,#2a2000,#3a3000);border:2px solid #ffdd00;border-radius:8px;padding:8px 16px;text-align:center;font-family:'Orbitron',sans-serif;font-size:12px;color:#ffdd00;letter-spacing:1px;margin-top:6px;width:100%;max-width:1080px;}
+#contador-seleccion{font-size:18px;font-weight:900;margin-left:8px;}
+
+/* ═══════════════════════════════════════════════════════
+   M3 · PANELES CSS — Laterales, botones, modal
+   ═══════════════════════════════════════════════════════ */
 #logo-panel{background:linear-gradient(135deg,#1c1c1c,#282828);border-color:#4a4a4a;text-align:center}
 #logo-panel h1{font-family:'Orbitron',sans-serif;font-size:20px;font-weight:900;color:#bbb;text-shadow:1px 1px 3px #000;line-height:1.1}
 #logo-panel p{font-size:10px;color:var(--red);letter-spacing:2px;font-weight:700;margin-top:4px}
 .pname{font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;text-align:center;margin-bottom:5px}
 .pname.x{color:var(--red)}.pname.o{color:var(--blue)}
-.ptoken{width:54px;height:54px;border-radius:50%;margin:0 auto 5px;display:flex;align-items:center;justify-content:center;
-  font-size:28px;font-weight:900;font-family:'Orbitron',sans-serif;border:3px solid}
+.ptoken{width:54px;height:54px;border-radius:50%;margin:0 auto 5px;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:900;font-family:'Orbitron',sans-serif;border:3px solid}
 .ptoken.x{color:var(--red-g);border-color:var(--red);background:radial-gradient(circle,#3a0000,#1a0000);box-shadow:0 0 10px var(--red)}
 .ptoken.o{color:var(--blue-g);border-color:var(--blue);background:radial-gradient(circle,#001a2a,#000d1a);box-shadow:0 0 10px var(--blue)}
 .fichas-lbl{font-size:13px;letter-spacing:1px;color:#aaa;font-weight:700;text-align:center}
@@ -35,41 +105,6 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',Arial,sans-se
 #turno-ficha.x{color:var(--red-g);text-shadow:0 0 14px var(--red)}
 #turno-ficha.o{color:var(--blue-g);text-shadow:0 0 14px var(--blue)}
 #turno-msg{font-size:12px;color:#999;letter-spacing:.5px;line-height:1.5}
-#zona-tablero{display:flex;flex-direction:column;align-items:center;gap:8px}
-#tablero-wrap{width:460px;height:460px;position:relative}
-#tablero-svg{width:100%;height:100%}
-
-/* ── Sectores del tablero: siempre oscuros, solo estructura ── */
-.cell-sector{fill:#222;stroke:#505050;stroke-width:1.5;cursor:pointer;transition:fill .1s}
-.cell-sector:hover{fill:#2c2c2c}
-.cell-sector.ocupada{fill:#222;cursor:default}   /* sector NO cambia de color */
-
-/* ── Ficha circular: lo que se ilumina al jugar ── */
-.ficha-vacia{
-  fill:#2e2e2e;stroke:#555;stroke-width:1.5;cursor:pointer;
-  transition:fill .1s,stroke .1s;
-}
-.ficha-vacia:hover{fill:#3c3c3c;stroke:#777}
-.ficha-x{
-  fill:#3a0000;stroke:var(--red);stroke-width:2;cursor:default;
-  filter:drop-shadow(0 0 4px rgba(224,48,48,0.7));
-}
-.ficha-o{
-  fill:#001624;stroke:var(--blue);stroke-width:2;cursor:default;
-  filter:drop-shadow(0 0 4px rgba(42,159,214,0.7));
-}
-.ficha-winner-x{stroke:var(--red-g);stroke-width:3;filter:drop-shadow(0 0 7px rgba(255,85,85,0.9))}
-.ficha-winner-o{stroke:var(--blue-g);stroke-width:3;filter:drop-shadow(0 0 7px rgba(68,204,255,0.9))}
-
-/* Token X/O dentro de la ficha */
-.token-txt{font-family:'Orbitron',sans-serif;font-weight:900;pointer-events:none;
-  dominant-baseline:middle;text-anchor:middle}
-.token-txt.x{fill:var(--red-g)}.token-txt.o{fill:var(--blue-g)}
-
-/* Etiqueta de casilla vacía */
-.cell-lbl{font-family:'Rajdhani',sans-serif;fill:#555;pointer-events:none;
-  dominant-baseline:middle;text-anchor:middle}
-
 .how-title{font-family:'Orbitron',sans-serif;font-size:13px;color:var(--red);text-align:center;margin-bottom:6px;letter-spacing:1px}
 .how-sub{font-size:12px;color:#bbb;text-align:center;margin-bottom:8px;line-height:1.4}
 .wtype{display:flex;align-items:center;gap:9px;margin-bottom:7px;padding:5px 7px;background:#1a1a1a;border-radius:5px}
@@ -83,9 +118,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',Arial,sans-se
 .stat-row{display:flex;justify-content:space-between;align-items:center;padding:5px 8px;font-size:14px;font-weight:700}
 .stat-v{font-family:'Orbitron',sans-serif;font-size:16px}
 #barra{display:flex;justify-content:center;gap:8px;width:100%;max-width:1080px;flex-wrap:wrap}
-.btn{padding:11px 18px;font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;
-  border:none;border-radius:6px;cursor:pointer;display:flex;align-items:center;gap:7px;
-  transition:filter .2s,transform .1s}
+.btn{padding:11px 18px;font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;border:none;border-radius:6px;cursor:pointer;display:flex;align-items:center;gap:7px;transition:filter .2s,transform .1s}
 .btn:hover{filter:brightness(1.2);transform:translateY(-1px)}
 .btn:active{transform:translateY(0)}
 #btn-nueva{background:linear-gradient(135deg,#7a0000,#bb1f00);color:#fff}
@@ -93,15 +126,14 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',Arial,sans-se
 #btn-reclamar{background:linear-gradient(135deg,#005500,#009933);color:#fff}
 #btn-confirmar{background:linear-gradient(135deg,#003070,#0055bb);color:#fff}
 #overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:99}
-#modal{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-  background:linear-gradient(135deg,#1a1a1a,#252525);border:2px solid var(--gold);
-  border-radius:12px;padding:28px 36px;text-align:center;z-index:100;
-  box-shadow:0 0 40px rgba(0,0,0,.9);min-width:280px}
+#modal{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:linear-gradient(135deg,#1a1a1a,#252525);border:2px solid var(--gold);border-radius:12px;padding:28px 36px;text-align:center;z-index:100;box-shadow:0 0 40px rgba(0,0,0,.9);min-width:280px}
 #modal h2{font-family:'Orbitron',sans-serif;font-size:20px;margin-bottom:7px}
 #modal p{font-size:13px;color:#aaa;line-height:1.5;white-space:pre-line}
-#btn-modal{margin-top:14px;padding:9px 22px;background:var(--gold);color:#111;
-  border:none;border-radius:5px;font-family:'Orbitron',sans-serif;font-weight:700;cursor:pointer;font-size:12px}
+#btn-modal{margin-top:14px;padding:9px 22px;background:var(--gold);color:#111;border:none;border-radius:5px;font-family:'Orbitron',sans-serif;font-weight:700;cursor:pointer;font-size:12px}
 
+/* ═══════════════════════════════════════════════════════
+   M4 · LOBBY CSS — Conexión y sala de espera
+   ═══════════════════════════════════════════════════════ */
 #lobby-overlay{display:flex;position:fixed;inset:0;background:rgba(0,0,0,0.93);z-index:200;align-items:center;justify-content:center;}
 #lobby-box{background:linear-gradient(135deg,#1a1a1a,#252525);border:2px solid var(--gold);border-radius:14px;padding:32px 36px;text-align:center;width:340px;box-shadow:0 0 50px rgba(0,0,0,0.9);}
 #lobby-box h2{font-family:'Orbitron',sans-serif;font-size:17px;color:var(--gold);margin-bottom:4px;letter-spacing:2px;}
@@ -121,17 +153,17 @@ hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
 #online-ind{display:none;position:fixed;top:8px;right:10px;z-index:50;background:#1a1a1a;border:1px solid #333;border-radius:20px;padding:4px 11px;font-size:11px;color:#aaa;font-family:'Rajdhani',sans-serif;}
 #online-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#00aa44;margin-right:5px;animation:blink 1.5s infinite;}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
-#tablero-block{display:none;position:absolute;inset:0;border-radius:50%;z-index:10;cursor:not-allowed;}
-#tablero-wrap{position:relative;}
-.ficha-seleccionada-x{stroke:#ffdd00!important;stroke-width:3!important;fill:#3a2a00!important;filter:drop-shadow(0 0 8px rgba(255,220,0,0.9))!important;}
-.ficha-seleccionada-o{stroke:#ffdd00!important;stroke-width:3!important;fill:#1a2a00!important;filter:drop-shadow(0 0 8px rgba(255,220,0,0.9))!important;}
-#modo-reclamo-banner{display:none;background:linear-gradient(135deg,#2a2000,#3a3000);border:2px solid #ffdd00;border-radius:8px;padding:8px 16px;text-align:center;font-family:'Orbitron',sans-serif;font-size:12px;color:#ffdd00;letter-spacing:1px;margin-top:6px;width:100%;max-width:1080px;}
-#contador-seleccion{font-size:18px;font-weight:900;margin-left:8px;}
+
+/* ═══════════════════════════════════════════════════════
+   M5 · CHAT CSS — Ventana de chat en tiempo real
+   ═══════════════════════════════════════════════════════ */
 #chat-container{width:100%;max-width:1080px;background:#1a1a1a;border:2px solid #333;border-radius:10px;margin-top:4px;overflow:hidden;display:none;}
 #chat-header{background:#222;padding:7px 14px;font-family:'Orbitron',sans-serif;font-size:11px;color:var(--gold);letter-spacing:2px;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;}
 #chat-toggle-icon{margin-left:auto;color:#666;font-size:13px;}
 #chat-body{display:none;flex-direction:column;}
 #chat-msgs{height:130px;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:6px;scroll-behavior:smooth;}
+#chat-msgs::-webkit-scrollbar{width:4px;}
+#chat-msgs::-webkit-scrollbar-thumb{background:#333;border-radius:2px;}
 .chat-msg{max-width:78%;padding:6px 10px;border-radius:8px;font-size:12px;line-height:1.4;word-break:break-word;}
 .chat-msg.yo{align-self:flex-end;background:#1a2a3a;border:1px solid var(--blue);color:#cce;border-bottom-right-radius:2px;}
 .chat-msg.otro{align-self:flex-start;background:#2a1a1a;border:1px solid var(--red);color:#ecc;border-bottom-left-radius:2px;}
@@ -139,42 +171,53 @@ hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
 .chat-autor{font-size:10px;opacity:0.6;margin-bottom:2px;}
 #chat-input-row{display:flex;gap:6px;padding:8px 10px;border-top:1px solid #2a2a2a;background:#1e1e1e;}
 #chat-input{flex:1;background:#111;border:1px solid #333;border-radius:6px;padding:7px 10px;color:#ddd;font-family:'Rajdhani',sans-serif;font-size:13px;outline:none;}
+#chat-input:focus{border-color:#444;}
 #chat-send{padding:7px 14px;background:linear-gradient(135deg,#003070,#0055bb);color:#fff;border:none;border-radius:6px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;}
 #chat-badge{display:none;background:var(--red);color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;text-align:center;line-height:16px;font-family:'Orbitron',sans-serif;font-weight:700;}
+
+/* ═══════════════════════════════════════════════════════
+   M16· CRONOMETRO CSS — (pendiente de implementación)
+   ═══════════════════════════════════════════════════════ */
+/* TODO: estilos del cronómetro de jugadas y partidas */
+
 </style>
 </head>
 <body>
 
-
+<!-- INDICADOR ONLINE -->
 <div id="online-ind"><span id="online-dot"></span><span id="online-txt">Conectado</span></div>
+
+<!-- M4 · LOBBY HTML -->
 <div id="lobby-overlay">
   <div id="lobby-box">
-    <h2>GATO CIRCULAR</h2>
+    <h2>🎯 GATO CIRCULAR</h2>
     <p class="sub">Multijugador online</p>
     <div id="lp-inicio">
       <button class="lbtn" id="lbtn-crear">+ CREAR PARTIDA</button>
-      <button class="lbtn" id="lbtn-unirse">UNIRSE A PARTIDA</button>
+      <button class="lbtn" id="lbtn-unirse">↗ UNIRSE A PARTIDA</button>
     </div>
     <div id="lp-crear" style="display:none">
-      <p style="font-size:12px;color:#aaa">Comparte este codigo con tu amigo:</p>
+      <p style="font-size:12px;color:#aaa">Comparte este código con tu amigo:</p>
       <div id="lobby-codigo">----</div>
-      <button id="lbtn-copiar">COPIAR CODIGO</button>
+      <button id="lbtn-copiar">📋 COPIAR CÓDIGO</button>
       <hr class="lsep">
       <div class="lstatus" id="lst-crear">Esperando que tu amigo se conecte...</div>
-      <button class="lbtn" id="lbtn-volver">Volver</button>
+      <button class="lbtn" id="lbtn-volver">← Volver</button>
     </div>
     <div id="lp-unirse" style="display:none">
-      <p style="font-size:12px;color:#aaa">Ingresa el codigo de tu amigo:</p>
+      <p style="font-size:12px;color:#aaa">Ingresa el código de tu amigo:</p>
       <input id="lobby-input" maxlength="4" placeholder="ABCD"/>
-      <button class="lbtn" id="lbtn-conectar">CONECTAR</button>
+      <button class="lbtn" id="lbtn-conectar">✔ CONECTAR</button>
       <div class="lstatus" id="lst-unirse"></div>
-      <button class="lbtn" id="lbtn-volver2">Volver</button>
+      <button class="lbtn" id="lbtn-volver2">← Volver</button>
     </div>
   </div>
 </div>
 
+<!-- LAYOUT PRINCIPAL -->
 <div id="app">
-  <!-- PANEL IZQ -->
+
+  <!-- PANEL IZQUIERDO -->
   <aside>
     <div class="panel" id="logo-panel">
       <h1>GATO<br>CIRCULAR</h1>
@@ -195,11 +238,11 @@ hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
     <div class="panel" id="turno-panel">
       <div class="ptitle">TURNO ACTUAL</div>
       <div id="turno-ficha" class="x">X</div>
-      <div id="turno-msg">HAZ CLIC EN UNA CASILLA<br>PARA COLOCAR TU FICHA</div>
+      <div id="turno-msg">Conectando...</div>
     </div>
   </aside>
 
-  <!-- TABLERO -->
+  <!-- M2 · TABLERO HTML -->
   <main id="zona-tablero">
     <div id="tablero-wrap">
       <div id="tablero-block"></div>
@@ -210,17 +253,11 @@ hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
             <stop offset="100%" stop-color="#161616"/>
           </radialGradient>
         </defs>
-
-        <!-- Fondo circular -->
-        <circle cx="240" cy="240" r="197" fill="url(#board-grad)" stroke="#3a3a3a" stroke-width="3"/>
-
-        <!-- Anillos concéntricos -->
+        <circle cx="240" cy="240" r="232" fill="url(#board-grad)" stroke="#3a3a3a" stroke-width="3"/>
         <circle cx="240" cy="240" r="195" fill="none" stroke="#505050" stroke-width="1.5"/>
         <circle cx="240" cy="240" r="145" fill="none" stroke="#505050" stroke-width="1.5"/>
         <circle cx="240" cy="240" r="105" fill="none" stroke="#505050" stroke-width="1.5"/>
         <circle cx="240" cy="240" r="65"  fill="none" stroke="#505050" stroke-width="1.5"/>
-
-        <!-- 8 Radios (separadores de casillas) -->
         <line x1="240" y1="240" x2="240" y2="45"  stroke="#505050" stroke-width="1.5"/>
         <line x1="240" y1="240" x2="378" y2="102" stroke="#505050" stroke-width="1.5"/>
         <line x1="240" y1="240" x2="435" y2="240" stroke="#505050" stroke-width="1.5"/>
@@ -229,24 +266,18 @@ hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
         <line x1="240" y1="240" x2="102" y2="378" stroke="#505050" stroke-width="1.5"/>
         <line x1="240" y1="240" x2="45"  y2="240" stroke="#505050" stroke-width="1.5"/>
         <line x1="240" y1="240" x2="102" y2="102" stroke="#505050" stroke-width="1.5"/>
-
-        <!-- Sectores invisibles para hacer clic (área de la casilla) -->
         <g id="sectors-layer"></g>
-
-        <!-- Fichas circulares (encima de los sectores) -->
         <g id="fichas-layer"></g>
-
-        <!-- Centro -->
-        <circle cx="240" cy="240" r="0" fill="#333" stroke="#555" stroke-width="1"/>
+        <circle cx="240" cy="240" r="5" fill="#333" stroke="#555" stroke-width="1"/>
       </svg>
     </div>
   </main>
 
-  <!-- PANEL DER -->
+  <!-- PANEL DERECHO -->
   <aside>
     <div class="panel">
       <div class="how-title">¿CÓMO SE GANA?</div>
-      <div class="how-sub">Consigue 4 fichas en línea en cualquiera de estas formas sin cruzar el centro:</div>
+      <div class="how-sub">Consigue 4 fichas en línea de cualquiera de estas formas:</div>
       <div class="wtype">
         <div class="wdots"><div class="wdot"></div><div class="wdot"></div><div class="wdot"></div><div class="wdot"></div></div>
         <div><div class="wlbl">Vertical</div><div class="wlbl2">(Radial)</div></div>
@@ -258,16 +289,16 @@ hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
       <div class="wtype">
         <div class="wdots" style="gap:2px">
           <div class="wdot" style="margin-left:0"></div>
-          <div class="wdot" style="margin-left:8px"></div>
-          <div class="wdot" style="margin-left:8px"></div>
-          <div class="wdot" style="margin-left:2px"></div>
+          <div class="wdot" style="margin-left:5px"></div>
+          <div class="wdot" style="margin-left:10px"></div>
+          <div class="wdot" style="margin-left:15px"></div>
         </div>
         <div><div class="wlbl">Espiral</div><div class="wlbl2">(Por los Vértices)</div></div>
       </div>
     </div>
     <div class="panel">
-      <div class="leg-row"><span class="leg-x">JUGADOR 1 (X)</span></div>
-      <div class="leg-row"><span class="leg-o">JUGADOR 2 (O)</span></div>
+      <div class="leg-row"><span class="leg-x">✕ JUGADOR 1 (X)</span></div>
+      <div class="leg-row"><span class="leg-o">○ JUGADOR 2 (O)</span></div>
     </div>
     <div class="panel">
       <div class="ptitle">ESTADÍSTICAS</div>
@@ -281,8 +312,10 @@ hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
       </div>
     </div>
   </aside>
+
 </div>
 
+<!-- BOTONES -->
 <div id="barra">
   <button class="btn" id="btn-nueva">↺ NUEVA PARTIDA</button>
   <button class="btn" id="btn-sortear">⇄ SORTEAR PARTIDA</button>
@@ -290,295 +323,21 @@ hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
   <button class="btn" id="btn-confirmar">✔ CONFIRMAR</button>
 </div>
 
-<div id="overlay"></div>
-<div id="modal">
-  <h2 id="modal-t"></h2>
-  <p id="modal-b"></p>
-  <button id="btn-modal">ACEPTAR</button>
-</div>
-
-<script>
-// =====================================================
-// GATO CIRCULAR v3 — Fichas circulares dentro de sectores
-// =====================================================
-
-const CX = 240, CY = 240;
-
-const RING_RADII = {
-  D: { i: 25,  o: 65  },
-  C: { i: 65,  o: 105 },
-  B: { i: 105, o: 145 },
-  A: { i: 145, o: 195 }
-};
-
-// Radio de la ficha circular en cada anillo
-const FICHA_R = { A: 13, B: 13, C: 13, D: 12 };
-
-// Centroide del sector (donde va la ficha)
-function centroide(anillo, i) {
-  const { i: ri, o: ro } = RING_RADII[anillo];
-  const r = (ri + ro) / 2;  // centroide natural
-  const a1 = (i * 45 - 90) * Math.PI / 180;
-  const a2 = ((i + 1) * 45 - 90) * Math.PI / 180;
-  const a = (a1 + a2) / 2;
-  return { x: CX + r * Math.cos(a), y: CY + r * Math.sin(a) };
-}
-
-// Path del sector (para zona clickeable invisible)
-function sectorPath(anillo, i) {
-  const { i: ri, o: ro } = RING_RADII[anillo];
-  const a1 = (i * 45 - 90) * Math.PI / 180;
-  const a2 = ((i + 1) * 45 - 90) * Math.PI / 180;
-  const ox1 = CX + ro * Math.cos(a1), oy1 = CY + ro * Math.sin(a1);
-  const ox2 = CX + ro * Math.cos(a2), oy2 = CY + ro * Math.sin(a2);
-  const ix2 = CX + ri * Math.cos(a2), iy2 = CY + ri * Math.sin(a2);
-  const ix1 = CX + ri * Math.cos(a1), iy1 = CY + ri * Math.sin(a1);
-  if (ri === 0) {
-    return `M ${CX} ${CY} L ${ox1.toFixed(2)} ${oy1.toFixed(2)} A ${ro} ${ro} 0 0 1 ${ox2.toFixed(2)} ${oy2.toFixed(2)} Z`;
-  }
-  return `M ${ox1.toFixed(2)} ${oy1.toFixed(2)} A ${ro} ${ro} 0 0 1 ${ox2.toFixed(2)} ${oy2.toFixed(2)} L ${ix2.toFixed(2)} ${iy2.toFixed(2)} A ${ri} ${ri} 0 0 0 ${ix1.toFixed(2)} ${iy1.toFixed(2)} Z`;
-}
-
-// ── LÍNEAS GANADORAS ──
-const lineasRadiales = [
-  ["A0","B0","C0","D0"],["A1","B1","C1","D1"],["A2","B2","C2","D2"],["A3","B3","C3","D3"],
-  ["A4","B4","C4","D4"],["A5","B5","C5","D5"],["A6","B6","C6","D6"],["A7","B7","C7","D7"]
-];
-const lineasCirculares = [];
-["A","B","C","D"].forEach(a => {
-  for(let i=0;i<8;i++) lineasCirculares.push([`${a}${i}`,`${a}${(i+1)%8}`,`${a}${(i+2)%8}`,`${a}${(i+3)%8}`]);
-});
-const lineasEspiralesH = [
-  ["A0","B1","C2","D3"],["A1","B2","C3","D4"],["A2","B3","C4","D5"],["A3","B4","C5","D6"],
-  ["A4","B5","C6","D7"],["A5","B6","C7","D0"],["A6","B7","C0","D1"],["A7","B0","C1","D2"]
-];
-const lineasEspiralesA = [
-  ["A0","B7","C6","D5"],["A1","B0","C7","D6"],["A2","B1","C0","D7"],["A3","B2","C1","D0"],
-  ["A4","B3","C2","D1"],["A5","B4","C3","D2"],["A6","B5","C4","D3"],["A7","B6","C5","D4"]
-];
-const TODAS_LINEAS = [...lineasRadiales,...lineasCirculares,...lineasEspiralesH,...lineasEspiralesA];
-
-// ── ESTADO ──
-const ANILLOS = ["A","B","C","D"];
-let tablero={}, turno="X", terminado=false;
-let fichasX=16, fichasO=16, victoriasX=0, victoriasO=0, jugadas=0;
-let pendienteConfirm=null;
-
-function inicializar() {
-  tablero={};
-  ANILLOS.forEach(a=>{for(let i=0;i<8;i++) tablero[`${a}${i}`]=null;});
-  turno="X"; terminado=false; fichasX=16; fichasO=16; jugadas=0;
-  renderTablero(); actualizarUI();
-  document.getElementById("turno-msg").textContent = "HAZ CLIC EN UNA CASILLA\nPARA COLOCAR TU FICHA";
-}
-
-function buscarVictoria(j) {
-  return TODAS_LINEAS.filter(l => l.every(c => tablero[c] === j));
-}
-
-// ── RENDER ──
-function renderTablero() {
-  const svgNS = "http://www.w3.org/2000/svg";
-  const sectorsLayer = document.getElementById("sectors-layer");
-  const fichasLayer  = document.getElementById("fichas-layer");
-  sectorsLayer.innerHTML = "";
-  fichasLayer.innerHTML  = "";
-
-  ANILLOS.forEach(anillo => {
-    for(let i=0;i<8;i++) {
-      const id     = `${anillo}${i}`;
-      const estado = tablero[id];
-      const pos    = centroide(anillo, i);
-      const fr     = FICHA_R[anillo];
-
-      // ── Sector clickeable (transparente / muy sutil de fondo) ──
-      const sector = document.createElementNS(svgNS, "path");
-      sector.setAttribute("d", sectorPath(anillo, i));
-      sector.setAttribute("fill", "transparent");
-      sector.setAttribute("stroke", "none");
-      sector.style.cursor = estado || terminado ? "default" : "pointer";
-      if(!estado && !terminado) {
-        sector.addEventListener("click", () => manejarClic(id));
-        // Hover sutil sobre el sector (ilumina un poco el fondo)
-        sector.addEventListener("mouseenter", () => sector.setAttribute("fill","rgba(255,255,255,0.03)"));
-        sector.addEventListener("mouseleave", () => sector.setAttribute("fill","transparent"));
-      }
-      sectorsLayer.appendChild(sector);
-
-      // ── Ficha circular ──
-      const g = document.createElementNS(svgNS, "g");
-      g.dataset.id = id;
-
-      const circ = document.createElementNS(svgNS, "circle");
-      circ.setAttribute("cx", pos.x.toFixed(2));
-      circ.setAttribute("cy", pos.y.toFixed(2));
-      circ.setAttribute("r",  fr);
-
-      if(!estado) {
-        // Ficha vacía — clickeable, hover
-        circ.classList.add("ficha-vacia");
-        circ.addEventListener("click", () => manejarClic(id));
-
-        // Etiqueta de la casilla
-        const lbl = document.createElementNS(svgNS, "text");
-        lbl.setAttribute("x", pos.x.toFixed(2));
-        lbl.setAttribute("y", pos.y.toFixed(2));
-        lbl.setAttribute("font-size", "9");
-        lbl.classList.add("cell-lbl");
-        lbl.textContent = id;
-        lbl.style.pointerEvents = "none";
-        g.appendChild(circ);
-        g.appendChild(lbl);
-      } else {
-        // Ficha jugada
-        circ.classList.add(`ficha-${estado.toLowerCase()}`);
-        const txt = document.createElementNS(svgNS, "text");
-        txt.setAttribute("x", pos.x.toFixed(2));
-        txt.setAttribute("y", pos.y.toFixed(2));
-        txt.setAttribute("font-size", anillo==="D" ? "11" : "12");
-        txt.classList.add("token-txt", estado.toLowerCase());
-        txt.textContent = estado;
-        g.appendChild(circ);
-        g.appendChild(txt);
-      }
-
-      fichasLayer.appendChild(g);
-    }
-  });
-}
-
-function resaltarGanadores(lineas) {
-  const svgNS = "http://www.w3.org/2000/svg";
-  lineas.forEach(l => l.forEach(id => {
-    const g = document.querySelector(`#fichas-layer [data-id="${id}"] circle`);
-    if(g) {
-      const estado = tablero[id];
-      g.classList.add(`ficha-winner-${estado.toLowerCase()}`);
-    }
-  }));
-}
-
-// ── LÓGICA ──
-function manejarClic(id) {
-  if(terminado || tablero[id] !== null) return;
-  const f = turno==="X" ? fichasX : fichasO;
-  if(f <= 0) { mostrarModal("Sin fichas", `El jugador ${turno} ya no tiene fichas disponibles.`); return; }
-
-  tablero[id] = turno;
-  jugadas++;
-  if(turno==="X") fichasX--; else fichasO--;
-
-  renderTablero();
-  turno = turno==="X" ? "O" : "X";
-  actualizarUI();
-}
-
-function actualizarUI() {
-  document.getElementById("fichas-x").textContent = fichasX;
-  document.getElementById("fichas-o").textContent = fichasO;
-  document.getElementById("stat-x").textContent   = victoriasX;
-  document.getElementById("stat-o").textContent   = victoriasO;
-  const tf = document.getElementById("turno-ficha");
-  tf.textContent = turno;
-  tf.className   = turno.toLowerCase();
-}
-
-function declararGanador(j) {
-  terminado = true;
-  if(j==="X") victoriasX++; else victoriasO++;
-  const lineas = buscarVictoria(j);
-  renderTablero();
-  resaltarGanadores(lineas);
-  actualizarUI();
-  const nombre = j==="X" ? "Jugador 1 (X)" : "Jugador 2 (O)";
-  mostrarModal(`🏆 ¡VICTORIA!`,
-    `¡${nombre} gana con ${lineas.length} línea(s) ganadora(s)!\n\nInicia una nueva partida para seguir jugando.`);
-  document.getElementById("turno-msg").textContent = "¡Partida terminada!";
-}
-
-// ── BOTONES ──
-document.getElementById("btn-nueva").onclick = () => inicializar();
-
-document.getElementById("btn-sortear").onclick = () => {
-  if(jugadas > 0) { mostrarModal("Sorteo","Solo puedes sortear al inicio de la partida."); return; }
-  turno = Math.random() < .5 ? "X" : "O";
-  actualizarUI();
-  mostrarModal("¡SORTEO!", `Comienza el Jugador ${turno==="X" ? "1 (X)" : "2 (O)"}`);
-};
-
-document.getElementById("btn-reclamar").onclick = () => {
-  if(terminado) { mostrarModal("Partida terminada","Inicia una nueva partida."); return; }
-  if(jugadas < 7) { mostrarModal("Muy pronto","Se requieren al menos 7 jugadas para reclamar victoria."); return; }
-  const jAnt = turno==="X" ? "O" : "X";
-  if(buscarVictoria(jAnt).length > 0) {
-    pendienteConfirm = jAnt;
-    const n = jAnt==="X" ? "1" : "2";
-    mostrarModal("⚠️ RECLAMAR VICTORIA",
-      `Jugador ${n} (${jAnt}) reclama victoria.\nPresiona CONFIRMAR para validarla.`, "RECLAMAR");
-  } else {
-    mostrarModal("Sin victoria aún","El jugador que acaba de jugar no tiene 4 en línea todavía.");
-  }
-};
-
-document.getElementById("btn-confirmar").onclick = () => {
-  if(terminado || jugadas < 7) return;
-  const jAnt = turno==="X" ? "O" : "X";
-  if(buscarVictoria(jAnt).length > 0) declararGanador(jAnt);
-  else mostrarModal("Sin victoria","No hay línea ganadora confirmada aún.");
-};
-
-// ── MODAL ──
-function mostrarModal(titulo, cuerpo, btnTxt="ACEPTAR") {
-  document.getElementById("modal-t").textContent  = titulo;
-  document.getElementById("modal-b").textContent  = cuerpo;
-  document.getElementById("btn-modal").textContent = btnTxt;
-  document.getElementById("modal").style.display  = "block";
-  document.getElementById("overlay").style.display = "block";
-}
-
-document.getElementById("btn-modal").onclick = () => {
-  document.getElementById("modal").style.display   = "none";
-  document.getElementById("overlay").style.display = "none";
-  if(pendienteConfirm) { declararGanador(pendienteConfirm); pendienteConfirm = null; }
-};
-document.getElementById("overlay").onclick = () => {
-  document.getElementById("modal").style.display   = "none";
-  document.getElementById("overlay").style.display = "none";
-  pendienteConfirm = null;
-};
-
-inicializar();
-window._gc = {
-  get tablero()    { return tablero; },
-  set tablero(v)   { Object.keys(v).forEach(k => tablero[k] = v[k]); },
-  get turno()      { return turno; },
-  set turno(v)     { turno = v; },
-  get terminado()  { return terminado; },
-  set terminado(v) { terminado = v; },
-  get fichasX()    { return fichasX; },
-  set fichasX(v)   { fichasX = v; },
-  get fichasO()    { return fichasO; },
-  set fichasO(v)   { fichasO = v; },
-  get jugadas()    { return jugadas; },
-  set jugadas(v)   { jugadas = v; },
-  renderTablero, actualizarUI, buscarVictoria, resaltarGanadores, mostrarModal, inicializar,
-};
-</script>
-
+<!-- BANNER MODO RECLAMO -->
 <div id="modo-reclamo-banner">
-  MODO RECLAMO: Selecciona las 4 fichas de tu linea ganadora
-  <span id="contador-seleccion">0/4</span> luego pulsa CONFIRMAR
+  MODO RECLAMO: Selecciona las 4 fichas de tu línea ganadora
+  <span id="contador-seleccion">0/4</span> — luego pulsa CONFIRMAR
 </div>
+
+<!-- M5 · CHAT HTML -->
 <div id="chat-container">
   <div id="chat-header" onclick="toggleChat()">
-    <span>CHAT DE PARTIDA</span>
+    <span>💬 CHAT DE PARTIDA</span>
     <div id="chat-badge"></div>
-    <span id="chat-toggle-icon">V</span>
+    <span id="chat-toggle-icon">▲</span>
   </div>
   <div id="chat-body">
-    <div id="chat-msgs">
-      <div class="chat-msg sistema">Chat activo. Saluda a tu oponente!</div>
-    </div>
+    <div id="chat-msgs"></div>
     <div id="chat-input-row">
       <input id="chat-input" placeholder="Escribe un mensaje..." maxlength="200" autocomplete="off"/>
       <button id="chat-send">ENVIAR</button>
@@ -586,11 +345,502 @@ window._gc = {
   </div>
 </div>
 
+<!-- MODAL -->
+<div id="overlay"></div>
+<div id="modal">
+  <h2 id="modal-t"></h2>
+  <p  id="modal-b"></p>
+  <button id="btn-modal">ACEPTAR</button>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     JAVASCRIPT MODULAR
+     ═══════════════════════════════════════════════════════════════ -->
+<script>
+
+/* ═══════════════════════════════════════════════════════
+   M6 · CONFIG — Constantes globales
+   ═══════════════════════════════════════════════════════ */
+const GC = {
+  CX: 240, CY: 240,
+  ANILLOS: ['A','B','C','D'],
+  RING_RADII: {
+    D: { i: 25,  o: 65  },
+    C: { i: 65,  o: 105 },
+    B: { i: 105, o: 145 },
+    A: { i: 145, o: 195 }
+  },
+  FICHA_R: { A: 13, B: 13, C: 13, D: 12 },
+  SVG_NS: 'http://www.w3.org/2000/svg'
+};
+
+/* ═══════════════════════════════════════════════════════
+   M7 · ESTADO — Estado centralizado del juego
+   ═══════════════════════════════════════════════════════ */
+const Estado = {
+  tablero:    {},
+  turno:      'X',
+  terminado:  false,
+  jugadas:    0,
+  fichasX:    16,
+  fichasO:    16,
+  victoriasX: 0,
+  victoriasO: 0,
+
+  init() {
+    GC.ANILLOS.forEach(a => { for(let i=0;i<8;i++) this.tablero[a+i]=null; });
+    this.turno=this.terminado=false; this.turno='X';
+    this.jugadas=0; this.fichasX=this.fichasO=16;
+  },
+
+  fromFirebase(d) {
+    if(!d) return;
+    const p = d.tablero || {};
+    GC.ANILLOS.forEach(a => { for(let i=0;i<8;i++) { const k=a+i; this.tablero[k]=p[k]??null; }});
+    this.turno=d.turno??'X'; this.terminado=d.terminado??false;
+    this.fichasX=d.fichasX??16; this.fichasO=d.fichasO??16;
+    this.jugadas=d.jugadas??0;
+    this.victoriasX=d.victoriasX??0; this.victoriasO=d.victoriasO??0;
+  },
+
+  tableroCompleto() {
+    const t={};
+    GC.ANILLOS.forEach(a => { for(let i=0;i<8;i++) { const k=a+i; t[k]=this.tablero[k]??null; }});
+    return t;
+  },
+
+  tableroVacio() {
+    const t={};
+    GC.ANILLOS.forEach(a => { for(let i=0;i<8;i++) t[a+i]=null; });
+    return t;
+  }
+};
+
+/* ═══════════════════════════════════════════════════════
+   M8 · REGLAS — Motor de reglas y detección de victoria
+   Agregar aquí nuevas líneas ganadoras en el futuro
+   ═══════════════════════════════════════════════════════ */
+const Reglas = (() => {
+  function _genLineas() {
+    const L = [];
+    // Radiales
+    for(let i=0;i<8;i++) L.push(['A'+i,'B'+i,'C'+i,'D'+i]);
+    // Circulares
+    GC.ANILLOS.forEach(a => { for(let i=0;i<8;i++) L.push([a+i,a+((i+1)%8),a+((i+2)%8),a+((i+3)%8)]); });
+    // Espirales horarias
+    for(let i=0;i<8;i++) L.push(['A'+i,'B'+((i+1)%8),'C'+((i+2)%8),'D'+((i+3)%8)]);
+    // Espirales antihorarias
+    for(let i=0;i<8;i++) L.push(['A'+i,'B'+((i+7)%8),'C'+((i+6)%8),'D'+((i+5)%8)]);
+    return L;
+  }
+  const LINEAS = _genLineas();
+
+  return {
+    buscarVictoria(tbl, j)  { return LINEAS.filter(l => l.every(c => tbl[c]===j)); },
+    esLineaValida(sel)      { const s=new Set(sel); return sel.length===4 && LINEAS.some(l=>l.every(c=>s.has(c))); },
+    fichasGanadoras(tbl, j) { const s=new Set(); Reglas.buscarVictoria(tbl,j).forEach(l=>l.forEach(id=>s.add(id))); return [...s]; },
+    LINEAS
+  };
+})();
+
+/* ═══════════════════════════════════════════════════════
+   M9 · TABLERO JS — Render SVG del tablero
+   ═══════════════════════════════════════════════════════ */
+const Tablero = (() => {
+  function centroide(an, i) {
+    const {i:ri,o:ro}=GC.RING_RADII[an];
+    const r=an==='D'?36:(ri+ro)/2;
+    const a=((i*45-90+(i+1)*45-90)/2)*Math.PI/180;
+    const a1=(i*45-90)*Math.PI/180, a2=((i+1)*45-90)*Math.PI/180;
+    const am=(a1+a2)/2;
+    return {x:GC.CX+r*Math.cos(am), y:GC.CY+r*Math.sin(am)};
+  }
+
+  function sectorPath(an, i) {
+    const {i:ri,o:ro}=GC.RING_RADII[an];
+    const a1=(i*45-90)*Math.PI/180, a2=((i+1)*45-90)*Math.PI/180;
+    const ox1=GC.CX+ro*Math.cos(a1),oy1=GC.CY+ro*Math.sin(a1);
+    const ox2=GC.CX+ro*Math.cos(a2),oy2=GC.CY+ro*Math.sin(a2);
+    const ix2=GC.CX+ri*Math.cos(a2),iy2=GC.CY+ri*Math.sin(a2);
+    const ix1=GC.CX+ri*Math.cos(a1),iy1=GC.CY+ri*Math.sin(a1);
+    const f=v=>v.toFixed(2);
+    if(ri===0) return `M ${GC.CX} ${GC.CY} L ${f(ox1)} ${f(oy1)} A ${ro} ${ro} 0 0 1 ${f(ox2)} ${f(oy2)} Z`;
+    return `M ${f(ox1)} ${f(oy1)} A ${ro} ${ro} 0 0 1 ${f(ox2)} ${f(oy2)} L ${f(ix2)} ${f(iy2)} A ${ri} ${ri} 0 0 0 ${f(ix1)} ${f(iy1)} Z`;
+  }
+
+  function render(tbl, onClic) {
+    const SL=document.getElementById('sectors-layer');
+    const FL=document.getElementById('fichas-layer');
+    if(!SL||!FL) return;
+    SL.innerHTML=FL.innerHTML='';
+    GC.ANILLOS.forEach(an => {
+      for(let i=0;i<8;i++) {
+        const id=an+i, est=tbl[id], pos=centroide(an,i), fr=GC.FICHA_R[an];
+        // Sector
+        const sec=document.createElementNS(GC.SVG_NS,'path');
+        sec.setAttribute('d',sectorPath(an,i));
+        sec.setAttribute('fill','transparent'); sec.setAttribute('stroke','none');
+        sec.dataset.id=id;
+        if(!est&&onClic){
+          sec.style.cursor='pointer';
+          sec.addEventListener('click',()=>onClic(id));
+          sec.addEventListener('mouseenter',()=>sec.setAttribute('fill','rgba(255,255,255,0.03)'));
+          sec.addEventListener('mouseleave',()=>sec.setAttribute('fill','transparent'));
+        }
+        SL.appendChild(sec);
+        // Ficha
+        const g=document.createElementNS(GC.SVG_NS,'g'); g.dataset.id=id;
+        const c=document.createElementNS(GC.SVG_NS,'circle');
+        c.setAttribute('cx',pos.x.toFixed(2)); c.setAttribute('cy',pos.y.toFixed(2)); c.setAttribute('r',fr);
+        if(!est){
+          c.classList.add('ficha-vacia');
+          if(onClic){c.style.cursor='pointer'; c.addEventListener('click',()=>onClic(id));}
+          const l=document.createElementNS(GC.SVG_NS,'text');
+          l.setAttribute('x',pos.x.toFixed(2)); l.setAttribute('y',pos.y.toFixed(2));
+          l.setAttribute('font-size',an==='D'?'7':'9'); l.classList.add('cell-lbl');
+          l.textContent=id; l.style.pointerEvents='none';
+          g.appendChild(c); g.appendChild(l);
+        } else {
+          c.classList.add('ficha-'+est.toLowerCase());
+          const t=document.createElementNS(GC.SVG_NS,'text');
+          t.setAttribute('x',pos.x.toFixed(2)); t.setAttribute('y',pos.y.toFixed(2));
+          t.setAttribute('font-size',an==='D'?'10':'12');
+          t.classList.add('token-txt',est.toLowerCase()); t.textContent=est;
+          g.appendChild(c); g.appendChild(t);
+        }
+        FL.appendChild(g);
+      }
+    });
+  }
+
+  function resaltarGanadores(fichas, j) {
+    fichas.forEach(id => {
+      const c=document.querySelector('[data-id="'+id+'"] circle');
+      if(c) c.classList.add('ficha-winner-'+j.toLowerCase());
+    });
+  }
+
+  function marcarReclamo(id, j, activo) {
+    const c=document.querySelector('[data-id="'+id+'"] circle');
+    if(!c) return;
+    if(activo){
+      c.classList.remove('ficha-x','ficha-o','ficha-winner-x','ficha-winner-o');
+      c.classList.add(j==='X'?'ficha-seleccionada-x':'ficha-seleccionada-o');
+      c.style.stroke='#ffdd00'; c.style.strokeWidth='3';
+      c.style.fill=j==='X'?'#3a2a00':'#1a2a00';
+      c.style.filter='drop-shadow(0 0 8px rgba(255,220,0,0.9))';
+    } else {
+      c.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
+      c.classList.add('ficha-'+j.toLowerCase());
+      c.style.stroke=c.style.strokeWidth=c.style.fill=c.style.filter='';
+    }
+  }
+
+  function reaplicarReclamo(sel, j) { sel.forEach(id=>marcarReclamo(id,j,true)); }
+
+  function casillaMasCercana(svgX, svgY, permitidas) {
+    let mejor=null, dMin=Infinity;
+    permitidas.forEach(id=>{
+      const an=id[0], num=parseInt(id[1]);
+      const {i:ri,o:ro}=GC.RING_RADII[an];
+      const r=an==='D'?36:(ri+ro)/2;
+      const a1=(num*45-90)*Math.PI/180, a2=((num+1)*45-90)*Math.PI/180;
+      const am=(a1+a2)/2;
+      const cx=GC.CX+r*Math.cos(am), cy=GC.CY+r*Math.sin(am);
+      const d=Math.sqrt((svgX-cx)**2+(svgY-cy)**2);
+      if(d<dMin){dMin=d; mejor=id;}
+    });
+    return dMin<25?mejor:null;
+  }
+
+  return {render, resaltarGanadores, marcarReclamo, reaplicarReclamo, casillaMasCercana};
+})();
+
+/* ═══════════════════════════════════════════════════════
+   M10· UI — Interfaz de usuario centralizada
+   ═══════════════════════════════════════════════════════ */
+const UI = (() => {
+  const $ = id => document.getElementById(id);
+
+  function actualizarPaneles(e) {
+    $('fichas-x').textContent=e.fichasX; $('fichas-o').textContent=e.fichasO;
+    $('stat-x').textContent=e.victoriasX; $('stat-o').textContent=e.victoriasO;
+    const tf=$('turno-ficha');
+    if(tf){tf.textContent=e.turno; tf.className=e.turno.toLowerCase();}
+  }
+
+  function setMsg(msg)    { const el=$('turno-msg'); if(el) el.textContent=msg; }
+  function setStats(vX,vO){ $('stat-x').textContent=vX; $('stat-o').textContent=vO; }
+
+  let _cb=null;
+  function modal(t,b,btn='ACEPTAR',cb=null){
+    $('modal-t').textContent=t; $('modal-b').textContent=b;
+    $('btn-modal').textContent=btn;
+    $('modal').style.display=$('overlay').style.display='block'; _cb=cb;
+  }
+  function cerrarModal(){
+    $('modal').style.display=$('overlay').style.display='none';
+    if(_cb){_cb(); _cb=null;}
+  }
+  function initModal(){
+    $('btn-modal').onclick=cerrarModal;
+    $('overlay').onclick=()=>{_cb=null; cerrarModal();};
+  }
+
+  function bloquearTablero(b){
+    const bl=$('tablero-block'), sv=$('tablero-svg');
+    if(bl) bl.style.display=b?'block':'none';
+    if(sv) sv.style.opacity=b?'0.85':'1';
+  }
+  function bloquearBtns(ids, b){
+    ids.forEach(id=>{
+      const el=$(id); if(!el) return;
+      el.style.opacity=b?'0.4':''; el.style.pointerEvents=b?'none':'';
+    });
+  }
+  function bannerReclamo(v, cnt){
+    const b=$('modo-reclamo-banner'); if(b) b.style.display=v?'block':'none';
+    const c=$('contador-seleccion'); if(c&&cnt!==undefined) c.textContent=cnt+'/4';
+  }
+  function indicadorOnline(sala, rol){
+    const i=$('online-ind'), t=$('online-txt');
+    if(i) i.style.display='block';
+    if(t) t.textContent='Sala: '+sala+' · Tú: '+(rol==='X'?'Jugador 1 (X)':'Jugador 2 (O)');
+  }
+  function lobbyPaso(p){
+    $('lp-inicio').style.display=p==='inicio'?'':'none';
+    $('lp-crear').style.display=p==='crear'?'':'none';
+    $('lp-unirse').style.display=p==='unirse'?'':'none';
+  }
+  function lobbyVisible(v){ const el=$('lobby-overlay'); if(el) el.style.display=v?'flex':'none'; }
+
+  return {actualizarPaneles,setMsg,setStats,modal,cerrarModal,initModal,
+          bloquearTablero,bloquearBtns,bannerReclamo,indicadorOnline,lobbyPaso,lobbyVisible};
+})();
+
+/* ═══════════════════════════════════════════════════════
+   M11· RECLAMO — Proceso de reclamo de victoria
+   ═══════════════════════════════════════════════════════ */
+const Reclamo = (() => {
+  let _activo=false, _sel=[], _perm=new Set(), _rol=null;
+
+  function init(rol){ _rol=rol; }
+
+  function activar(fichas){
+    _activo=true; _sel=[]; _perm=new Set(fichas);
+    UI.bannerReclamo(true,0);
+    document.getElementById('tablero-block').style.display='block';
+    document.getElementById('tablero-svg').style.opacity='1';
+  }
+
+  function desactivar(){
+    _activo=false; _sel=[]; _perm=new Set();
+    UI.bannerReclamo(false);
+    UI.bloquearTablero(true);
+    document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el=>{
+      const g=el.closest('[data-id]'); if(!g) return;
+      const cid=g.dataset.id;
+      el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
+      el.style.stroke=el.style.strokeWidth=el.style.fill=el.style.filter='';
+      if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
+    });
+  }
+
+  function seleccionar(id){
+    if(!_activo||!_perm.has(id)){ UI.modal('Ficha no válida','Solo puedes seleccionar fichas de líneas ganadoras.'); return; }
+    const idx=_sel.indexOf(id);
+    if(idx>=0){
+      _sel.splice(idx,1); Tablero.marcarReclamo(id,_rol,false);
+    } else {
+      if(_sel.length>=4){ UI.modal('Ya tienes 4 fichas','Deselecciona una antes de agregar otra.'); return; }
+      _sel.push(id); Tablero.marcarReclamo(id,_rol,true);
+    }
+    UI.bannerReclamo(true,_sel.length);
+    Firebase.syncMarcadas(_sel.slice());
+  }
+
+  function reaplicar(){ if(_activo&&_sel.length>0) Tablero.reaplicarReclamo(_sel,_rol); }
+
+  return {init, activar, desactivar, seleccionar, reaplicar,
+          getSel:()=>[..._sel], isActivo:()=>_activo};
+})();
+
+/* ═══════════════════════════════════════════════════════
+   M12· JUEGO — Orquestador principal
+   ═══════════════════════════════════════════════════════ */
+const Juego = (() => {
+  let _sorteoVisto=null, _victoriaVista=false, _reclamoKey=null;
+
+  function aplicarEstado(d, miRol) {
+    if(!d) return;
+    Estado.fromFirebase(d);
+
+    // Render (omitir durante reclamo activo del reclamante)
+    if(Reclamo.isActivo()){
+      UI.actualizarPaneles(Estado); Reclamo.reaplicar();
+    } else {
+      Tablero.render(Estado.tablero, id=>Firebase.jugar(id));
+      UI.actualizarPaneles(Estado);
+    }
+    // Estadísticas en tiempo real
+    UI.setStats(d.victoriasX||0, d.victoriasO||0);
+
+    if(d.terminado)                              _faseTerminado(d, miRol);
+    else if(d.fase==='esperando_sorteo'||!d.turno) _faseEspera(d);
+    else if(d.fase==='reclamo')                  _faseReclamo(d, miRol);
+    else if(d.fase==='jugando')                  _faseJugando(d, miRol);
+  }
+
+  function _faseTerminado(d, miRol){
+    UI.bloquearTablero(true);
+    UI.setMsg('Partida terminada. Pulsa Nueva Partida.');
+    document.getElementById('btn-nueva').style.opacity='';
+    document.getElementById('btn-nueva').style.pointerEvents='';
+    UI.bloquearBtns(['btn-sortear'],true);
+    UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+    if(!_victoriaVista&&d.ganador){
+      _victoriaVista=true;
+      if(d.fichas_ganadoras_reclamadas) Tablero.resaltarGanadores(d.fichas_ganadoras_reclamadas,d.ganador);
+      const esMio=d.ganador===miRol;
+      setTimeout(()=>UI.modal(esMio?'¡GANASTE!':'Perdiste',
+        esMio?'¡Felicitaciones! Ganaste la partida.'
+             :(d.ganador==='X'?'Jugador 1 (X)':'Jugador 2 (O)')+' ganó esta partida.'),400);
+    }
+  }
+
+  function _faseEspera(d){
+    UI.bloquearTablero(true);
+    UI.setMsg('Pulsa SORTEAR PARTIDA para comenzar.');
+    if(!d.sorteo_usado) UI.bloquearBtns(['btn-sortear'],false);
+    UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+  }
+
+  function _faseReclamo(d, miRol){
+    UI.bloquearTablero(true);
+    if(d.reclamante===miRol){
+      UI.setMsg('RECLAMO ACTIVO: selecciona tus 4 fichas ganadoras.');
+    } else {
+      UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+      UI.setMsg('Tu oponente está marcando su línea ganadora...');
+      const key='rec_'+(d.reclamo_ts||'');
+      if(_reclamoKey!==key){
+        _reclamoKey=key;
+        UI.modal('Reclamo de victoria',
+          'Tu oponente ('+(d.reclamante==='X'?'Jugador 1 (X)':'Jugador 2 (O)')+
+          ') está reclamando. Observa las fichas que selecciona en el tablero.');
+      }
+      if(d.fichas_marcadas_reclamo){
+        document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el=>{
+          const g=el.closest('[data-id]'); if(!g) return;
+          const cid=g.dataset.id;
+          if(!d.fichas_marcadas_reclamo.includes(cid)){
+            el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
+            if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
+          }
+        });
+        d.fichas_marcadas_reclamo.forEach(id=>Tablero.marcarReclamo(id,d.reclamante,true));
+      }
+    }
+  }
+
+  function _faseJugando(d, miRol){
+    UI.bloquearBtns(['btn-nueva','btn-sortear'],true);
+    UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+    // Limpiar amarillos residuales
+    document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el=>{
+      const g=el.closest('[data-id]'); if(!g) return;
+      const cid=g.dataset.id;
+      el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
+      el.style.stroke=el.style.strokeWidth=el.style.fill=el.style.filter='';
+      if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
+    });
+    // Sorteo nuevo
+    if(d.sorteo_id&&_sorteoVisto!==d.sorteo_id){
+      _sorteoVisto=d.sorteo_id;
+      UI.bloquearBtns(['btn-sortear','btn-nueva'],true);
+      if(d.sorteo_quien!==miRol)
+        UI.modal('¡SORTEO!','Comienza el '+(d.ultimo_sorteo==='X'?'Jugador 1 (X)':'Jugador 2 (O)'));
+    }
+    const esMio=d.turno===miRol;
+    UI.bloquearTablero(!esMio);
+    UI.setMsg(esMio?'¡ES TU TURNO! Haz clic en una casilla.':'Esperando jugada del oponente...');
+  }
+
+  function reset(){ _sorteoVisto=null; _victoriaVista=false; _reclamoKey=null; }
+
+  return {aplicarEstado, reset};
+})();
+
+/* ═══════════════════════════════════════════════════════
+   M14· CHAT JS — Chat en tiempo real
+   ═══════════════════════════════════════════════════════ */
+const Chat = (() => {
+  let _db=null, _sala=null, _rol=null, _abierto=false, _noLeidos=0;
+  const $=id=>document.getElementById(id);
+
+  function init(db, sala, rol){
+    _db=db; _sala=sala; _rol=rol;
+    $('chat-container').style.display='block';
+    _abierto=true; $('chat-body').style.display='flex';
+    $('chat-toggle-icon').textContent='▲';
+    _agregar('Chat activo. ¡Saluda a tu oponente!','sistema');
+    const ts=Date.now(); const vistos=new Set();
+    const {ref,onValue}=window._fbDB;
+    onValue(ref(_db,'salas/'+_sala+'/chat'), snap=>{
+      if(!snap.exists()) return;
+      Object.keys(snap.val()).sort().forEach(k=>{
+        if(vistos.has(k)) return;
+        const m=snap.val()[k];
+        if(m.ts<ts) return;
+        vistos.add(k);
+        if(m.rol===_rol) return;
+        _agregar(m.texto,'otro',_rol==='X'?'Jugador 2 (O)':'Jugador 1 (X)');
+      });
+    });
+    $('chat-send').onclick=enviar;
+    $('chat-input').onkeydown=e=>{if(e.key==='Enter')enviar();};
+  }
+
+  function _agregar(txt, tipo, autor){
+    const msgs=$('chat-msgs');
+    const div=document.createElement('div'); div.classList.add('chat-msg',tipo);
+    if(autor){const a=document.createElement('div');a.classList.add('chat-autor');a.textContent=autor;div.appendChild(a);}
+    div.appendChild(document.createTextNode(txt));
+    msgs.appendChild(div); msgs.scrollTop=msgs.scrollHeight;
+    if(!_abierto&&tipo==='otro'){_noLeidos++;$('chat-badge').textContent=_noLeidos;$('chat-badge').style.display='block';}
+  }
+
+  async function enviar(){
+    const inp=$('chat-input'); const txt=inp.value.trim(); if(!txt) return;
+    inp.value=''; _agregar(txt,'yo','Tú');
+    const {ref,set}=window._fbDB;
+    await set(ref(_db,'salas/'+_sala+'/chat/'+Date.now()),{rol:_rol,texto:txt,ts:Date.now()});
+  }
+
+  function toggle(){
+    _abierto=!_abierto; $('chat-body').style.display=_abierto?'flex':'none';
+    $('chat-toggle-icon').textContent=_abierto?'▲':'▼';
+    if(_abierto){_noLeidos=0;$('chat-badge').style.display='none';$('chat-badge').textContent='';$('chat-msgs').scrollTop=$('chat-msgs').scrollHeight;}
+  }
+
+  return {init, enviar, toggle};
+})();
+window.toggleChat=()=>Chat.toggle();
+
+</script>
+
+<!-- ═══════════════════════════════════════════════════════
+     M13· FIREBASE — Sincronización + M15· MAIN — Eventos
+     (módulo ES6 separado para imports de Firebase SDK)
+     ═══════════════════════════════════════════════════════ -->
 <script type="module">
 import { initializeApp }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getDatabase, ref, set, get, onValue, update }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+// Exponer funciones Firebase para el módulo Chat
+window._fbDB = { ref, set, get, onValue, update };
 
 const db = getDatabase(initializeApp({
   apiKey:            "AIzaSyB580pNeqc-VMxaafC1LUBWCQM_aW26emY",
@@ -602,604 +852,232 @@ const db = getDatabase(initializeApp({
   databaseURL:       "https://gato-circular-default-rtdb.firebaseio.com"
 }));
 
-const gc  = () => window._gc;
-const $   = id => document.getElementById(id);
-const ANILLOS = ['A','B','C','D'];
+/* ── M13 · FIREBASE ─────────────────────────────────── */
+let _salaRef=null, _sala=null, _rol=null, _iniciado=false;
+const $=id=>document.getElementById(id);
 
-function tblCompleto(parcial) {
-  const t = {};
-  ANILLOS.forEach(a => {
-    for(let i = 0; i < 8; i++) {
-      const k = a + i;
-      t[k] = (parcial && parcial[k] != null) ? parcial[k] : null;
-    }
-  });
-  return t;
-}
-function tblVacio() { return tblCompleto({}); }
-
-function bloquearTablero(bloqueado) {
-  $('tablero-block').style.display = bloqueado ? 'block' : 'none';
-  $('tablero-svg').style.opacity   = bloqueado ? '0.85' : '1';
+function _codigo(){
+  const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from({length:4},()=>c[Math.floor(Math.random()*c.length)]).join('');
 }
 
-function bloquearBotones(ids, bloqueado) {
-  ids.forEach(id => {
-    $(id).style.opacity       = bloqueado ? '0.4' : '';
-    $(id).style.pointerEvents = bloqueado ? 'none' : '';
-  });
-}
-
-let miRol = null, salaRef = null, codigoSala = null, juegoIniciado = false;
-let modoReclamo = false, fichasSeleccionadas = [], fichasPermitidas = new Set();
-
-// LOBBY
-function paso(p) {
-  $('lp-inicio').style.display = p === 'inicio' ? '' : 'none';
-  $('lp-crear').style.display  = p === 'crear'  ? '' : 'none';
-  $('lp-unirse').style.display = p === 'unirse' ? '' : 'none';
-}
-
-$('lbtn-crear').onclick = async () => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  codigoSala = Array.from({length:4}, () => chars[Math.floor(Math.random()*chars.length)]).join('');
-  miRol = 'X';
-  salaRef = ref(db, 'salas/' + codigoSala);
-  await set(salaRef, {
-    tablero: tblVacio(), turno: null, fase: 'esperando_sorteo',
-    terminado: false, ganador: null, jugadas: 0, fichasX: 16, fichasO: 16,
-    j1: 'online', j2: 'espera', ts: Date.now(),
-    ultimo_sorteo: null, sorteo_id: null, sorteo_usado: false
-  });
-  $('lobby-codigo').textContent = codigoSala;
-  paso('crear');
-  escuchar();
-};
-
-$('lbtn-copiar').onclick = () => {
-  navigator.clipboard.writeText(codigoSala);
-  $('lbtn-copiar').textContent = 'COPIADO!';
-  setTimeout(() => $('lbtn-copiar').textContent = 'COPIAR CODIGO', 2000);
-};
-$('lbtn-volver').onclick  = () => paso('inicio');
-$('lbtn-volver2').onclick = () => paso('inicio');
-
-$('lbtn-unirse').onclick = () => { paso('unirse'); $('lobby-input').focus(); };
-$('lobby-input').oninput = e => {
-  e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
-};
-
-$('lbtn-conectar').onclick = async () => {
-  const cod = $('lobby-input').value.trim().toUpperCase();
-  if(cod.length !== 4) { $('lst-unirse').textContent = 'Codigo de 4 caracteres.'; return; }
-  const snap = await get(ref(db, 'salas/' + cod));
-  if(!snap.exists())             { $('lst-unirse').textContent = 'Sala no encontrada.'; return; }
-  if(snap.val().j2 !== 'espera') { $('lst-unirse').textContent = 'Sala ya esta llena.'; return; }
-  codigoSala = cod; miRol = 'O';
-  salaRef = ref(db, 'salas/' + cod);
-  await update(salaRef, { j2: 'online', j1: 'online' });
-  escuchar();
-};
-
-// LISTENER PRINCIPAL
-function escuchar() {
-  onValue(salaRef, snap => {
-    if(!snap.exists()) return;
-    const d = snap.val();
-
-    if(!juegoIniciado && d.j1 === 'online' && d.j2 === 'online') {
-      juegoIniciado = true;
-      $('lobby-overlay').style.display = 'none';
-      $('online-ind').style.display    = 'block';
-      $('online-txt').textContent = 'Sala: ' + codigoSala + ' Tu: ' + (miRol === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)');
-      bloquearTablero(true);
-      iniciarChat();
-    }
-    if(!juegoIniciado && miRol === 'X' && d.j2 === 'online') {
-      update(salaRef, { j1: 'online' });
-    }
-    if(!juegoIniciado && miRol === 'O' && d.j1 === 'online' && d.j2 === 'online') {
-      juegoIniciado = true;
-      $('lobby-overlay').style.display = 'none';
-      $('online-ind').style.display    = 'block';
-      $('online-txt').textContent = 'Sala: ' + codigoSala + ' Tu: Jugador 2 (O)';
-      bloquearTablero(true);
-      iniciarChat();
-    }
-    if(juegoIniciado) aplicarEstado(d);
-  });
-}
-
-// APLICAR ESTADO
-function aplicarEstado(d) {
-  if(!d) return;
-  const g = gc();
-  const t = tblCompleto(d.tablero);
-  g.tablero   = t;
-  g.turno     = d.turno     != null ? d.turno : 'X';
-  g.terminado = d.terminado != null ? d.terminado : false;
-  g.fichasX   = d.fichasX   != null ? d.fichasX : 16;
-  g.fichasO   = d.fichasO   != null ? d.fichasO : 16;
-  g.jugadas   = d.jugadas   != null ? d.jugadas : 0;
-  // Durante modo reclamo del reclamante: NO re-renderizar el tablero
-  // para evitar que se borren los colores amarillos aplicados.
-  if(modoReclamo) {
-    g.actualizarUI();
-  } else {
-    g.renderTablero();
-    g.actualizarUI();
-  }
-
-  // Actualizar estadisticas en pantalla para ambos jugadores (tiempo real)
-  if(d.victoriasX !== undefined) {
-    document.getElementById('stat-x').textContent = d.victoriasX;
-  }
-  if(d.victoriasO !== undefined) {
-    document.getElementById('stat-o').textContent = d.victoriasO;
-  }
-
-  if(d.terminado) {
-    // Partida terminada
-    bloquearTablero(true);
-    $('turno-msg').textContent = 'Partida terminada. Pulsa Nueva Partida.';
-    // Desbloquear btn-nueva para siguiente partida, sortear sigue bloqueado hasta nueva partida
-    $('btn-nueva').style.opacity = '';
-    $('btn-nueva').style.pointerEvents = '';
-    bloquearBotones(['btn-sortear'], true);
-    bloquearBotones(['btn-reclamar','btn-confirmar'], false);
-
-    if(!window._victoriaYaMostrada) {
-      window._victoriaYaMostrada = true;
-      // Resaltar SOLO las fichas reclamadas (no todas las lineas)
-      if(d.fichas_ganadoras_reclamadas && d.fichas_ganadoras_reclamadas.length === 4) {
-        d.fichas_ganadoras_reclamadas.forEach(id => {
-          const circ = document.querySelector('[data-id="' + id + '"] circle');
-          if(circ) {
-            circ.classList.remove('ficha-x','ficha-o','ficha-seleccionada-x','ficha-seleccionada-o');
-            circ.classList.add(d.ganador === 'X' ? 'ficha-winner-x' : 'ficha-winner-o');
-          }
-        });
-      }
-      const esTuyo = d.ganador === miRol;
-      setTimeout(() => gc().mostrarModal(
-        esTuyo ? 'GANASTE!' : 'Perdiste',
-        esTuyo ? 'Felicitaciones! Ganaste la partida.'
-               : (d.ganador === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)') + ' gano esta partida.'
-      ), 400);
-    }
-
-  } else if(d.fase === 'esperando_sorteo' || !d.turno) {
-    bloquearTablero(true);
-    $('turno-msg').textContent = 'Pulsa SORTEAR PARTIDA para comenzar.';
-    // Nueva partida: desbloquear sortear, bloquear nueva durante el juego
-    if(!d.sorteo_usado) {
-      bloquearBotones(['btn-sortear'], false);
-    }
-    bloquearBotones(['btn-reclamar','btn-confirmar'], false);
-
-  } else if(d.fase === 'reclamo') {
-    bloquearTablero(true);
-    if(d.reclamante === miRol) {
-      $('turno-msg').textContent = 'RECLAMO ACTIVO: selecciona tus 4 fichas ganadoras.';
-    } else {
-      // OPONENTE durante reclamo: bloquear TODOS los botones
-      bloquearBotones(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'], true);
-      $('turno-msg').textContent = 'Tu oponente esta marcando su linea ganadora...';
-
-      // Aviso modal (solo una vez por reclamo)
-      const keyAviso = 'reclamo_' + (d.reclamo_ts || '');
-      if(window._avisoReclamoMostrado !== keyAviso) {
-        window._avisoReclamoMostrado = keyAviso;
-        gc().mostrarModal('Reclamo de victoria',
-          'Tu oponente (' + (d.reclamante === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)') +
-          ') esta reclamando. Observa las fichas que selecciona en el tablero.');
-      }
-
-      // Mostrar fichas marcadas por el reclamante en tiempo real
-      if(d.fichas_marcadas_reclamo) {
-        // Limpiar amarillos anteriores que ya no están en la lista
-        document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el => {
-          const g2 = el.closest('[data-id]');
-          if(!g2) return;
-          const cid = g2.dataset.id;
-          if(!d.fichas_marcadas_reclamo.includes(cid)) {
-            el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
-            if(gc().tablero[cid]) el.classList.add(gc().tablero[cid]==='X'?'ficha-x':'ficha-o');
-          }
-        });
-        // Iluminar fichas marcadas
-        d.fichas_marcadas_reclamo.forEach(id => {
-          const circ = document.querySelector('[data-id="' + id + '"] circle');
-          if(circ) {
-            circ.classList.remove('ficha-x','ficha-o');
-            circ.classList.add(d.reclamante === 'X' ? 'ficha-seleccionada-x' : 'ficha-seleccionada-o');
-          }
-        });
-      }
-    }
-
-  } else if(d.fase === 'jugando') {
-    // SIEMPRE bloquear btn-nueva y btn-sortear durante el juego (para ambos jugadores)
-    bloquearBotones(['btn-nueva','btn-sortear'], true);
-    bloquearBotones(['btn-reclamar','btn-confirmar'], false);
-
-    // Limpiar fichas amarillas si quedaron de un reclamo cancelado
-    document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el => {
-      const g2 = el.closest('[data-id]');
-      if(!g2) return;
-      const cid = g2.dataset.id;
-      el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
-      if(gc().tablero[cid]) el.classList.add(gc().tablero[cid]==='X'?'ficha-x':'ficha-o');
+window.Firebase = {
+  async crearSala(){
+    _sala=_codigo(); _rol='X';
+    _salaRef=ref(db,'salas/'+_sala);
+    await set(_salaRef,{
+      tablero:Estado.tableroVacio(),turno:null,fase:'esperando_sorteo',
+      terminado:false,ganador:null,jugadas:0,fichasX:16,fichasO:16,
+      j1:'online',j2:'espera',ts:Date.now(),
+      ultimo_sorteo:null,sorteo_id:null,sorteo_usado:false,victoriasX:0,victoriasO:0
     });
+    $('lobby-codigo').textContent=_sala;
+    UI.lobbyPaso('crear');
+    _escuchar();
+  },
 
-    // Mostrar modal de sorteo al oponente (solo una vez por sorteo_id)
-    if(d.sorteo_id && window._sorteoMostrado !== d.sorteo_id) {
-      window._sorteoMostrado = d.sorteo_id;
-      // Mostrar solo al jugador que NO sorteó (quien sorteó ya lo vio)
-      // Usamos sorteo_quien para saber quién hizo clic (no quién empieza)
-      const yoSortee = d.sorteo_quien === miRol;
-      if(!yoSortee) {
-        gc().mostrarModal('SORTEO!',
-          'Comienza el ' + (d.ultimo_sorteo === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)'));
-      }
+  async unirseASala(cod){
+    const snap=await get(ref(db,'salas/'+cod));
+    if(!snap.exists()) return {ok:false,msg:'Sala no encontrada.'};
+    if(snap.val().j2!=='espera') return {ok:false,msg:'Sala ya está llena.'};
+    _sala=cod; _rol='O'; _salaRef=ref(db,'salas/'+cod);
+    await update(_salaRef,{j2:'online',j1:'online'});
+    _escuchar();
+    return {ok:true};
+  },
+
+  copiarCodigo(){ navigator.clipboard.writeText(_sala); },
+  getMiRol(){ return _rol; },
+  isIniciado(){ return _iniciado; },
+
+  async jugar(id){
+    const snap=await get(_salaRef); if(!snap.exists()) return;
+    const d=snap.val(), t=Estado.tableroCompleto();
+    if(d.terminado||d.fase!=='jugando'||t[id]!==null||d.turno!==_rol) return;
+    t[id]=_rol; UI.bloquearTablero(true);
+    await set(ref(db,'salas/'+_sala),Object.assign({},d,{
+      tablero:t,turno:_rol==='X'?'O':'X',fase:'jugando',
+      jugadas:(d.jugadas||0)+1,
+      fichasX:_rol==='X'?(d.fichasX??16)-1:(d.fichasX??16),
+      fichasO:_rol==='O'?(d.fichasO??16)-1:(d.fichasO??16),
+    }));
+  },
+
+  async publicarReclamo(fichas){
+    await update(_salaRef,{fase:'reclamo',reclamante:_rol,
+      reclamo_fichas:fichas,reclamo_ts:Date.now(),fichas_marcadas_reclamo:[]});
+  },
+
+  async syncMarcadas(fichas){ await update(_salaRef,{fichas_marcadas_reclamo:fichas}); },
+
+  async confirmarVictoria(fichas){
+    const snap=await get(_salaRef); const d=snap.val();
+    const vX=(d.victoriasX||0)+(_rol==='X'?1:0);
+    const vO=(d.victoriasO||0)+(_rol==='O'?1:0);
+    await update(_salaRef,{terminado:true,ganador:_rol,fase:'terminado',
+      fichas_ganadoras_reclamadas:fichas,fichas_marcadas_reclamo:null,
+      reclamante:null,victoriasX:vX,victoriasO:vO});
+  },
+
+  async cancelarReclamo(){
+    await update(_salaRef,{fase:'jugando',reclamante:null,reclamo_fichas:null,fichas_marcadas_reclamo:null});
+  },
+
+  async lineaInvalida(){
+    await update(_salaRef,{fase:'jugando',reclamante:null,reclamo_fichas:null,fichas_marcadas_reclamo:null});
+  },
+
+  async nuevaPartida(){
+    const snap=await get(_salaRef); const d=snap.val();
+    await update(_salaRef,{
+      tablero:Estado.tableroVacio(),turno:null,fase:'esperando_sorteo',
+      terminado:false,ganador:null,jugadas:0,fichasX:16,fichasO:16,
+      ultimo_sorteo:null,sorteo_id:null,sorteo_usado:false,
+      fichas_ganadoras_reclamadas:null,fichas_marcadas_reclamo:null,
+      reclamante:null,reclamo_fichas:null,
+      victoriasX:d.victoriasX||0,victoriasO:d.victoriasO||0
+    });
+  },
+
+  async sortear(){
+    const snap=await get(_salaRef); const d=snap.val();
+    if(d.sorteo_usado) return {ok:false,msg:'Ya se sorteó esta partida.'};
+    if(d.fase!=='esperando_sorteo') return {ok:false,msg:'Solo al inicio de la partida.'};
+    const primero=Math.random()<.5?'X':'O';
+    const sid=Date.now().toString();
+    UI.bloquearBtns(['btn-sortear','btn-nueva'],true);
+    await update(_salaRef,{turno:primero,fase:'jugando',
+      ultimo_sorteo:primero,sorteo_id:sid,sorteo_usado:true,sorteo_quien:_rol});
+    return {ok:true,primero};
+  }
+};
+
+function _escuchar(){
+  onValue(_salaRef, snap=>{
+    if(!snap.exists()) return;
+    const d=snap.val();
+    if(!_iniciado&&d.j1==='online'&&d.j2==='online'){
+      _iniciado=true;
+      UI.lobbyVisible(false);
+      UI.indicadorOnline(_sala,_rol);
+      UI.bloquearTablero(true);
+      UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+      Reclamo.init(_rol);
+      Chat.init(db,_sala,_rol);
     }
-
-    const esMiTurno = g.turno === miRol;
-    bloquearTablero(!esMiTurno);
-    $('turno-msg').textContent = esMiTurno
-      ? 'ES TU TURNO! Haz clic en una casilla.'
-      : 'Esperando jugada del oponente...';
-  }
-}
-
-// JUGADA ONLINE
-$('tablero-svg').addEventListener('click', async e => {
-  if(modoReclamo) return;
-  if(!juegoIniciado || gc().terminado || gc().turno !== miRol) return;
-  let el = e.target;
-  while(el && el.id !== 'tablero-svg') {
-    if(el.dataset && el.dataset.id) { await jugarOnline(el.dataset.id); return; }
-    el = el.parentElement;
-  }
-}, true);
-
-async function jugarOnline(id) {
-  const snap = await get(salaRef);
-  if(!snap.exists()) return;
-  const d = snap.val();
-  const t = tblCompleto(d.tablero);
-  if(d.terminado || d.fase !== 'jugando' || t[id] !== null || d.turno !== miRol) return;
-  t[id] = miRol;
-  bloquearTablero(true);
-  await set(ref(db, 'salas/' + codigoSala), Object.assign({}, d, {
-    tablero: t,
-    turno:   miRol === 'X' ? 'O' : 'X',
-    fase:    'jugando',
-    jugadas: (d.jugadas || 0) + 1,
-    fichasX: miRol === 'X' ? (d.fichasX != null ? d.fichasX : 16) - 1 : (d.fichasX != null ? d.fichasX : 16),
-    fichasO: miRol === 'O' ? (d.fichasO != null ? d.fichasO : 16) - 1 : (d.fichasO != null ? d.fichasO : 16),
-  }));
-}
-
-// MODO RECLAMO
-function activarModoReclamo(fichasGanadoras) {
-  modoReclamo = true;
-  fichasSeleccionadas = [];
-  fichasPermitidas = new Set(fichasGanadoras);
-  $('modo-reclamo-banner').style.display = 'block';
-  $('contador-seleccion').textContent = '0/4';
-  // Desbloquear overlay para poder hacer clic en fichas permitidas
-  $('tablero-block').style.display = 'block';
-  $('tablero-svg').style.opacity = '1';
-}
-
-function desactivarModoReclamo() {
-  modoReclamo = false;
-  fichasSeleccionadas = [];
-  fichasPermitidas = new Set();
-  $('modo-reclamo-banner').style.display = 'none';
-  bloquearTablero(true);
-  // Limpiar fichas amarillas del reclamante
-  document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el => {
-    const g2 = el.closest('[data-id]');
-    if(!g2) return;
-    const cid = g2.dataset.id;
-    el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
-    if(gc().tablero[cid]) el.classList.add(gc().tablero[cid]==='X'?'ficha-x':'ficha-o');
+    if(!_iniciado&&_rol==='X'&&d.j2==='online') update(_salaRef,{j1:'online'});
+    if(_iniciado) Juego.aplicarEstado(d,_rol);
   });
 }
 
-$('btn-reclamar').addEventListener('click', async e => {
-  if(!juegoIniciado) return;
-  e.stopImmediatePropagation();
+/* ── M15 · MAIN — Eventos de botones ───────────────── */
+UI.initModal();
+UI.lobbyPaso('inicio');
+UI.lobbyVisible(true);
 
-  if(modoReclamo) {
-    desactivarModoReclamo();
-    await update(salaRef, { fase: 'jugando', reclamante: null, reclamo_fichas: null, fichas_marcadas_reclamo: null });
-    bloquearBotones(['btn-reclamar','btn-confirmar'], false);
-    gc().mostrarModal('Reclamo cancelado', 'El reclamo fue cancelado. El juego continua.');
+$('lbtn-crear').onclick  = ()=>Firebase.crearSala();
+$('lbtn-copiar').onclick = ()=>{ Firebase.copiarCodigo(); $('lbtn-copiar').textContent='✓ COPIADO!'; setTimeout(()=>$('lbtn-copiar').textContent='📋 COPIAR CÓDIGO',2000); };
+$('lbtn-volver').onclick  = ()=>UI.lobbyPaso('inicio');
+$('lbtn-volver2').onclick = ()=>UI.lobbyPaso('inicio');
+$('lbtn-unirse').onclick  = ()=>{ UI.lobbyPaso('unirse'); $('lobby-input').focus(); };
+$('lobby-input').oninput  = e=>{ e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,''); };
+$('lbtn-conectar').onclick = async ()=>{
+  const cod=$('lobby-input').value.trim().toUpperCase();
+  if(cod.length!==4){ $('lst-unirse').textContent='Código de 4 caracteres.'; return; }
+  $('lst-unirse').textContent='Conectando...';
+  const r=await Firebase.unirseASala(cod);
+  if(!r.ok) $('lst-unirse').textContent=r.msg;
+};
+
+$('btn-nueva').onclick = async ()=>{
+  if(!Firebase.isIniciado()) return;
+  Juego.reset(); Reclamo.desactivar();
+  await Firebase.nuevaPartida();
+  UI.bloquearBtns(['btn-sortear'],false);
+  UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+};
+
+$('btn-sortear').onclick = async ()=>{
+  if(!Firebase.isIniciado()) return;
+  const r=await Firebase.sortear();
+  if(!r.ok){ UI.modal('Sorteo',r.msg); return; }
+  UI.modal('¡SORTEO!','Comienza el '+(r.primero==='X'?'Jugador 1 (X)':'Jugador 2 (O)'));
+};
+
+$('btn-reclamar').onclick = async ()=>{
+  if(!Firebase.isIniciado()) return;
+  if(Reclamo.isActivo()){
+    Reclamo.desactivar();
+    await Firebase.cancelarReclamo();
+    UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+    UI.modal('Reclamo cancelado','El reclamo fue cancelado. El juego continúa.');
     return;
   }
+  const lineas=Reglas.buscarVictoria(Estado.tablero,Firebase.getMiRol());
+  if(!lineas.length){ UI.modal('Sin línea ganadora','No tienes ninguna línea ganadora. No puedes reclamar.'); return; }
+  const fichas=Reglas.fichasGanadoras(Estado.tablero,Firebase.getMiRol());
+  await Firebase.publicarReclamo(fichas);
+  Reclamo.init(Firebase.getMiRol());
+  Reclamo.activar(fichas);
+  UI.modal('Modo Reclamo activo','Selecciona las 4 fichas de tu línea ganadora y pulsa CONFIRMAR.\nPulsa RECLAMAR VICTORIA de nuevo para cancelar.');
+};
 
-  const snap = await get(salaRef);
-  const d = snap.val();
-  if(!d || d.terminado) { gc().mostrarModal('Partida terminada', 'Inicia nueva partida.'); return; }
-  if((d.jugadas || 0) < 7) { gc().mostrarModal('Muy pronto', 'Minimo 7 jugadas para reclamar.'); return; }
-
-  const t = tblCompleto(d.tablero);
-  Object.keys(t).forEach(k => gc().tablero[k] = t[k]);
-  const lineasGanadoras = gc().buscarVictoria(miRol);
-
-  if(lineasGanadoras.length === 0) {
-    gc().mostrarModal('Sin linea ganadora', 'No tienes ninguna linea ganadora. No puedes reclamar.');
-    return;
+$('btn-confirmar').onclick = async ()=>{
+  if(!Firebase.isIniciado()||!Reclamo.isActivo()){ UI.modal('Sin reclamo activo','Primero pulsa RECLAMAR VICTORIA y selecciona 4 fichas.'); return; }
+  const sel=Reclamo.getSel();
+  if(sel.length!==4){ UI.modal('Faltan fichas','Debes seleccionar exactamente 4 fichas.'); return; }
+  if(Reglas.esLineaValida(sel)){
+    const miRol=Firebase.getMiRol();
+    Reclamo.desactivar();
+    Tablero.resaltarGanadores(sel,miRol);
+    await Firebase.confirmarVictoria(sel);
+  } else {
+    Reclamo.desactivar();
+    await Firebase.lineaInvalida();
+    UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+    UI.modal('Línea inválida','Las 4 fichas no forman una línea ganadora válida. El juego continúa.');
   }
+};
 
-  const fichasGanadorasSet = new Set();
-  lineasGanadoras.forEach(linea => linea.forEach(id => fichasGanadorasSet.add(id)));
-  const fichasGanadoras = Array.from(fichasGanadorasSet);
-
-  await update(salaRef, {
-    fase: 'reclamo', reclamante: miRol,
-    reclamo_fichas: fichasGanadoras,
-    reclamo_ts: Date.now(),
-    fichas_marcadas_reclamo: []
-  });
-
-  activarModoReclamo(fichasGanadoras);
-  gc().mostrarModal('Modo Reclamo activo',
-    'Selecciona las 4 fichas de tu linea ganadora y pulsa CONFIRMAR. Pulsa RECLAMAR VICTORIA de nuevo para cancelar.');
-}, true);
-
-// Clic sobre el overlay en modo reclamo
-// Usar coordenadas geometricas para identificar la casilla — mas robusto que DOM traversal
-$('tablero-block').addEventListener('click', e => {
-  if(!modoReclamo) return;
-  const rect = $('tablero-svg').getBoundingClientRect();
-  // Convertir coordenadas de pantalla a coordenadas SVG (viewBox 0 0 480 480)
-  const svgX = (e.clientX - rect.left) * (480 / rect.width);
-  const svgY = (e.clientY - rect.top)  * (480 / rect.height);
-  // Buscar la casilla mas cercana entre las fichas permitidas
-  const CX = 240, CY = 240;
-  const RING_R = { A: { i:145, o:195 }, B: { i:105, o:145 }, C: { i:65, o:105 }, D: { i:25, o:65 } };
-  let casillaEncontrada = null;
-  let distMin = Infinity;
-  fichasPermitidas.forEach(id => {
-    const anillo = id[0];
-    const num    = parseInt(id[1]);
-    const ri = RING_R[anillo].i, ro = RING_R[anillo].o;
-    const r  = (ri + ro) / 2;
-    const a1 = (num * 45 - 90) * Math.PI / 180;
-    const a2 = ((num + 1) * 45 - 90) * Math.PI / 180;
-    const a  = (a1 + a2) / 2;
-    const cx = CX + r * Math.cos(a);
-    const cy = CY + r * Math.sin(a);
-    const dist = Math.sqrt((svgX - cx) ** 2 + (svgY - cy) ** 2);
-    if(dist < distMin) { distMin = dist; casillaEncontrada = id; }
-  });
-  // Solo seleccionar si el clic fue suficientemente cercano al centroide
-  if(casillaEncontrada && distMin < 25) {
-    seleccionarFichaReclamo(casillaEncontrada);
+// Clic sobre el overlay en modo reclamo (detección geométrica)
+$('tablero-block').addEventListener('click', e=>{
+  if(!Reclamo.isActivo()) return;
+  $('tablero-block').style.pointerEvents='none';
+  const deb=document.elementFromPoint(e.clientX,e.clientY);
+  $('tablero-block').style.pointerEvents='auto';
+  // Método 1: DOM
+  let el=deb;
+  while(el&&el.id!=='tablero-svg'){
+    if(el.dataset&&el.dataset.id){ Reclamo.seleccionar(el.dataset.id); return; }
+    el=el.parentElement;
   }
+  // Método 2: Geométrico
+  const rect=$('tablero-svg').getBoundingClientRect();
+  const sx=(e.clientX-rect.left)*(480/rect.width);
+  const sy=(e.clientY-rect.top)*(480/rect.height);
+  const perm=[...document.querySelectorAll('#fichas-layer [data-id]')]
+    .map(g=>g.dataset.id).filter(id=>id&&Estado.tablero[id]===Firebase.getMiRol());
+  const id=Tablero.casillaMasCercana(sx,sy,perm);
+  if(id) Reclamo.seleccionar(id);
 });
 
-function seleccionarFichaReclamo(id) {
-  if(!fichasPermitidas.has(id)) {
-    gc().mostrarModal('Ficha no valida', 'Solo puedes seleccionar fichas de lineas ganadoras.');
-    return;
-  }
-  const idx = fichasSeleccionadas.indexOf(id);
-  if(idx >= 0) {
-    // Deseleccionar
-    fichasSeleccionadas.splice(idx, 1);
-    const circ = document.querySelector('[data-id="' + id + '"] circle');
-    if(circ) {
-      circ.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
-      circ.classList.add(miRol === 'X' ? 'ficha-x' : 'ficha-o');
-      // Limpiar estilos inline forzados
-      circ.style.stroke = '';
-      circ.style.strokeWidth = '';
-      circ.style.fill = '';
-      circ.style.filter = '';
-    }
-  } else {
-    if(fichasSeleccionadas.length >= 4) {
-      gc().mostrarModal('Ya tienes 4 fichas', 'Deselecciona una antes de agregar otra.');
-      return;
-    }
-    fichasSeleccionadas.push(id);
-    // Iluminar en amarillo en el tablero del RECLAMANTE (forzar estilo inline)
-    const circ = document.querySelector('[data-id="' + id + '"] circle');
-    if(circ) {
-      circ.classList.remove('ficha-x','ficha-o','ficha-winner-x','ficha-winner-o');
-      circ.classList.add(miRol === 'X' ? 'ficha-seleccionada-x' : 'ficha-seleccionada-o');
-      // Forzar estilos inline para garantizar amarillo en ambos roles
-      circ.style.stroke = '#ffdd00';
-      circ.style.strokeWidth = '3';
-      circ.style.fill = miRol === 'X' ? '#3a2a00' : '#1a2a00';
-      circ.style.filter = 'drop-shadow(0 0 8px rgba(255,220,0,0.9))';
-    }
-  }
-  $('contador-seleccion').textContent = fichasSeleccionadas.length + '/4';
-  // Sincronizar al oponente en tiempo real
-  update(salaRef, { fichas_marcadas_reclamo: fichasSeleccionadas.slice() });
-}
+/* ═══════════════════════════════════════════════════════
+   M16· CRONOMETRO — (pendiente de implementación)
+   Aquí irá el módulo de cronómetro de jugadas y partidas
+   ═══════════════════════════════════════════════════════ */
+// TODO: implementar Cronometro = (() => { ... })();
 
-// LINEAS GANADORAS
-const TODAS_LINEAS = (function() {
-  const L = [];
-  for(let i=0;i<8;i++) L.push(['A'+i,'B'+i,'C'+i,'D'+i]);
-  ['A','B','C','D'].forEach(a => {
-    for(let i=0;i<8;i++) L.push([a+i,a+((i+1)%8),a+((i+2)%8),a+((i+3)%8)]);
-  });
-  for(let i=0;i<8;i++) L.push(['A'+i,'B'+((i+1)%8),'C'+((i+2)%8),'D'+((i+3)%8)]);
-  for(let i=0;i<8;i++) L.push(['A'+i,'B'+((i+7)%8),'C'+((i+6)%8),'D'+((i+5)%8)]);
-  return L;
-})();
+/* ═══════════════════════════════════════════════════════
+   M17· IA — (pendiente de implementación)
+   Aquí irá el motor de inteligencia artificial
+   ═══════════════════════════════════════════════════════ */
+// TODO: implementar IA = (() => { ... })();
 
-$('btn-confirmar').addEventListener('click', async e => {
-  if(!juegoIniciado) return;
-  e.stopImmediatePropagation();
-  if(!modoReclamo) {
-    gc().mostrarModal('Sin reclamo activo', 'Primero pulsa RECLAMAR VICTORIA y selecciona 4 fichas.');
-    return;
-  }
-  if(fichasSeleccionadas.length !== 4) {
-    gc().mostrarModal('Faltan fichas', 'Debes seleccionar exactamente 4 fichas.');
-    return;
-  }
-  const selSet = new Set(fichasSeleccionadas);
-  const esValida = TODAS_LINEAS.some(linea => linea.every(c => selSet.has(c)));
-
-  if(esValida) {
-    const fichasGanadas = fichasSeleccionadas.slice();
-    desactivarModoReclamo();
-    // Resaltar winner en el tablero del RECLAMANTE inmediatamente
-    fichasGanadas.forEach(id => {
-      const circ = document.querySelector('[data-id="' + id + '"] circle');
-      if(circ) {
-        circ.classList.remove('ficha-x','ficha-o','ficha-seleccionada-x','ficha-seleccionada-o');
-        circ.classList.add(miRol === 'X' ? 'ficha-winner-x' : 'ficha-winner-o');
-      }
-    });
-    // Guardar en Firebase — oponente verá las fichas winner via aplicarEstado
-    // Leer victorias actuales de Firebase y sumar 1
-    const snapV = await get(salaRef);
-    const dV = snapV.val();
-    const vX = (dV.victoriasX || 0) + (miRol === 'X' ? 1 : 0);
-    const vO = (dV.victoriasO || 0) + (miRol === 'O' ? 1 : 0);
-    await update(salaRef, {
-      terminado: true, ganador: miRol, fase: 'terminado',
-      fichas_ganadoras_reclamadas: fichasGanadas,
-      fichas_marcadas_reclamo: null, reclamante: null,
-      victoriasX: vX, victoriasO: vO
-    });
-  } else {
-    desactivarModoReclamo();
-    await update(salaRef, { fase: 'jugando', reclamante: null, reclamo_fichas: null, fichas_marcadas_reclamo: null });
-    bloquearBotones(['btn-reclamar','btn-confirmar'], false);
-    gc().mostrarModal('Linea invalida', 'Las 4 fichas no forman una linea ganadora valida. El juego continua.');
-  }
-}, true);
-
-// NUEVA PARTIDA
-$('btn-nueva').addEventListener('click', async e => {
-  if(!juegoIniciado) return;
-  e.stopImmediatePropagation();
-  window._sorteoMostrado     = null;
-  window._victoriaYaMostrada = false;
-  window._avisoReclamoMostrado = null;
-  // Leer victorias actuales para preservarlas entre partidas
-  const snapN = await get(salaRef);
-  const dN = snapN.val();
-  await update(salaRef, {
-    tablero: tblVacio(), turno: null, fase: 'esperando_sorteo',
-    terminado: false, ganador: null, jugadas: 0, fichasX: 16, fichasO: 16,
-    ultimo_sorteo: null, sorteo_id: null, sorteo_usado: false,
-    fichas_ganadoras_reclamadas: null, fichas_marcadas_reclamo: null,
-    reclamante: null, reclamo_fichas: null,
-    victoriasX: dN.victoriasX || 0,   // preservar victorias acumuladas
-    victoriasO: dN.victoriasO || 0
-  });
-  // Desbloquear sortear, mantener nueva bloqueada hasta el juego
-  bloquearBotones(['btn-sortear'], false);
-  bloquearBotones(['btn-reclamar','btn-confirmar'], false);
-}, true);
-
-// SORTEAR PARTIDA
-$('btn-sortear').addEventListener('click', async e => {
-  if(!juegoIniciado) return;
-  e.stopImmediatePropagation();
-  const snap = await get(salaRef);
-  const d = snap.val();
-  if(d.sorteo_usado === true) {
-    gc().mostrarModal('Sorteo ya realizado', 'Ya se sorteo esta partida. Comienza el juego.'); return;
-  }
-  if(d.fase !== 'esperando_sorteo') {
-    gc().mostrarModal('Sorteo', 'Solo se puede sortear al inicio de la partida.'); return;
-  }
-  const primero = Math.random() < 0.5 ? 'X' : 'O';
-  const sorteoId = Date.now().toString();
-  // Bloquear btn-sortear y btn-nueva durante el juego
-  bloquearBotones(['btn-sortear','btn-nueva'], true);
-  await update(salaRef, {
-    turno: primero, fase: 'jugando',
-    ultimo_sorteo: primero,
-    sorteo_id:     sorteoId,
-    sorteo_usado:  true,
-    sorteo_quien:  miRol    // quién hizo clic en sortear
-  });
-  gc().mostrarModal('SORTEO!',
-    'Comienza el ' + (primero === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)'));
-}, true);
-
-// CHAT
-let chatAbierto = false, mensajesNoLeidos = 0;
-
-window.toggleChat = function() {
-  chatAbierto = !chatAbierto;
-  $('chat-body').style.display = chatAbierto ? 'flex' : 'none';
-  $('chat-toggle-icon').textContent = chatAbierto ? 'A' : 'V';
-  if(chatAbierto) {
-    mensajesNoLeidos = 0;
-    $('chat-badge').style.display = 'none';
-    $('chat-badge').textContent = '';
-    $('chat-msgs').scrollTop = $('chat-msgs').scrollHeight;
-  }
-};
-
-function agregarMensaje(texto, tipo, autor) {
-  const msgs = $('chat-msgs');
-  const div = document.createElement('div');
-  div.classList.add('chat-msg', tipo);
-  if(autor) {
-    const aut = document.createElement('div');
-    aut.classList.add('chat-autor');
-    aut.textContent = autor;
-    div.appendChild(aut);
-  }
-  div.appendChild(document.createTextNode(texto));
-  msgs.appendChild(div);
-  msgs.scrollTop = msgs.scrollHeight;
-  if(!chatAbierto && tipo === 'otro') {
-    mensajesNoLeidos++;
-    $('chat-badge').textContent = mensajesNoLeidos;
-    $('chat-badge').style.display = 'block';
-  }
-}
-
-function iniciarChat() {
-  $('chat-container').style.display = 'block';
-  chatAbierto = true;
-  $('chat-body').style.display = 'flex';
-  $('chat-toggle-icon').textContent = 'A';
-  const tsInicio = Date.now();
-  const vistos = new Set();
-  onValue(ref(db, 'salas/' + codigoSala + '/chat'), snap => {
-    if(!snap.exists()) return;
-    const msgs = snap.val();
-    Object.keys(msgs).sort().forEach(k => {
-      if(vistos.has(k)) return;
-      const m = msgs[k];
-      if(m.ts < tsInicio) return;
-      vistos.add(k);
-      if(m.rol === miRol) return;
-      agregarMensaje(m.texto, 'otro', miRol === 'X' ? 'Jugador 2 (O)' : 'Jugador 1 (X)');
-    });
-  });
-  $('chat-send').onclick = enviarMensaje;
-  $('chat-input').onkeydown = e => { if(e.key === 'Enter') enviarMensaje(); };
-}
-
-async function enviarMensaje() {
-  const input = $('chat-input');
-  const texto = input.value.trim();
-  if(!texto) return;
-  input.value = '';
-  agregarMensaje(texto, 'yo', 'Tu');
-  await set(ref(db, 'salas/' + codigoSala + '/chat/' + Date.now()),
-    { rol: miRol, texto: texto, ts: Date.now() });
-}
+/* ═══════════════════════════════════════════════════════
+   M18· RANKING — (pendiente de implementación)
+   Aquí irá el sistema de puntuación ELO y rankings
+   ═══════════════════════════════════════════════════════ */
+// TODO: implementar Ranking = (() => { ... })();
 
 </script>
 
