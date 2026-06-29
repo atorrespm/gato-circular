@@ -253,7 +253,7 @@ hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
             <stop offset="100%" stop-color="#161616"/>
           </radialGradient>
         </defs>
-        <circle cx="240" cy="240" r="232" fill="url(#board-grad)" stroke="#3a3a3a" stroke-width="3"/>
+        <circle cx="240" cy="240" r="197" fill="url(#board-grad)" stroke="#3a3a3a" stroke-width="3"/>
         <circle cx="240" cy="240" r="195" fill="none" stroke="#505050" stroke-width="1.5"/>
         <circle cx="240" cy="240" r="145" fill="none" stroke="#505050" stroke-width="1.5"/>
         <circle cx="240" cy="240" r="105" fill="none" stroke="#505050" stroke-width="1.5"/>
@@ -449,7 +449,7 @@ const Reglas = (() => {
 const Tablero = (() => {
   function centroide(an, i) {
     const {i:ri,o:ro} = GC.RING_RADII[an];
-    const r = an==='D' ? 36 : (ri + ro) / 2;
+    const r = (ri + ro) / 2;
     const a1 = (i * 45 - 90) * Math.PI / 180;
     const a2 = ((i + 1) * 45 - 90) * Math.PI / 180;
     const am = (a1 + a2) / 2;
@@ -543,7 +543,7 @@ const Tablero = (() => {
     permitidas.forEach(id=>{
       const an=id[0], num=parseInt(id[1]);
       const {i:ri,o:ro} = GC.RING_RADII[an];
-      const r = an==='D' ? 36 : (ri + ro) / 2;
+      const r = (ri + ro) / 2;
       const a1 = (num * 45 - 90) * Math.PI / 180;
       const a2 = ((num + 1) * 45 - 90) * Math.PI / 180;
       const am = (a1 + a2) / 2;
