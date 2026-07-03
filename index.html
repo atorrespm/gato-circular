@@ -176,9 +176,148 @@ hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
 #chat-badge{display:none;background:var(--red);color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;text-align:center;line-height:16px;font-family:'Orbitron',sans-serif;font-weight:700;}
 
 /* ═══════════════════════════════════════════════════════
-   M16· CRONOMETRO CSS — (pendiente de implementación)
+   ESTADÍSTICAS EXTENDIDAS — Empates, partidas, sesión
    ═══════════════════════════════════════════════════════ */
-/* TODO: estilos del cronómetro de jugadas y partidas */
+.stat-row-empate{ display:flex;justify-content:space-between;align-items:center;padding:5px 8px;font-size:13px;font-weight:700; }
+.stat-v-empate{ font-family:'Orbitron',sans-serif;font-size:15px;color:var(--gold); }
+.stat-separador{ border:none;border-top:1px solid #2a2a2a;margin:4px 0; }
+.stat-row-partidas{ display:flex;justify-content:space-between;align-items:center;padding:4px 8px;font-size:12px; }
+.stat-v-partidas{ font-family:'Orbitron',sans-serif;font-size:13px;color:#aaa; }
+/* Banner empate */
+#empate-banner{
+  display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  background:linear-gradient(135deg,#1a1500,#2a2500);
+  border:3px solid var(--gold);border-radius:14px;
+  padding:28px 40px;text-align:center;z-index:100;
+  box-shadow:0 0 40px rgba(200,168,75,0.5);min-width:280px;
+}
+#empate-banner h2{ font-family:'Orbitron',sans-serif;font-size:22px;color:var(--gold);margin-bottom:8px; }
+#empate-banner p{ font-size:13px;color:#aaa;margin-bottom:14px;line-height:1.5; }
+#btn-cerrar-empate{
+  padding:10px 24px;background:var(--gold);color:#111;border:none;
+  border-radius:6px;font-family:'Orbitron',sans-serif;font-weight:700;
+  cursor:pointer;font-size:12px;
+}
+/* Configurador de sesión */
+#sesion-config{
+  display:none;width:100%;max-width:1080px;
+  background:#1a1a1a;border:2px solid #333;border-radius:10px;
+  padding:10px 16px;margin-top:4px;
+  align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;
+}
+#sesion-config.visible{ display:flex; }
+.sesion-label{ font-family:'Orbitron',sans-serif;font-size:11px;color:var(--gold);letter-spacing:1px; }
+.sesion-btn-n{
+  padding:6px 12px;font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;
+  border:2px solid #444;border-radius:6px;cursor:pointer;background:#111;
+  color:#888;transition:all .2s;
+}
+.sesion-btn-n:hover{ border-color:#666;color:#ccc; }
+.sesion-btn-n.sel{ border-color:var(--gold);color:var(--gold);background:#1a1500; }
+.sesion-btn-n.libre.sel{ border-color:#555;color:#aaa;background:#1a1a1a; }
+#sesion-progreso{
+  font-family:'Orbitron',sans-serif;font-size:11px;color:#666;
+  padding:4px 10px;background:#111;border-radius:5px;border:1px solid #2a2a2a;
+}
+#sesion-ganador-banner{
+  display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  background:linear-gradient(135deg,#0a0a00,#1a1500);
+  border:4px solid var(--gold);border-radius:14px;
+  padding:32px 48px;text-align:center;z-index:200;
+  box-shadow:0 0 60px rgba(200,168,75,0.7);min-width:320px;
+}
+#sesion-ganador-banner h2{ font-family:'Orbitron',sans-serif;font-size:20px;color:var(--gold);margin-bottom:6px; }
+#sesion-ganador-banner .campeон{ font-family:'Orbitron',sans-serif;font-size:28px;font-weight:900;margin:10px 0; }
+#sesion-ganador-banner p{ font-size:12px;color:#aaa;margin-bottom:14px;line-height:1.6; }
+#btn-nueva-sesion{
+  padding:12px 28px;background:linear-gradient(135deg,#7a0000,#cc2200);
+  color:#fff;border:none;border-radius:7px;cursor:pointer;
+  font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;letter-spacing:1px;
+}
+
+/* ═══════════════════════════════════════════════════════
+   M16· CRONÓMETRO CSS — Temporizadores de jugada y partida
+   ═══════════════════════════════════════════════════════ */
+#crono-container{
+  width:100%;max-width:1080px;
+  display:none;
+  background:#1a1a1a;border:2px solid #333;border-radius:10px;
+  padding:10px 16px;margin-top:4px;
+}
+#crono-container.activo{ display:flex; align-items:center; gap:16px; flex-wrap:wrap; justify-content:center; }
+/* Selector de modo */
+#crono-modo-selector{
+  display:flex;gap:8px;flex-wrap:wrap;justify-content:center;
+  width:100%;max-width:1080px;margin-top:4px;
+}
+.crono-modo-btn{
+  padding:8px 16px;font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;
+  border:2px solid #444;border-radius:6px;cursor:pointer;background:#1a1a1a;
+  color:#888;letter-spacing:1px;transition:all .2s;
+}
+.crono-modo-btn:hover{ border-color:#666;color:#ccc; }
+.crono-modo-btn.seleccionado{ border-color:var(--gold);color:var(--gold);background:#2a2000; }
+.crono-modo-btn.clasico.seleccionado{ border-color:#555;color:#aaa;background:#222; }
+/* Bloque de tiempo */
+.crono-bloque{
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+  padding:8px 14px;border-radius:8px;background:#111;border:1px solid #333;
+  min-width:100px;
+}
+.crono-bloque.mi-turno{ border-color:var(--gold);background:#1a1500; }
+.crono-bloque.rival-turno{ border-color:#333;opacity:0.6; }
+.crono-bloque.urgente{ border-color:var(--red)!important;background:#1a0000!important;animation:pulso-rojo 0.5s infinite alternate; }
+.crono-label{ font-family:'Orbitron',sans-serif;font-size:9px;color:#666;letter-spacing:1px;text-transform:uppercase; }
+.crono-label.x{ color:var(--red); }
+.crono-label.o{ color:var(--blue); }
+.crono-tiempo{
+  font-family:'Orbitron',sans-serif;font-size:22px;font-weight:900;
+  color:#ccc;letter-spacing:2px;font-variant-numeric:tabular-nums;
+}
+.crono-tiempo.urgente{ color:var(--red-g);text-shadow:0 0 10px var(--red); }
+.crono-tiempo.x{ color:var(--red-g); }
+.crono-tiempo.o{ color:var(--blue-g); }
+/* Separador central — reloj de jugada */
+#crono-jugada-wrap{
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+  padding:8px 14px;border-radius:8px;background:#0a0a0a;
+  border:2px solid #444;min-width:110px;
+}
+#crono-jugada-label{ font-family:'Orbitron',sans-serif;font-size:9px;color:var(--gold);letter-spacing:1px; }
+#crono-jugada-tiempo{
+  font-family:'Orbitron',sans-serif;font-size:26px;font-weight:900;
+  color:var(--gold);letter-spacing:2px;
+}
+#crono-jugada-tiempo.urgente{ color:#ff4444;text-shadow:0 0 14px #ff0000;animation:pulso-rojo 0.5s infinite alternate; }
+@keyframes pulso-rojo{ from{opacity:1} to{opacity:0.5} }
+/* Botón pausa */
+#crono-pausa-wrap{ display:flex;flex-direction:column;align-items:center;gap:6px; }
+#btn-pausa-crono{
+  padding:7px 14px;font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;
+  background:linear-gradient(135deg,#4a4000,#8a7000);color:var(--gold);
+  border:none;border-radius:6px;cursor:pointer;letter-spacing:1px;
+  transition:filter .2s;
+}
+#btn-pausa-crono:hover{ filter:brightness(1.2); }
+#crono-pausa-status{ font-size:10px;color:#666;font-family:'Rajdhani',sans-serif;text-align:center;max-width:90px; }
+/* Banner de pausa */
+#crono-pausa-banner{
+  display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  background:linear-gradient(135deg,#1a1500,#2a2000);
+  border:3px solid var(--gold);border-radius:14px;
+  padding:24px 40px;text-align:center;z-index:150;
+  box-shadow:0 0 40px rgba(200,168,75,0.4);
+}
+#crono-pausa-banner h3{
+  font-family:'Orbitron',sans-serif;font-size:18px;color:var(--gold);
+  margin-bottom:8px;letter-spacing:2px;
+}
+#crono-pausa-banner p{ font-size:12px;color:#aaa;margin-bottom:14px; }
+#btn-reanudar-crono{
+  padding:10px 24px;background:linear-gradient(135deg,#005500,#009933);
+  color:#fff;border:none;border-radius:7px;cursor:pointer;
+  font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;
+}
 
 </style>
 </head>
@@ -310,6 +449,20 @@ hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
         <span style="color:var(--blue)">VICTORIAS O</span>
         <span class="stat-v" id="stat-o" style="color:var(--blue)">0</span>
       </div>
+      <hr class="stat-separador">
+      <div class="stat-row-empate">
+        <span style="color:var(--gold)">EMPATES</span>
+        <span class="stat-v-empate" id="stat-empates">0</span>
+      </div>
+      <hr class="stat-separador">
+      <div class="stat-row-partidas">
+        <span style="color:#888">PARTIDAS JUGADAS</span>
+        <span class="stat-v-partidas" id="stat-partidas">0</span>
+      </div>
+      <div class="stat-row-partidas">
+        <span style="color:#888">PARTIDA ACTUAL</span>
+        <span class="stat-v-partidas" id="stat-partida-actual">#1</span>
+      </div>
     </div>
   </aside>
 
@@ -321,6 +474,98 @@ hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
   <button class="btn" id="btn-sortear">⇄ SORTEAR PARTIDA</button>
   <button class="btn" id="btn-reclamar">🏆 RECLAMAR VICTORIA</button>
   <button class="btn" id="btn-confirmar">✔ CONFIRMAR</button>
+</div>
+
+<!-- MODAL TABLERO COMPLETO (countdown + SI/NO) -->
+<div id="tc-overlay">
+  <div id="tc-modal">
+    <h2>🤝 PARTIDA FINALIZADA</h2>
+    <p id="tc-msg">El tablero está completo.<br>¿Confirman ambos jugadores el <strong style="color:var(--gold)">EMPATE</strong>?</p>
+    <div id="tc-countdown">10</div>
+    <div class="tc-btns">
+      <button id="btn-tc-si">✔ SÍ — EMPATE</button>
+      <button id="btn-tc-no">✕ NO — RECLAMAR</button>
+    </div>
+    <p id="tc-estado-rival" style="font-size:10px;color:#666;margin-top:10px;"></p>
+  </div>
+</div>
+
+<!-- MODAL PRIORIDAD DE RECLAMO FINAL -->
+<div id="prioridad-modal">
+  <div id="prioridad-box">
+    <h2>⚡ REGLA DE PRIORIDAD DE RECLAMO FINAL</h2>
+    <p>Se ha rechazado el empate. Tiene prioridad para reclamar victoria:</p>
+    <div class="prioridad-jugador" id="prioridad-jugador-txt"></div>
+    <p id="prioridad-desc">(Jugador que inició la partida)</p>
+    <button id="btn-prioridad-ok">ENTENDIDO</button>
+  </div>
+</div>
+
+<!-- BANNER EMPATE (versión simple, post-proceso) -->
+<div id="empate-banner">
+  <h2>🤝 EMPATE</h2>
+  <p id="empate-msg">El tablero está completo. Ningún jugador reclamó victoria.<br>La partida termina en empate.</p>
+  <button id="btn-cerrar-empate">ACEPTAR</button>
+</div>
+
+<!-- BANNER GANADOR DE SESIÓN -->
+<div id="sesion-ganador-banner">
+  <h2>🏆 FIN DE SESIÓN</h2>
+  <div class="campeон" id="sesion-ganador-txt"></div>
+  <p id="sesion-resumen-txt"></p>
+  <button id="btn-nueva-sesion">↺ NUEVA SESIÓN</button>
+</div>
+
+<!-- CONFIGURADOR DE SESIÓN -->
+<div id="sesion-config">
+  <span class="sesion-label">SESIÓN:</span>
+  <button class="sesion-btn-n libre sel" data-n="0">♾ LIBRE</button>
+  <button class="sesion-btn-n" data-n="3">MEJOR DE 3</button>
+  <button class="sesion-btn-n" data-n="5">MEJOR DE 5</button>
+  <button class="sesion-btn-n" data-n="7">MEJOR DE 7</button>
+  <button class="sesion-btn-n" data-n="10">MEJOR DE 10</button>
+  <div id="sesion-progreso">Partida #1</div>
+</div>
+
+<!-- M16 · SELECTOR DE MODO CRONÓMETRO (visible antes del sorteo) -->
+<div id="crono-modo-selector">
+  <button class="crono-modo-btn clasico seleccionado" data-modo="clasico">♾ CLÁSICO</button>
+  <button class="crono-modo-btn" data-modo="basico">🕐 BÁSICO · 30s / 8min</button>
+  <button class="crono-modo-btn" data-modo="experto">⚡ EXPERTO · 15s / 4min</button>
+  <button class="crono-modo-btn" data-modo="blitz">🔥 BLITZ · 8s / 2min</button>
+</div>
+
+<!-- M16 · CRONÓMETROS DE PARTIDA (visible durante el juego) -->
+<div id="crono-container">
+  <!-- Tiempo total Jugador 1 -->
+  <div class="crono-bloque" id="crono-bloque-x">
+    <div class="crono-label x">JUGADOR 1 (X)</div>
+    <div class="crono-tiempo x" id="crono-total-x">8:00</div>
+    <div class="crono-label">TIEMPO TOTAL</div>
+  </div>
+  <!-- Reloj de jugada (central) -->
+  <div id="crono-jugada-wrap">
+    <div id="crono-jugada-label">TURNO</div>
+    <div id="crono-jugada-tiempo">0:30</div>
+  </div>
+  <!-- Tiempo total Jugador 2 -->
+  <div class="crono-bloque" id="crono-bloque-o">
+    <div class="crono-label o">JUGADOR 2 (O)</div>
+    <div class="crono-tiempo o" id="crono-total-o">8:00</div>
+    <div class="crono-label">TIEMPO TOTAL</div>
+  </div>
+  <!-- Pausa -->
+  <div id="crono-pausa-wrap">
+    <button id="btn-pausa-crono">⏸ PAUSA</button>
+    <div id="crono-pausa-status"></div>
+  </div>
+</div>
+
+<!-- Banner de pausa mutuo acuerdo -->
+<div id="crono-pausa-banner">
+  <h3>⏸ JUEGO EN PAUSA</h3>
+  <p id="crono-pausa-msg">Ambos jugadores aceptaron la pausa.</p>
+  <button id="btn-reanudar-crono">▶ REANUDAR</button>
 </div>
 
 <!-- BANNER MODO RECLAMO -->
@@ -689,7 +934,66 @@ const Juego = (() => {
     if(d.terminado)                              _faseTerminado(d, miRol);
     else if(d.fase==='esperando_sorteo'||!d.turno) _faseEspera(d);
     else if(d.fase==='reclamo')                  _faseReclamo(d, miRol);
+    else if(d.fase==='tablero_completo')         _faseTableroCompleto(d, miRol);
+    else if(d.fase==='prioridad_reclamo')        _fasePrioridad(d, miRol);
+    else if(d.fase==='empate_final')             _faseEmpateFinal(d, miRol);
     else if(d.fase==='jugando')                  _faseJugando(d, miRol);
+  }
+
+  // ── TABLERO COMPLETO: countdown SI/NO ─────────────────
+  function _faseTableroCompleto(d, miRol){
+    Cronometro.detener();
+    UI.bloquearTablero(true);
+    UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+    UI.setMsg('Tablero completo. Confirma si aceptas el empate.');
+    EmpateFlow.init(miRol);
+    EmpateFlow.mostrarModalTC(d);
+  }
+
+  // ── PRIORIDAD DE RECLAMO FINAL ────────────────────────
+  let _prioridadMostrada = null;
+  function _fasePrioridad(d, miRol){
+    EmpateFlow.ocultarModalTC();
+    UI.bloquearTablero(true);
+    const soyPrioritario = d.prioridad_jugador === miRol;
+    const key = 'prio_'+d.prioridad_jugador+'_'+(d.prioridad_intento||1);
+    if(_prioridadMostrada !== key){
+      _prioridadMostrada = key;
+      EmpateFlow.mostrarModalPrioridad(d);
+    }
+    if(soyPrioritario){
+      UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+      UI.setMsg('¡Tienes prioridad! Si tienes línea ganadora, pulsa RECLAMAR VICTORIA.');
+    } else {
+      UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+      UI.setMsg('Esperando a que el jugador con prioridad decida...');
+    }
+  }
+
+  // ── EMPATE FINAL ───────────────────────────────────────
+  let _empateFinalMostrado = false;
+  function _faseEmpateFinal(d, miRol){
+    EmpateFlow.ocultarModalTC();
+    EmpateFlow.ocultarModalPrioridad();
+    Cronometro.detener();
+    UI.bloquearTablero(true);
+    UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+    if(!_empateFinalMostrado){
+      _empateFinalMostrado = true;
+      const banner=document.getElementById('empate-banner');
+      const msg=document.getElementById('empate-msg');
+      if(msg) msg.textContent='El tablero está completo. La partida termina en EMPATE.';
+      if(banner) banner.style.display='block';
+      setTimeout(async () => {
+        if(banner) banner.style.display='none';
+        _empateFinalMostrado=false;
+        _prioridadMostrada=null;
+        if(miRol==='X') await Firebase.limpiarTrasEmpate();
+        UI.bloquearBtns(['btn-nueva','btn-sortear'],false);
+      }, 3000);
+      const resSesion = Sesion.verificarFinSesion(d.victoriasX||0, d.victoriasO||0);
+      if(resSesion) setTimeout(() => Sesion.mostrarFinSesion(resSesion, miRol), 3500);
+    }
   }
 
   function _faseTerminado(d, miRol){
@@ -703,9 +1007,14 @@ const Juego = (() => {
       _victoriaVista=true;
       if(d.fichas_ganadoras_reclamadas) Tablero.resaltarGanadores(d.fichas_ganadoras_reclamadas,d.ganador);
       const esMio=d.ganador===miRol;
-      setTimeout(()=>UI.modal(esMio?'¡GANASTE!':'Perdiste',
-        esMio?'¡Felicitaciones! Ganaste la partida.'
-             :(d.ganador==='X'?'Jugador 1 (X)':'Jugador 2 (O)')+' ganó esta partida.'),400);
+      // Verificar fin de sesión
+      const resSesion = Sesion.verificarFinSesion(d.victoriasX||0, d.victoriasO||0);
+      if(resSesion) setTimeout(() => Sesion.mostrarFinSesion(resSesion, miRol), 2500);
+      const porTiempo=d.fin_por_tiempo?'\n⏱️ Ganó por tiempo agotado del oponente.':'';
+      const perdioPorTiempo=d.fin_por_tiempo&&!esMio?'\n⏱️ Perdiste por tiempo agotado.':'';
+      setTimeout(()=>UI.modal(esMio?'🏆 ¡GANASTE!':'😔 Perdiste',
+        esMio?'¡Felicitaciones! Ganaste la partida.'+porTiempo
+             :(d.ganador==='X'?'Jugador 1 (X)':'Jugador 2 (O)')+' ganó esta partida.'+perdioPorTiempo),400);
     }
   }
 
@@ -755,6 +1064,41 @@ const Juego = (() => {
       el.style.stroke=el.style.strokeWidth=el.style.fill=el.style.filter='';
       if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
     });
+    // Iniciar cronómetro al sortear (primera vez)
+    if(d.crono_modo && !Cronometro.getModo().startsWith(d.crono_modo) ||
+       (d.crono_modo && d.sorteo_id && _sorteoVisto !== d.sorteo_id)) {
+      const modo = d.crono_modo || 'clasico';
+      Cronometro.init(modo, miRol,
+        // Callback: tiempo de jugada agotado
+        async (rolAgotado) => {
+          if(rolAgotado === miRol) await Firebase.turnoAgotado(rolAgotado);
+        },
+        // Callback: tiempo total agotado
+        async (rolAgotado) => {
+          if(rolAgotado === miRol) await Firebase.totalAgotado(rolAgotado);
+        }
+      );
+    }
+    // Restaurar estado del cronómetro si viene de Firebase
+    if(d.crono_estado) Cronometro.setEstado(d.crono_estado);
+    // Manejar pausa
+    if(d.pausa_activa) {
+      Cronometro.pausar();
+      const banner=$('crono-pausa-banner');
+      if(banner) banner.style.display='block';
+      const msg=$('crono-pausa-msg');
+      if(msg) msg.textContent='Ambos jugadores aceptaron la pausa. Pulsa REANUDAR para continuar.';
+    } else {
+      Cronometro.reanudar();
+      const banner=$('crono-pausa-banner');
+      if(banner) banner.style.display='none';
+    }
+    // Arrancar timer del turno si es mi turno
+    if(d.turno === miRol) {
+      Cronometro.arrancarTurno(miRol);
+    } else {
+      // No es mi turno — detener timer de jugada local
+    }
     // Sorteo nuevo
     if(d.sorteo_id&&_sorteoVisto!==d.sorteo_id){
       _sorteoVisto=d.sorteo_id;
@@ -762,12 +1106,21 @@ const Juego = (() => {
       if(d.sorteo_quien!==miRol)
         UI.modal('¡SORTEO!','Comienza el '+(d.ultimo_sorteo==='X'?'Jugador 1 (X)':'Jugador 2 (O)'));
     }
+    // Detección de tablero completo (32 fichas)
+    const lleno = Object.values(Estado.tablero).every(v => v !== null);
+    if(lleno && d.fase==='jugando'){
+      if(miRol==='X') Firebase.declararEmpate();
+      return;
+    }
     const esMio=d.turno===miRol;
     UI.bloquearTablero(!esMio);
     UI.setMsg(esMio?'¡ES TU TURNO! Haz clic en una casilla.':'Esperando jugada del oponente...');
   }
 
-  function reset(){ _sorteoVisto=null; _victoriaVista=false; _reclamoKey=null; }
+  function reset(){
+    _sorteoVisto=null; _victoriaVista=false; _reclamoKey=null;
+    window._empateYaMostrado=false;
+  }
 
   return {aplicarEstado, reset};
 })();
@@ -889,6 +1242,11 @@ window.Firebase = {
 
   copiarCodigo(){ navigator.clipboard.writeText(_sala); },
   getMiRol(){ return _rol; },
+  async snapshotFase(){
+    if(!_salaRef) return null;
+    const snap=await get(_salaRef);
+    return snap.exists()? snap.val() : null;
+  },
   isIniciado(){ return _iniciado; },
 
   async jugar(id){
@@ -915,7 +1273,11 @@ window.Firebase = {
     const snap=await get(_salaRef); const d=snap.val();
     const vX=(d.victoriasX||0)+(_rol==='X'?1:0);
     const vO=(d.victoriasO||0)+(_rol==='O'?1:0);
+    const jugadas=(d.partidasJugadas||0)+1;
+    const total=d.totalPartidas||0;
+    const finSesion=total>0&&jugadas>=total;
     await update(_salaRef,{terminado:true,ganador:_rol,fase:'terminado',
+      partidasJugadas:jugadas,fin_sesion:finSesion,
       fichas_ganadoras_reclamadas:fichas,fichas_marcadas_reclamo:null,
       reclamante:null,victoriasX:vX,victoriasO:vO});
   },
@@ -936,7 +1298,174 @@ window.Firebase = {
       ultimo_sorteo:null,sorteo_id:null,sorteo_usado:false,
       fichas_ganadoras_reclamadas:null,fichas_marcadas_reclamo:null,
       reclamante:null,reclamo_fichas:null,
-      victoriasX:d.victoriasX||0,victoriasO:d.victoriasO||0
+      victoriasX:d.victoriasX||0,victoriasO:d.victoriasO||0,
+      crono_modo:null,crono_estado:null,crono_turno_forzado:null,
+      pausa_activa:false,pausa_solicitada:null,pausa_reanudar:null,
+      fin_por_tiempo:false
+    });
+  },
+
+  async setModo(modo){
+    if(_salaRef) await update(_salaRef,{crono_modo: modo});
+  },
+
+  async solicitarPausa(rol){
+    if(!_salaRef) return;
+    const snap=await get(_salaRef); const d=snap.val();
+    // Si ya hay solicitud del oponente → ambos aceptan → pausar
+    if(d.pausa_solicitada && d.pausa_solicitada !== rol){
+      await update(_salaRef,{pausa_activa:true, pausa_solicitada:null});
+    } else {
+      await update(_salaRef,{pausa_solicitada:rol});
+      UI.setMsg('Pausa solicitada. Esperando confirmación del oponente...');
+    }
+  },
+
+  async reanudarPausa(){
+    if(!_salaRef) return;
+    const snap=await get(_salaRef); const d=snap.val();
+    if(d.pausa_activa){
+      if(!d.pausa_reanudar){
+        await update(_salaRef,{pausa_reanudar: _rol});
+        UI.setMsg('Reanudación solicitada. Esperando al oponente...');
+      } else if(d.pausa_reanudar !== _rol){
+        await update(_salaRef,{pausa_activa:false, pausa_reanudar:null});
+      }
+    }
+  },
+
+  async turnoAgotado(rol){
+    // Forzar cambio de turno por tiempo agotado
+    const snap=await get(_salaRef); const d=snap.val();
+    if(!d||d.terminado) return;
+    const cronoState = Cronometro.getEstado();
+    await update(_salaRef,{
+      turno: rol==='X'?'O':'X',
+      jugadas: (d.jugadas||0)+1,
+      crono_estado: cronoState,
+      crono_turno_forzado: Date.now()
+    });
+  },
+
+  async declararEmpate(){
+    // Tablero lleno detectado — abrir modal countdown SI/NO (no confirma empate aun)
+    const snap=await get(_salaRef); const d=snap.val();
+    if(!d||d.terminado||d.fase==='tablero_completo'||d.fase==='prioridad_reclamo') return;
+    await update(_salaRef,{
+      fase:'tablero_completo',
+      tc_inicio: Date.now(),
+      tc_decision: {}
+    });
+  },
+
+  async responderEmpate(aceptaEmpate){
+    const snap=await get(_salaRef); const d=snap.val();
+    if(!d||d.fase!=='tablero_completo') return;
+    const decision = Object.assign({}, d.tc_decision||{});
+    decision[_rol] = aceptaEmpate;
+    await update(_salaRef,{tc_decision:decision});
+
+    const otroRol = _rol==='X'?'O':'X';
+    const otraDecision = decision[otroRol];
+
+    if(otraDecision !== undefined) {
+      // Ambos respondieron
+      if(decision.X===true && decision.O===true) {
+        await this._confirmarEmpateFinal(d);
+      } else {
+        // Alguno dijo NO — activar prioridad de reclamo
+        await this._activarPrioridad(d, 1);
+      }
+    }
+    // Si el otro aun no responde, esperamos su respuesta o el timeout
+  },
+
+  async resolverTimeoutEmpate(){
+    const snap=await get(_salaRef); const d=snap.val();
+    if(!d||d.fase!=='tablero_completo') return;
+    const decision = d.tc_decision||{};
+    if(decision.X===false || decision.O===false) {
+      // Alguien ya dijo NO antes del timeout
+      await this._activarPrioridad(d, 1);
+    } else {
+      // Nadie confirmo a tiempo -> empate automatico
+      await this._confirmarEmpateFinal(d);
+    }
+  },
+
+  async _activarPrioridad(d, intento){
+    const prioritario = intento===1 ? d.ultimo_sorteo : (d.ultimo_sorteo==='X'?'O':'X');
+    await update(_salaRef,{
+      fase:'prioridad_reclamo',
+      prioridad_jugador: prioritario,
+      prioridad_intento: intento,
+      tc_decision: null
+    });
+  },
+
+  async _confirmarEmpateFinal(d){
+    const empates=(d.empates||0)+1;
+    const jugadas=(d.partidasJugadas||0)+1;
+    const total=d.totalPartidas||0;
+    const finSesion=total>0&&jugadas>=total;
+    await update(_salaRef,{
+      fase:'empate_final',
+      empates, partidasJugadas:jugadas,
+      fin_sesion: finSesion
+    });
+  },
+
+  async lineaInvalidaPrioridad(){
+    // El jugador prioritario marco linea invalida durante prioridad_reclamo
+    const snap=await get(_salaRef); const d=snap.val();
+    if(!d) return;
+    if((d.prioridad_intento||1) === 1) {
+      await this._activarPrioridad(d, 2);
+    } else {
+      await this._confirmarEmpateFinal(d);
+    }
+  },
+
+  async limpiarTrasEmpate(){
+    await update(_salaRef,{
+      tablero:Estado.tableroVacio(), turno:null, fase:'esperando_sorteo',
+      terminado:false, ganador:null, jugadas:0, fichasX:16, fichasO:16,
+      ultimo_sorteo:null, sorteo_id:null, sorteo_usado:false,
+      fichas_ganadoras_reclamadas:null, fichas_marcadas_reclamo:null,
+      reclamante:null, reclamo_fichas:null,
+      tc_decision:null, tc_inicio:null,
+      prioridad_jugador:null, prioridad_intento:null
+    });
+  },
+
+  async setSesionConfig(n){
+    if(_salaRef) await update(_salaRef,{totalPartidas:n});
+  },
+
+  async nuevaSesion(){
+    const snap=await get(_salaRef); const d=snap.val();
+    await update(_salaRef,{
+      tablero:Estado.tableroVacio(),turno:null,fase:'esperando_sorteo',
+      terminado:false,ganador:null,jugadas:0,fichasX:16,fichasO:16,
+      ultimo_sorteo:null,sorteo_id:null,sorteo_usado:false,
+      fichas_ganadoras_reclamadas:null,fichas_marcadas_reclamo:null,
+      reclamante:null,reclamo_fichas:null,
+      victoriasX:0,victoriasO:0,empates:0,partidasJugadas:0,
+      crono_modo:null,empate_detectado:false,fin_sesion:false
+    });
+  },
+
+  async totalAgotado(rol){
+    // El jugador que agotó su tiempo pierde
+    const snap=await get(_salaRef); const d=snap.val();
+    if(!d||d.terminado) return;
+    const ganador = rol==='X'?'O':'X';
+    const vX=(d.victoriasX||0)+(ganador==='X'?1:0);
+    const vO=(d.victoriasO||0)+(ganador==='O'?1:0);
+    await update(_salaRef,{
+      terminado:true, ganador, fase:'terminado',
+      fin_por_tiempo: true,
+      victoriasX:vX, victoriasO:vO
     });
   },
 
@@ -948,7 +1477,8 @@ window.Firebase = {
     const sid=Date.now().toString();
     UI.bloquearBtns(['btn-sortear','btn-nueva'],true);
     await update(_salaRef,{turno:primero,fase:'jugando',
-      ultimo_sorteo:primero,sorteo_id:sid,sorteo_usado:true,sorteo_quien:_rol});
+      ultimo_sorteo:primero,sorteo_id:sid,sorteo_usado:true,sorteo_quien:_rol,
+      crono_modo: _modoSeleccionado||'clasico'});
     return {ok:true,primero};
   }
 };
@@ -992,7 +1522,15 @@ $('lbtn-conectar').onclick = async ()=>{
 
 $('btn-nueva').onclick = async ()=>{
   if(!Firebase.isIniciado()) return;
-  Juego.reset(); Reclamo.desactivar();
+  Juego.reset(); Reclamo.desactivar(); Cronometro.detener();
+  // Mostrar selector de modo para nueva partida
+  const selModo=$('crono-modo-selector');
+  if(selModo){ selModo.style.display='flex'; }
+  // Resetear selección a clásico
+  document.querySelectorAll('.crono-modo-btn').forEach(b=>b.classList.remove('seleccionado'));
+  const btnClas=document.querySelector('.crono-modo-btn.clasico');
+  if(btnClas) btnClas.classList.add('seleccionado');
+  _modoSeleccionado='clasico';
   await Firebase.nuevaPartida();
   UI.bloquearBtns(['btn-sortear'],false);
   UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
@@ -1007,26 +1545,45 @@ $('btn-sortear').onclick = async ()=>{
 
 $('btn-reclamar').onclick = async ()=>{
   if(!Firebase.isIniciado()) return;
+  const snapEstado = await Firebase.snapshotFase();
+  const enPrioridad = snapEstado && snapEstado.fase==='prioridad_reclamo';
+  if(enPrioridad && snapEstado.prioridad_jugador !== Firebase.getMiRol()) return; // no le corresponde
+
   if(Reclamo.isActivo()){
     Reclamo.desactivar();
-    await Firebase.cancelarReclamo();
-    UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
-    UI.modal('Reclamo cancelado','El reclamo fue cancelado. El juego continúa.');
+    if(enPrioridad){
+      // En modo prioridad no se puede cancelar libremente — se trata como linea invalida
+      await Firebase.lineaInvalidaPrioridad();
+    } else {
+      await Firebase.cancelarReclamo();
+      UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+      UI.modal('Reclamo cancelado','El reclamo fue cancelado. El juego continúa.');
+    }
     return;
   }
   const lineas=Reglas.buscarVictoria(Estado.tablero,Firebase.getMiRol());
-  if(!lineas.length){ UI.modal('Sin línea ganadora','No tienes ninguna línea ganadora. No puedes reclamar.'); return; }
+  if(!lineas.length){
+    if(enPrioridad){
+      // No tiene línea -> pasa turno de prioridad automáticamente
+      await Firebase.lineaInvalidaPrioridad();
+      return;
+    }
+    UI.modal('Sin línea ganadora','No tienes ninguna línea ganadora. No puedes reclamar.'); return;
+  }
   const fichas=Reglas.fichasGanadoras(Estado.tablero,Firebase.getMiRol());
-  await Firebase.publicarReclamo(fichas);
+  if(!enPrioridad) await Firebase.publicarReclamo(fichas);
   Reclamo.init(Firebase.getMiRol());
   Reclamo.activar(fichas);
-  UI.modal('Modo Reclamo activo','Selecciona las 4 fichas de tu línea ganadora y pulsa CONFIRMAR.\nPulsa RECLAMAR VICTORIA de nuevo para cancelar.');
+  UI.modal('Modo Reclamo activo','Selecciona las 4 fichas de tu línea ganadora y pulsa CONFIRMAR.');
 };
 
 $('btn-confirmar').onclick = async ()=>{
   if(!Firebase.isIniciado()||!Reclamo.isActivo()){ UI.modal('Sin reclamo activo','Primero pulsa RECLAMAR VICTORIA y selecciona 4 fichas.'); return; }
   const sel=Reclamo.getSel();
   if(sel.length!==4){ UI.modal('Faltan fichas','Debes seleccionar exactamente 4 fichas.'); return; }
+  const snapEstado = await Firebase.snapshotFase();
+  const enPrioridad = snapEstado && snapEstado.fase==='prioridad_reclamo';
+
   if(Reglas.esLineaValida(sel)){
     const miRol=Firebase.getMiRol();
     Reclamo.desactivar();
@@ -1034,9 +1591,14 @@ $('btn-confirmar').onclick = async ()=>{
     await Firebase.confirmarVictoria(sel);
   } else {
     Reclamo.desactivar();
-    await Firebase.lineaInvalida();
-    UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
-    UI.modal('Línea inválida','Las 4 fichas no forman una línea ganadora válida. El juego continúa.');
+    if(enPrioridad){
+      UI.modal('Línea inválida','Las 4 fichas no forman una línea ganadora válida.');
+      await Firebase.lineaInvalidaPrioridad();
+    } else {
+      await Firebase.lineaInvalida();
+      UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+      UI.modal('Línea inválida','Las 4 fichas no forman una línea ganadora válida. El juego continúa.');
+    }
   }
 };
 
@@ -1063,10 +1625,531 @@ $('tablero-block').addEventListener('click', e=>{
 });
 
 /* ═══════════════════════════════════════════════════════
-   M16· CRONOMETRO — (pendiente de implementación)
-   Aquí irá el módulo de cronómetro de jugadas y partidas
+   M16· CRONÓMETRO — Temporizadores de jugada y partida
    ═══════════════════════════════════════════════════════ */
-// TODO: implementar Cronometro = (() => { ... })();
+const Cronometro = (() => {
+
+  // ── CONFIGURACIÓN DE MODOS ──────────────────────────
+  const MODOS = {
+    clasico: { nombre:'Clásico',  jugada: 0,   total: 0    },
+    basico:  { nombre:'Básico',   jugada: 30,  total: 480  },
+    experto: { nombre:'Experto',  jugada: 15,  total: 240  },
+    blitz:   { nombre:'Blitz',    jugada: 8,   total: 120  },
+  };
+
+  // ── ESTADO ───────────────────────────────────────────
+  let _modo         = 'clasico';
+  let _activo       = false;
+  let _pausado      = false;
+  let _miRol        = null;
+
+  // Tiempos restantes en segundos
+  let _totalX       = 0;
+  let _totalO       = 0;
+  let _jugada       = 0;   // tiempo restante para jugada actual
+
+  // Intervalos
+  let _timerJugada  = null;
+  let _timerTotalX  = null;
+  let _timerTotalO  = null;
+
+  // Callback para cuando se agota el tiempo de jugada
+  let _onTiempoJugadaAgotado = null;
+  let _onTiempoTotalAgotado  = null;
+
+  // Pausa
+  let _pausaSolicitadaPor = null;  // 'X' o 'O'
+
+  const $ = id => document.getElementById(id);
+
+  // ── UTILIDADES ───────────────────────────────────────
+  function _fmt(seg) {
+    const m = Math.floor(Math.abs(seg) / 60);
+    const s = Math.abs(seg) % 60;
+    return m + ':' + String(s).padStart(2, '0');
+  }
+
+  function _sonar(tipo) {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      if(tipo === 'urgente') {
+        osc.frequency.value = 880;
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+        osc.start(); osc.stop(ctx.currentTime + 0.15);
+      } else if(tipo === 'agotado') {
+        osc.frequency.value = 220;
+        gain.gain.setValueAtTime(0.5, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+        osc.start(); osc.stop(ctx.currentTime + 0.8);
+      } else if(tipo === 'cambio') {
+        osc.frequency.value = 440;
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+        osc.start(); osc.stop(ctx.currentTime + 0.1);
+      }
+    } catch(e) {}
+  }
+
+  // ── ACTUALIZAR DISPLAY ───────────────────────────────
+  function _actualizarDisplay() {
+    const cfg = MODOS[_modo];
+    if(cfg.total === 0) return; // modo clásico sin display
+
+    // Tiempos totales
+    const elX = $('crono-total-x');
+    const elO = $('crono-total-o');
+    if(elX) elX.textContent = _fmt(_totalX);
+    if(elO) elO.textContent = _fmt(_totalO);
+
+    // Urgencia en totales
+    const bloqX = $('crono-bloque-x');
+    const bloqO = $('crono-bloque-o');
+    if(bloqX) bloqX.classList.toggle('urgente', _totalX <= 30 && _totalX > 0);
+    if(bloqO) bloqO.classList.toggle('urgente', _totalO <= 30 && _totalO > 0);
+
+    // Tiempo de jugada
+    const elJ = $('crono-jugada-tiempo');
+    if(elJ && cfg.jugada > 0) {
+      elJ.textContent = _fmt(_jugada);
+      const urgente = _jugada <= 5 && _jugada > 0;
+      elJ.classList.toggle('urgente', urgente);
+      if(urgente) _sonar('urgente');
+    }
+
+    // Highlight del bloque activo
+    if(_miRol) {
+      const turnoActual = Estado.turno;
+      if(bloqX) bloqX.classList.toggle('mi-turno',   turnoActual === 'X' && _miRol === 'X');
+      if(bloqX) bloqX.classList.toggle('rival-turno', turnoActual !== 'X' || _miRol !== 'X');
+      if(bloqO) bloqO.classList.toggle('mi-turno',   turnoActual === 'O' && _miRol === 'O');
+      if(bloqO) bloqO.classList.toggle('rival-turno', turnoActual !== 'O' || _miRol !== 'O');
+    }
+  }
+
+  // ── DETENER TIMERS ────────────────────────────────────
+  function _detenerTodo() {
+    clearInterval(_timerJugada);
+    clearInterval(_timerTotalX);
+    clearInterval(_timerTotalO);
+    _timerJugada = _timerTotalX = _timerTotalO = null;
+  }
+
+  // ── INICIAR TIMER DE JUGADA ───────────────────────────
+  function _iniciarTimerJugada(rolActivo) {
+    const cfg = MODOS[_modo];
+    if(cfg.jugada === 0) return;
+
+    clearInterval(_timerJugada);
+    _jugada = cfg.jugada;
+    _actualizarDisplay();
+
+    _timerJugada = setInterval(() => {
+      if(_pausado) return;
+      _jugada--;
+      // Descontar del tiempo total del jugador activo
+      if(rolActivo === 'X') _totalX = Math.max(0, _totalX - 1);
+      else                  _totalO = Math.max(0, _totalO - 1);
+
+      _actualizarDisplay();
+
+      // Tiempo de jugada agotado → cambio de turno forzado
+      if(_jugada <= 0) {
+        clearInterval(_timerJugada);
+        _sonar('agotado');
+        if(_onTiempoJugadaAgotado) _onTiempoJugadaAgotado(rolActivo);
+      }
+
+      // Tiempo total agotado → derrota
+      const totalActivo = rolActivo === 'X' ? _totalX : _totalO;
+      if(cfg.total > 0 && totalActivo <= 0) {
+        _detenerTodo();
+        _sonar('agotado');
+        if(_onTiempoTotalAgotado) _onTiempoTotalAgotado(rolActivo);
+      }
+    }, 1000);
+  }
+
+  // ── API PÚBLICA ───────────────────────────────────────
+
+  /**
+   * Inicializar el cronómetro con un modo y rol
+   */
+  function init(modo, miRol, cbJugada, cbTotal) {
+    _modo = modo || 'clasico';
+    _miRol = miRol;
+    _onTiempoJugadaAgotado = cbJugada;
+    _onTiempoTotalAgotado  = cbTotal;
+    _pausado = false;
+    _pausaSolicitadaPor = null;
+
+    const cfg = MODOS[_modo];
+    _totalX = cfg.total;
+    _totalO = cfg.total;
+    _jugada = cfg.jugada;
+
+    // Mostrar u ocultar cronómetro
+    const cont = $('crono-container');
+    if(cont) {
+      if(cfg.total > 0) {
+        cont.classList.add('activo');
+        // Inicializar displays
+        const elX = $('crono-total-x');
+        const elO = $('crono-total-o');
+        const elJ = $('crono-jugada-tiempo');
+        if(elX) elX.textContent = _fmt(_totalX);
+        if(elO) elO.textContent = _fmt(_totalO);
+        if(elJ) elJ.textContent = _fmt(_jugada);
+      } else {
+        cont.classList.remove('activo');
+      }
+    }
+    // Ocultar selector de modo
+    const sel = $('crono-modo-selector');
+    if(sel) sel.style.display = 'none';
+  }
+
+  /**
+   * Arrancar el timer para un turno específico
+   */
+  function arrancarTurno(rolActivo) {
+    if(MODOS[_modo].jugada === 0) return;
+    _sonar('cambio');
+    _iniciarTimerJugada(rolActivo);
+  }
+
+  /**
+   * Detener todos los timers (fin de partida, reclamo, etc.)
+   */
+  function detener() {
+    _detenerTodo();
+    _activo = false;
+  }
+
+  /**
+   * Pausar / reanudar
+   */
+  function pausar() { _pausado = true; }
+  function reanudar() { _pausado = false; }
+  function estaPausado() { return _pausado; }
+
+  /**
+   * Obtener estado actual para guardar en Firebase
+   */
+  function getEstado() {
+    return { totalX: _totalX, totalO: _totalO, jugada: _jugada, modo: _modo };
+  }
+
+  /**
+   * Restaurar estado desde Firebase
+   */
+  function setEstado(e) {
+    if(!e) return;
+    _totalX = e.totalX ?? _totalX;
+    _totalO = e.totalO ?? _totalO;
+    _jugada = e.jugada ?? _jugada;
+    _actualizarDisplay();
+  }
+
+  function getModo() { return _modo; }
+
+  return {
+    init, arrancarTurno, detener, pausar, reanudar,
+    estaPausado, getEstado, setEstado, getModo, MODOS
+  };
+})();
+
+// ── SELECTOR DE MODO (antes del sorteo) ─────────────────
+let _modoSeleccionado = 'clasico';
+
+document.querySelectorAll('.crono-modo-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if(!Firebase.isIniciado()) return; // solo cuando hay sala activa
+    // Solo antes de sortear
+    document.querySelectorAll('.crono-modo-btn').forEach(b => b.classList.remove('seleccionado'));
+    btn.classList.add('seleccionado');
+    _modoSeleccionado = btn.dataset.modo;
+    // Sincronizar modo con Firebase para que el oponente lo vea
+    if(window.Firebase) Firebase.setModo(_modoSeleccionado);
+  });
+});
+
+// ── BOTÓN PAUSA ──────────────────────────────────────────
+document.getElementById('btn-pausa-crono')?.addEventListener('click', () => {
+  if(!Firebase.isIniciado()) return;
+  Firebase.solicitarPausa(Firebase.getMiRol());
+});
+
+document.getElementById('btn-reanudar-crono')?.addEventListener('click', () => {
+  if(!Firebase.isIniciado()) return;
+  Firebase.reanudarPausa();
+});
+
+/* ═══════════════════════════════════════════════════════
+   SESIÓN Y EMPATE — Detección tablero lleno, contadores,
+   configurador de sesión (mejor de N)
+   ═══════════════════════════════════════════════════════ */
+const Sesion = (() => {
+  let _totalPartidas  = 0;   // partidas configuradas (0 = libre)
+  let _partidasJugadas = 0;
+  let _empates        = 0;
+
+  function init() {
+    _partidasJugadas = 0;
+    _empates         = 0;
+    _actualizarDisplay();
+  }
+
+  function _actualizarDisplay() {
+    const ep  = document.getElementById('stat-empates');
+    const pj  = document.getElementById('stat-partidas');
+    const pa  = document.getElementById('stat-partida-actual');
+    const sp  = document.getElementById('sesion-progreso');
+    if(ep) ep.textContent = _empates;
+    if(pj) pj.textContent = _partidasJugadas;
+    if(pa) pa.textContent = '#' + (_partidasJugadas + 1);
+    if(sp) {
+      sp.textContent = _totalPartidas > 0
+        ? 'Partida ' + (_partidasJugadas + 1) + ' de ' + _totalPartidas
+        : 'Partida #' + (_partidasJugadas + 1);
+    }
+  }
+
+  function registrarEmpate() {
+    _empates++;
+    _partidasJugadas++;
+    _actualizarDisplay();
+  }
+
+  function registrarPartida() {
+    _partidasJugadas++;
+    _actualizarDisplay();
+  }
+
+  function setTotal(n) { _totalPartidas = n; _actualizarDisplay(); }
+  function getTotal()  { return _totalPartidas; }
+
+  function verificarFinSesion(vX, vO) {
+    if(_totalPartidas === 0) return null; // libre
+    if(_partidasJugadas < _totalPartidas) return null;
+    // Fin de sesión
+    if(vX > vO)       return { ganador: 'X', vX, vO, empates: _empates };
+    else if(vO > vX)  return { ganador: 'O', vX, vO, empates: _empates };
+    else              return { ganador: 'EMPATE', vX, vO, empates: _empates };
+  }
+
+  function mostrarFinSesion(resultado, miRol) {
+    const banner = document.getElementById('sesion-ganador-banner');
+    const gtxt   = document.getElementById('sesion-ganador-txt');
+    const rtxt   = document.getElementById('sesion-resumen-txt');
+    if(!banner) return;
+    let gLabel = '';
+    if(resultado.ganador === 'X')      gLabel = '🔴 JUGADOR 1 (X)';
+    else if(resultado.ganador === 'O') gLabel = '🔵 JUGADOR 2 (O)';
+    else                               gLabel = '🤝 EMPATE TOTAL';
+    if(gtxt) {
+      gtxt.textContent = gLabel;
+      gtxt.style.color = resultado.ganador === 'X' ? 'var(--red-g)'
+                        : resultado.ganador === 'O' ? 'var(--blue-g)' : 'var(--gold)';
+    }
+    if(rtxt) rtxt.textContent =
+      'Victorias X: ' + resultado.vX + '   |   ' +
+      'Victorias O: ' + resultado.vO + '   |   ' +
+      'Empates: ' + resultado.empates + '
+' +
+      'Total partidas jugadas: ' + _partidasJugadas;
+    banner.style.display = 'block';
+  }
+
+  function getEstado() {
+    return { partidasJugadas: _partidasJugadas, empates: _empates, totalPartidas: _totalPartidas };
+  }
+
+  function fromFirebase(d) {
+    if(!d) return;
+    _empates         = d.empates         || 0;
+    _partidasJugadas = d.partidasJugadas || 0;
+    _totalPartidas   = d.totalPartidas   || 0;
+    _actualizarDisplay();
+  }
+
+  return { init, registrarEmpate, registrarPartida, setTotal, getTotal,
+           verificarFinSesion, mostrarFinSesion, getEstado, fromFirebase };
+})();
+
+// ── CONFIGURADOR DE SESIÓN ───────────────────────────────
+document.querySelectorAll('.sesion-btn-n').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if(!Firebase.isIniciado()) return;
+    document.querySelectorAll('.sesion-btn-n').forEach(b => b.classList.remove('sel'));
+    btn.classList.add('sel');
+    const n = parseInt(btn.dataset.n);
+    Sesion.setTotal(n);
+    if(window.Firebase) Firebase.setSesionConfig(n);
+  });
+});
+
+// ── BANNER EMPATE ────────────────────────────────────────
+document.getElementById('btn-cerrar-empate')?.addEventListener('click', () => {
+  document.getElementById('empate-banner').style.display = 'none';
+});
+
+// ── BANNER FIN DE SESIÓN ─────────────────────────────────
+document.getElementById('btn-nueva-sesion')?.addEventListener('click', async () => {
+  document.getElementById('sesion-ganador-banner').style.display = 'none';
+  Sesion.init();
+  if(window.Firebase) await Firebase.nuevaSesion();
+});
+
+/* ═══════════════════════════════════════════════════════
+   TABLERO COMPLETO — Modal empate con countdown y
+   Regla de Prioridad de Reclamo Final
+   ═══════════════════════════════════════════════════════ */
+#tc-overlay{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:300;
+  align-items:center;justify-content:center;
+}
+#tc-overlay.visible{ display:flex; }
+#tc-modal{
+  background:linear-gradient(135deg,#1a1a1a,#252525);
+  border:3px solid var(--gold);border-radius:14px;
+  padding:28px 36px;text-align:center;min-width:320px;max-width:420px;
+  box-shadow:0 0 50px rgba(200,168,75,0.4);
+}
+#tc-modal h2{
+  font-family:'Orbitron',sans-serif;font-size:18px;
+  color:var(--gold);margin-bottom:8px;letter-spacing:2px;
+}
+#tc-modal p{ font-size:12px;color:#aaa;line-height:1.6;margin-bottom:14px; }
+#tc-countdown{
+  font-family:'Orbitron',sans-serif;font-size:36px;font-weight:900;
+  color:var(--gold);margin:10px 0;letter-spacing:4px;
+}
+#tc-countdown.urgente{ color:var(--red-g);text-shadow:0 0 12px var(--red); }
+.tc-btns{ display:flex;gap:12px;justify-content:center;margin-top:12px; }
+#btn-tc-si{
+  padding:10px 28px;background:linear-gradient(135deg,#005500,#009933);
+  color:#fff;border:none;border-radius:7px;cursor:pointer;
+  font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;letter-spacing:1px;
+}
+#btn-tc-no{
+  padding:10px 28px;background:linear-gradient(135deg,#7a0000,#cc2200);
+  color:#fff;border:none;border-radius:7px;cursor:pointer;
+  font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;letter-spacing:1px;
+}
+#btn-tc-si:disabled,#btn-tc-no:disabled{ opacity:0.3;cursor:not-allowed; }
+/* Modal prioridad */
+#prioridad-modal{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:300;
+  align-items:center;justify-content:center;
+}
+#prioridad-modal.visible{ display:flex; }
+#prioridad-box{
+  background:linear-gradient(135deg,#0a0a1a,#15153a);
+  border:3px solid var(--blue);border-radius:14px;
+  padding:28px 36px;text-align:center;min-width:320px;max-width:420px;
+  box-shadow:0 0 50px rgba(42,159,214,0.4);
+}
+#prioridad-box h2{
+  font-family:'Orbitron',sans-serif;font-size:16px;
+  color:var(--blue);margin-bottom:10px;letter-spacing:1px;
+}
+#prioridad-box .prioridad-jugador{
+  font-family:'Orbitron',sans-serif;font-size:20px;font-weight:900;
+  margin:10px 0;letter-spacing:2px;
+}
+#prioridad-box p{ font-size:11px;color:#aaa;line-height:1.5;margin-bottom:10px; }
+#btn-prioridad-ok{
+  padding:10px 24px;background:var(--gold);color:#111;
+  border:none;border-radius:7px;cursor:pointer;
+  font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;
+}
+
+/* ═══════════════════════════════════════════════════════
+   EMPATE FLOW — Tablero completo + Regla de Prioridad
+   de Reclamo Final
+   ═══════════════════════════════════════════════════════ */
+const EmpateFlow = (() => {
+  let _countdownInterval = null;
+  let _miRol = null;
+
+  function init(rol) { _miRol = rol; }
+
+  // ── Fase: tablero_completo (countdown SI/NO) ──────────
+  function mostrarModalTC(d) {
+    const ov = document.getElementById('tc-overlay');
+    ov.classList.add('visible');
+    const rivalTxt = document.getElementById('tc-estado-rival');
+    const miDecision = d.tc_decision && d.tc_decision[_miRol];
+    const rivalRol = _miRol === 'X' ? 'O' : 'X';
+    const rivalDecision = d.tc_decision && d.tc_decision[rivalRol];
+
+    document.getElementById('btn-tc-si').disabled = !!miDecision;
+    document.getElementById('btn-tc-no').disabled = !!miDecision;
+
+    if(rivalDecision) {
+      rivalTxt.textContent = 'Tu oponente ya respondió. Esperando tu decisión...';
+    } else {
+      rivalTxt.textContent = 'Esperando respuesta de ambos jugadores...';
+    }
+
+    // Countdown sincronizado por timestamp de inicio
+    clearInterval(_countdownInterval);
+    const inicio = d.tc_inicio || Date.now();
+    _countdownInterval = setInterval(() => {
+      const transcurrido = Math.floor((Date.now() - inicio) / 1000);
+      const restante = Math.max(0, 10 - transcurrido);
+      const el = document.getElementById('tc-countdown');
+      el.textContent = restante;
+      el.classList.toggle('urgente', restante <= 3);
+      if(restante <= 0) {
+        clearInterval(_countdownInterval);
+        if(_miRol === 'X') Firebase.resolverTimeoutEmpate();
+      }
+    }, 200);
+  }
+
+  function ocultarModalTC() {
+    document.getElementById('tc-overlay').classList.remove('visible');
+    clearInterval(_countdownInterval);
+  }
+
+  // ── Fase: prioridad_reclamo ────────────────────────────
+  function mostrarModalPrioridad(d) {
+    const modal = document.getElementById('prioridad-modal');
+    modal.classList.add('visible');
+    const jTxt = document.getElementById('prioridad-jugador-txt');
+    const desc = document.getElementById('prioridad-desc');
+    const prioritario = d.prioridad_jugador;
+    const nombre = prioritario === 'X' ? '🔴 JUGADOR 1 (X)' : '🔵 JUGADOR 2 (O)';
+    jTxt.textContent = nombre;
+    jTxt.style.color = prioritario === 'X' ? 'var(--red-g)' : 'var(--blue-g)';
+    const intento = d.prioridad_intento || 1;
+    desc.textContent = intento === 1
+      ? '(Jugador que inició la partida)'
+      : '(Segunda y última oportunidad — jugador que partió en segundo lugar)';
+  }
+
+  function ocultarModalPrioridad() {
+    document.getElementById('prioridad-modal').classList.remove('visible');
+  }
+
+  return { init, mostrarModalTC, ocultarModalTC, mostrarModalPrioridad, ocultarModalPrioridad };
+})();
+
+// ── EVENTOS BOTONES SI/NO ────────────────────────────────
+document.getElementById('btn-tc-si')?.addEventListener('click', () => {
+  if(window.Firebase) Firebase.responderEmpate(true);
+});
+document.getElementById('btn-tc-no')?.addEventListener('click', () => {
+  if(window.Firebase) Firebase.responderEmpate(false);
+});
+document.getElementById('btn-prioridad-ok')?.addEventListener('click', () => {
+  EmpateFlow.ocultarModalPrioridad();
+});
 
 /* ═══════════════════════════════════════════════════════
    M17· IA — (pendiente de implementación)
