@@ -319,6 +319,69 @@ hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
   font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;
 }
 
+/* ═══════════════════════════════════════════════════════
+   TABLERO COMPLETO — Modal empate con countdown y
+   Regla de Prioridad de Reclamo Final
+   ═══════════════════════════════════════════════════════ */
+#tc-overlay{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:300;
+  align-items:center;justify-content:center;
+}
+#tc-overlay.visible{ display:flex; }
+#tc-modal{
+  background:linear-gradient(135deg,#1a1a1a,#252525);
+  border:3px solid var(--gold);border-radius:14px;
+  padding:28px 36px;text-align:center;min-width:320px;max-width:420px;
+  box-shadow:0 0 50px rgba(200,168,75,0.4);
+}
+#tc-modal h2{
+  font-family:'Orbitron',sans-serif;font-size:18px;
+  color:var(--gold);margin-bottom:8px;letter-spacing:2px;
+}
+#tc-modal p{ font-size:12px;color:#aaa;line-height:1.6;margin-bottom:14px; }
+#tc-countdown{
+  font-family:'Orbitron',sans-serif;font-size:36px;font-weight:900;
+  color:var(--gold);margin:10px 0;letter-spacing:4px;
+}
+#tc-countdown.urgente{ color:var(--red-g);text-shadow:0 0 12px var(--red); }
+.tc-btns{ display:flex;gap:12px;justify-content:center;margin-top:12px; }
+#btn-tc-si{
+  padding:10px 28px;background:linear-gradient(135deg,#005500,#009933);
+  color:#fff;border:none;border-radius:7px;cursor:pointer;
+  font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;letter-spacing:1px;
+}
+#btn-tc-no{
+  padding:10px 28px;background:linear-gradient(135deg,#7a0000,#cc2200);
+  color:#fff;border:none;border-radius:7px;cursor:pointer;
+  font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;letter-spacing:1px;
+}
+#btn-tc-si:disabled,#btn-tc-no:disabled{ opacity:0.3;cursor:not-allowed; }
+/* Modal prioridad */
+#prioridad-modal{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:300;
+  align-items:center;justify-content:center;
+}
+#prioridad-modal.visible{ display:flex; }
+#prioridad-box{
+  background:linear-gradient(135deg,#0a0a1a,#15153a);
+  border:3px solid var(--blue);border-radius:14px;
+  padding:28px 36px;text-align:center;min-width:320px;max-width:420px;
+  box-shadow:0 0 50px rgba(42,159,214,0.4);
+}
+#prioridad-box h2{
+  font-family:'Orbitron',sans-serif;font-size:16px;
+  color:var(--blue);margin-bottom:10px;letter-spacing:1px;
+}
+#prioridad-box .prioridad-jugador{
+  font-family:'Orbitron',sans-serif;font-size:20px;font-weight:900;
+  margin:10px 0;letter-spacing:2px;
+}
+#prioridad-box p{ font-size:11px;color:#aaa;line-height:1.5;margin-bottom:10px; }
+#btn-prioridad-ok{
+  padding:10px 24px;background:var(--gold);color:#111;
+  border:none;border-radius:7px;cursor:pointer;
+  font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;
+}
 </style>
 </head>
 <body>
@@ -1181,6 +1244,483 @@ const Chat = (() => {
 })();
 window.toggleChat=()=>Chat.toggle();
 
+
+/* ═══════════════════════════════════════════════════════
+   EMPATE FLOW — Tablero completo + Regla de Prioridad
+   de Reclamo Final
+   ═══════════════════════════════════════════════════════ */
+const EmpateFlow = (() => {
+  let _countdownInterval = null;
+  let _miRol = null;
+
+  function init(rol) { _miRol = rol; }
+
+  // ── Fase: tablero_completo (countdown SI/NO) ──────────
+  function mostrarModalTC(d) {
+    const ov = document.getElementById('tc-overlay');
+    ov.classList.add('visible');
+    const rivalTxt = document.getElementById('tc-estado-rival');
+    const miDecision = d.tc_decision && d.tc_decision[_miRol];
+    const rivalRol = _miRol === 'X' ? 'O' : 'X';
+    const rivalDecision = d.tc_decision && d.tc_decision[rivalRol];
+
+    document.getElementById('btn-tc-si').disabled = !!miDecision;
+    document.getElementById('btn-tc-no').disabled = !!miDecision;
+
+    if(rivalDecision) {
+      rivalTxt.textContent = 'Tu oponente ya respondió. Esperando tu decisión...';
+    } else {
+      rivalTxt.textContent = 'Esperando respuesta de ambos jugadores...';
+    }
+
+    // Countdown sincronizado por timestamp de inicio
+    clearInterval(_countdownInterval);
+    const inicio = d.tc_inicio || Date.now();
+    _countdownInterval = setInterval(() => {
+      const transcurrido = Math.floor((Date.now() - inicio) / 1000);
+      const restante = Math.max(0, 10 - transcurrido);
+      const el = document.getElementById('tc-countdown');
+      el.textContent = restante;
+      el.classList.toggle('urgente', restante <= 3);
+      if(restante <= 0) {
+        clearInterval(_countdownInterval);
+        if(_miRol === 'X') Firebase.resolverTimeoutEmpate();
+      }
+    }, 200);
+  }
+
+  function ocultarModalTC() {
+    document.getElementById('tc-overlay').classList.remove('visible');
+    clearInterval(_countdownInterval);
+  }
+
+  // ── Fase: prioridad_reclamo ────────────────────────────
+  function mostrarModalPrioridad(d) {
+    const modal = document.getElementById('prioridad-modal');
+    modal.classList.add('visible');
+    const jTxt = document.getElementById('prioridad-jugador-txt');
+    const desc = document.getElementById('prioridad-desc');
+    const prioritario = d.prioridad_jugador;
+    const nombre = prioritario === 'X' ? '🔴 JUGADOR 1 (X)' : '🔵 JUGADOR 2 (O)';
+    jTxt.textContent = nombre;
+    jTxt.style.color = prioritario === 'X' ? 'var(--red-g)' : 'var(--blue-g)';
+    const intento = d.prioridad_intento || 1;
+    desc.textContent = intento === 1
+      ? '(Jugador que inició la partida)'
+      : '(Segunda y última oportunidad — jugador que partió en segundo lugar)';
+  }
+
+  function ocultarModalPrioridad() {
+    document.getElementById('prioridad-modal').classList.remove('visible');
+  }
+
+  return { init, mostrarModalTC, ocultarModalTC, mostrarModalPrioridad, ocultarModalPrioridad };
+})();
+
+// ── EVENTOS BOTONES SI/NO ────────────────────────────────
+document.getElementById('btn-tc-si')?.addEventListener('click', () => {
+  if(window.Firebase) Firebase.responderEmpate(true);
+});
+document.getElementById('btn-tc-no')?.addEventListener('click', () => {
+  if(window.Firebase) Firebase.responderEmpate(false);
+});
+document.getElementById('btn-prioridad-ok')?.addEventListener('click', () => {
+  EmpateFlow.ocultarModalPrioridad();
+});
+
+/* ═══════════════════════════════════════════════════════
+   M17· IA — (pendiente de implementación)
+   Aquí irá el motor de inteligencia artificial
+   ═══════════════════════════════════════════════════════ */
+// TODO: implementar IA = (() => { ... })();
+
+/* ═══════════════════════════════════════════════════════
+   M18· RANKING — (pendiente de implementación)
+   Aquí irá el sistema de puntuación ELO y rankings
+   ═══════════════════════════════════════════════════════ */
+// TODO: implementar Ranking = (() => { ... })();
+
+
+/* ═══════════════════════════════════════════════════════
+   SESIÓN Y EMPATE — Detección tablero lleno, contadores,
+   configurador de sesión (mejor de N)
+   ═══════════════════════════════════════════════════════ */
+const Sesion = (() => {
+  let _totalPartidas  = 0;   // partidas configuradas (0 = libre)
+  let _partidasJugadas = 0;
+  let _empates        = 0;
+
+  function init() {
+    _partidasJugadas = 0;
+    _empates         = 0;
+    _actualizarDisplay();
+  }
+
+  function _actualizarDisplay() {
+    const ep  = document.getElementById('stat-empates');
+    const pj  = document.getElementById('stat-partidas');
+    const pa  = document.getElementById('stat-partida-actual');
+    const sp  = document.getElementById('sesion-progreso');
+    if(ep) ep.textContent = _empates;
+    if(pj) pj.textContent = _partidasJugadas;
+    if(pa) pa.textContent = '#' + (_partidasJugadas + 1);
+    if(sp) {
+      sp.textContent = _totalPartidas > 0
+        ? 'Partida ' + (_partidasJugadas + 1) + ' de ' + _totalPartidas
+        : 'Partida #' + (_partidasJugadas + 1);
+    }
+  }
+
+  function registrarEmpate() {
+    _empates++;
+    _partidasJugadas++;
+    _actualizarDisplay();
+  }
+
+  function registrarPartida() {
+    _partidasJugadas++;
+    _actualizarDisplay();
+  }
+
+  function setTotal(n) { _totalPartidas = n; _actualizarDisplay(); }
+  function getTotal()  { return _totalPartidas; }
+
+  function verificarFinSesion(vX, vO) {
+    if(_totalPartidas === 0) return null; // libre
+    if(_partidasJugadas < _totalPartidas) return null;
+    // Fin de sesión
+    if(vX > vO)       return { ganador: 'X', vX, vO, empates: _empates };
+    else if(vO > vX)  return { ganador: 'O', vX, vO, empates: _empates };
+    else              return { ganador: 'EMPATE', vX, vO, empates: _empates };
+  }
+
+  function mostrarFinSesion(resultado, miRol) {
+    const banner = document.getElementById('sesion-ganador-banner');
+    const gtxt   = document.getElementById('sesion-ganador-txt');
+    const rtxt   = document.getElementById('sesion-resumen-txt');
+    if(!banner) return;
+    let gLabel = '';
+    if(resultado.ganador === 'X')      gLabel = '🔴 JUGADOR 1 (X)';
+    else if(resultado.ganador === 'O') gLabel = '🔵 JUGADOR 2 (O)';
+    else                               gLabel = '🤝 EMPATE TOTAL';
+    if(gtxt) {
+      gtxt.textContent = gLabel;
+      gtxt.style.color = resultado.ganador === 'X' ? 'var(--red-g)'
+                        : resultado.ganador === 'O' ? 'var(--blue-g)' : 'var(--gold)';
+    }
+    if(rtxt) rtxt.textContent =
+      'Victorias X: ' + resultado.vX + '   |   ' +
+      'Victorias O: ' + resultado.vO + '   |   ' +
+      'Empates: ' + resultado.empates + '\n' +
+      'Total partidas jugadas: ' + _partidasJugadas;
+    banner.style.display = 'block';
+  }
+
+  function getEstado() {
+    return { partidasJugadas: _partidasJugadas, empates: _empates, totalPartidas: _totalPartidas };
+  }
+
+  function fromFirebase(d) {
+    if(!d) return;
+    _empates         = d.empates         || 0;
+    _partidasJugadas = d.partidasJugadas || 0;
+    _totalPartidas   = d.totalPartidas   || 0;
+    _actualizarDisplay();
+  }
+
+  return { init, registrarEmpate, registrarPartida, setTotal, getTotal,
+           verificarFinSesion, mostrarFinSesion, getEstado, fromFirebase };
+})();
+
+// ── CONFIGURADOR DE SESIÓN ───────────────────────────────
+document.querySelectorAll('.sesion-btn-n').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if(!Firebase.isIniciado()) return;
+    document.querySelectorAll('.sesion-btn-n').forEach(b => b.classList.remove('sel'));
+    btn.classList.add('sel');
+    const n = parseInt(btn.dataset.n);
+    Sesion.setTotal(n);
+    if(window.Firebase) Firebase.setSesionConfig(n);
+  });
+});
+
+// ── BANNER EMPATE ────────────────────────────────────────
+document.getElementById('btn-cerrar-empate')?.addEventListener('click', () => {
+  document.getElementById('empate-banner').style.display = 'none';
+});
+
+// ── BANNER FIN DE SESIÓN ─────────────────────────────────
+document.getElementById('btn-nueva-sesion')?.addEventListener('click', async () => {
+  document.getElementById('sesion-ganador-banner').style.display = 'none';
+  Sesion.init();
+  if(window.Firebase) await Firebase.nuevaSesion();
+});
+
+
+/* ═══════════════════════════════════════════════════════
+   M16· CRONÓMETRO — Temporizadores de jugada y partida
+   ═══════════════════════════════════════════════════════ */
+const Cronometro = (() => {
+
+  // ── CONFIGURACIÓN DE MODOS ──────────────────────────
+  const MODOS = {
+    clasico: { nombre:'Clásico',  jugada: 0,   total: 0    },
+    basico:  { nombre:'Básico',   jugada: 30,  total: 480  },
+    experto: { nombre:'Experto',  jugada: 15,  total: 240  },
+    blitz:   { nombre:'Blitz',    jugada: 8,   total: 120  },
+  };
+
+  // ── ESTADO ───────────────────────────────────────────
+  let _modo         = 'clasico';
+  let _activo       = false;
+  let _pausado      = false;
+  let _miRol        = null;
+
+  // Tiempos restantes en segundos
+  let _totalX       = 0;
+  let _totalO       = 0;
+  let _jugada       = 0;   // tiempo restante para jugada actual
+
+  // Intervalos
+  let _timerJugada  = null;
+  let _timerTotalX  = null;
+  let _timerTotalO  = null;
+
+  // Callback para cuando se agota el tiempo de jugada
+  let _onTiempoJugadaAgotado = null;
+  let _onTiempoTotalAgotado  = null;
+
+  // Pausa
+  let _pausaSolicitadaPor = null;  // 'X' o 'O'
+
+  const $ = id => document.getElementById(id);
+
+  // ── UTILIDADES ───────────────────────────────────────
+  function _fmt(seg) {
+    const m = Math.floor(Math.abs(seg) / 60);
+    const s = Math.abs(seg) % 60;
+    return m + ':' + String(s).padStart(2, '0');
+  }
+
+  function _sonar(tipo) {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      if(tipo === 'urgente') {
+        osc.frequency.value = 880;
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+        osc.start(); osc.stop(ctx.currentTime + 0.15);
+      } else if(tipo === 'agotado') {
+        osc.frequency.value = 220;
+        gain.gain.setValueAtTime(0.5, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+        osc.start(); osc.stop(ctx.currentTime + 0.8);
+      } else if(tipo === 'cambio') {
+        osc.frequency.value = 440;
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+        osc.start(); osc.stop(ctx.currentTime + 0.1);
+      }
+    } catch(e) {}
+  }
+
+  // ── ACTUALIZAR DISPLAY ───────────────────────────────
+  function _actualizarDisplay() {
+    const cfg = MODOS[_modo];
+    if(cfg.total === 0) return; // modo clásico sin display
+
+    // Tiempos totales
+    const elX = $('crono-total-x');
+    const elO = $('crono-total-o');
+    if(elX) elX.textContent = _fmt(_totalX);
+    if(elO) elO.textContent = _fmt(_totalO);
+
+    // Urgencia en totales
+    const bloqX = $('crono-bloque-x');
+    const bloqO = $('crono-bloque-o');
+    if(bloqX) bloqX.classList.toggle('urgente', _totalX <= 30 && _totalX > 0);
+    if(bloqO) bloqO.classList.toggle('urgente', _totalO <= 30 && _totalO > 0);
+
+    // Tiempo de jugada
+    const elJ = $('crono-jugada-tiempo');
+    if(elJ && cfg.jugada > 0) {
+      elJ.textContent = _fmt(_jugada);
+      const urgente = _jugada <= 5 && _jugada > 0;
+      elJ.classList.toggle('urgente', urgente);
+      if(urgente) _sonar('urgente');
+    }
+
+    // Highlight del bloque activo
+    if(_miRol) {
+      const turnoActual = Estado.turno;
+      if(bloqX) bloqX.classList.toggle('mi-turno',   turnoActual === 'X' && _miRol === 'X');
+      if(bloqX) bloqX.classList.toggle('rival-turno', turnoActual !== 'X' || _miRol !== 'X');
+      if(bloqO) bloqO.classList.toggle('mi-turno',   turnoActual === 'O' && _miRol === 'O');
+      if(bloqO) bloqO.classList.toggle('rival-turno', turnoActual !== 'O' || _miRol !== 'O');
+    }
+  }
+
+  // ── DETENER TIMERS ────────────────────────────────────
+  function _detenerTodo() {
+    clearInterval(_timerJugada);
+    clearInterval(_timerTotalX);
+    clearInterval(_timerTotalO);
+    _timerJugada = _timerTotalX = _timerTotalO = null;
+  }
+
+  // ── INICIAR TIMER DE JUGADA ───────────────────────────
+  function _iniciarTimerJugada(rolActivo) {
+    const cfg = MODOS[_modo];
+    if(cfg.jugada === 0) return;
+
+    clearInterval(_timerJugada);
+    _jugada = cfg.jugada;
+    _actualizarDisplay();
+
+    _timerJugada = setInterval(() => {
+      if(_pausado) return;
+      _jugada--;
+      // Descontar del tiempo total del jugador activo
+      if(rolActivo === 'X') _totalX = Math.max(0, _totalX - 1);
+      else                  _totalO = Math.max(0, _totalO - 1);
+
+      _actualizarDisplay();
+
+      // Tiempo de jugada agotado → cambio de turno forzado
+      if(_jugada <= 0) {
+        clearInterval(_timerJugada);
+        _sonar('agotado');
+        if(_onTiempoJugadaAgotado) _onTiempoJugadaAgotado(rolActivo);
+      }
+
+      // Tiempo total agotado → derrota
+      const totalActivo = rolActivo === 'X' ? _totalX : _totalO;
+      if(cfg.total > 0 && totalActivo <= 0) {
+        _detenerTodo();
+        _sonar('agotado');
+        if(_onTiempoTotalAgotado) _onTiempoTotalAgotado(rolActivo);
+      }
+    }, 1000);
+  }
+
+  // ── API PÚBLICA ───────────────────────────────────────
+
+  /**
+   * Inicializar el cronómetro con un modo y rol
+   */
+  function init(modo, miRol, cbJugada, cbTotal) {
+    _modo = modo || 'clasico';
+    _miRol = miRol;
+    _onTiempoJugadaAgotado = cbJugada;
+    _onTiempoTotalAgotado  = cbTotal;
+    _pausado = false;
+    _pausaSolicitadaPor = null;
+
+    const cfg = MODOS[_modo];
+    _totalX = cfg.total;
+    _totalO = cfg.total;
+    _jugada = cfg.jugada;
+
+    // Mostrar u ocultar cronómetro
+    const cont = $('crono-container');
+    if(cont) {
+      if(cfg.total > 0) {
+        cont.classList.add('activo');
+        // Inicializar displays
+        const elX = $('crono-total-x');
+        const elO = $('crono-total-o');
+        const elJ = $('crono-jugada-tiempo');
+        if(elX) elX.textContent = _fmt(_totalX);
+        if(elO) elO.textContent = _fmt(_totalO);
+        if(elJ) elJ.textContent = _fmt(_jugada);
+      } else {
+        cont.classList.remove('activo');
+      }
+    }
+    // Ocultar selector de modo
+    const sel = $('crono-modo-selector');
+    if(sel) sel.style.display = 'none';
+  }
+
+  /**
+   * Arrancar el timer para un turno específico
+   */
+  function arrancarTurno(rolActivo) {
+    if(MODOS[_modo].jugada === 0) return;
+    _sonar('cambio');
+    _iniciarTimerJugada(rolActivo);
+  }
+
+  /**
+   * Detener todos los timers (fin de partida, reclamo, etc.)
+   */
+  function detener() {
+    _detenerTodo();
+    _activo = false;
+  }
+
+  /**
+   * Pausar / reanudar
+   */
+  function pausar() { _pausado = true; }
+  function reanudar() { _pausado = false; }
+  function estaPausado() { return _pausado; }
+
+  /**
+   * Obtener estado actual para guardar en Firebase
+   */
+  function getEstado() {
+    return { totalX: _totalX, totalO: _totalO, jugada: _jugada, modo: _modo };
+  }
+
+  /**
+   * Restaurar estado desde Firebase
+   */
+  function setEstado(e) {
+    if(!e) return;
+    _totalX = e.totalX ?? _totalX;
+    _totalO = e.totalO ?? _totalO;
+    _jugada = e.jugada ?? _jugada;
+    _actualizarDisplay();
+  }
+
+  function getModo() { return _modo; }
+
+  return {
+    init, arrancarTurno, detener, pausar, reanudar,
+    estaPausado, getEstado, setEstado, getModo, MODOS
+  };
+})();
+
+// ── SELECTOR DE MODO (antes del sorteo) ─────────────────
+let _modoSeleccionado = 'clasico';
+
+document.querySelectorAll('.crono-modo-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if(!Firebase.isIniciado()) return; // solo cuando hay sala activa
+    // Solo antes de sortear
+    document.querySelectorAll('.crono-modo-btn').forEach(b => b.classList.remove('seleccionado'));
+    btn.classList.add('seleccionado');
+    _modoSeleccionado = btn.dataset.modo;
+    // Sincronizar modo con Firebase para que el oponente lo vea
+    if(window.Firebase) Firebase.setModo(_modoSeleccionado);
+  });
+});
+
+// ── BOTÓN PAUSA ──────────────────────────────────────────
+document.getElementById('btn-pausa-crono')?.addEventListener('click', () => {
+  if(!Firebase.isIniciado()) return;
+  Firebase.solicitarPausa(Firebase.getMiRol());
+});
+
+document.getElementById('btn-reanudar-crono')?.addEventListener('click', () => {
+  if(!Firebase.isIniciado()) return;
+  Firebase.reanudarPausa();
+});
+
 </script>
 
 <!-- ═══════════════════════════════════════════════════════
@@ -1624,544 +2164,10 @@ $('tablero-block').addEventListener('click', e=>{
   if(id) Reclamo.seleccionar(id);
 });
 
-/* ═══════════════════════════════════════════════════════
-   M16· CRONÓMETRO — Temporizadores de jugada y partida
-   ═══════════════════════════════════════════════════════ */
-const Cronometro = (() => {
 
-  // ── CONFIGURACIÓN DE MODOS ──────────────────────────
-  const MODOS = {
-    clasico: { nombre:'Clásico',  jugada: 0,   total: 0    },
-    basico:  { nombre:'Básico',   jugada: 30,  total: 480  },
-    experto: { nombre:'Experto',  jugada: 15,  total: 240  },
-    blitz:   { nombre:'Blitz',    jugada: 8,   total: 120  },
-  };
 
-  // ── ESTADO ───────────────────────────────────────────
-  let _modo         = 'clasico';
-  let _activo       = false;
-  let _pausado      = false;
-  let _miRol        = null;
 
-  // Tiempos restantes en segundos
-  let _totalX       = 0;
-  let _totalO       = 0;
-  let _jugada       = 0;   // tiempo restante para jugada actual
 
-  // Intervalos
-  let _timerJugada  = null;
-  let _timerTotalX  = null;
-  let _timerTotalO  = null;
-
-  // Callback para cuando se agota el tiempo de jugada
-  let _onTiempoJugadaAgotado = null;
-  let _onTiempoTotalAgotado  = null;
-
-  // Pausa
-  let _pausaSolicitadaPor = null;  // 'X' o 'O'
-
-  const $ = id => document.getElementById(id);
-
-  // ── UTILIDADES ───────────────────────────────────────
-  function _fmt(seg) {
-    const m = Math.floor(Math.abs(seg) / 60);
-    const s = Math.abs(seg) % 60;
-    return m + ':' + String(s).padStart(2, '0');
-  }
-
-  function _sonar(tipo) {
-    try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain); gain.connect(ctx.destination);
-      if(tipo === 'urgente') {
-        osc.frequency.value = 880;
-        gain.gain.setValueAtTime(0.3, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
-        osc.start(); osc.stop(ctx.currentTime + 0.15);
-      } else if(tipo === 'agotado') {
-        osc.frequency.value = 220;
-        gain.gain.setValueAtTime(0.5, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
-        osc.start(); osc.stop(ctx.currentTime + 0.8);
-      } else if(tipo === 'cambio') {
-        osc.frequency.value = 440;
-        gain.gain.setValueAtTime(0.15, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
-        osc.start(); osc.stop(ctx.currentTime + 0.1);
-      }
-    } catch(e) {}
-  }
-
-  // ── ACTUALIZAR DISPLAY ───────────────────────────────
-  function _actualizarDisplay() {
-    const cfg = MODOS[_modo];
-    if(cfg.total === 0) return; // modo clásico sin display
-
-    // Tiempos totales
-    const elX = $('crono-total-x');
-    const elO = $('crono-total-o');
-    if(elX) elX.textContent = _fmt(_totalX);
-    if(elO) elO.textContent = _fmt(_totalO);
-
-    // Urgencia en totales
-    const bloqX = $('crono-bloque-x');
-    const bloqO = $('crono-bloque-o');
-    if(bloqX) bloqX.classList.toggle('urgente', _totalX <= 30 && _totalX > 0);
-    if(bloqO) bloqO.classList.toggle('urgente', _totalO <= 30 && _totalO > 0);
-
-    // Tiempo de jugada
-    const elJ = $('crono-jugada-tiempo');
-    if(elJ && cfg.jugada > 0) {
-      elJ.textContent = _fmt(_jugada);
-      const urgente = _jugada <= 5 && _jugada > 0;
-      elJ.classList.toggle('urgente', urgente);
-      if(urgente) _sonar('urgente');
-    }
-
-    // Highlight del bloque activo
-    if(_miRol) {
-      const turnoActual = Estado.turno;
-      if(bloqX) bloqX.classList.toggle('mi-turno',   turnoActual === 'X' && _miRol === 'X');
-      if(bloqX) bloqX.classList.toggle('rival-turno', turnoActual !== 'X' || _miRol !== 'X');
-      if(bloqO) bloqO.classList.toggle('mi-turno',   turnoActual === 'O' && _miRol === 'O');
-      if(bloqO) bloqO.classList.toggle('rival-turno', turnoActual !== 'O' || _miRol !== 'O');
-    }
-  }
-
-  // ── DETENER TIMERS ────────────────────────────────────
-  function _detenerTodo() {
-    clearInterval(_timerJugada);
-    clearInterval(_timerTotalX);
-    clearInterval(_timerTotalO);
-    _timerJugada = _timerTotalX = _timerTotalO = null;
-  }
-
-  // ── INICIAR TIMER DE JUGADA ───────────────────────────
-  function _iniciarTimerJugada(rolActivo) {
-    const cfg = MODOS[_modo];
-    if(cfg.jugada === 0) return;
-
-    clearInterval(_timerJugada);
-    _jugada = cfg.jugada;
-    _actualizarDisplay();
-
-    _timerJugada = setInterval(() => {
-      if(_pausado) return;
-      _jugada--;
-      // Descontar del tiempo total del jugador activo
-      if(rolActivo === 'X') _totalX = Math.max(0, _totalX - 1);
-      else                  _totalO = Math.max(0, _totalO - 1);
-
-      _actualizarDisplay();
-
-      // Tiempo de jugada agotado → cambio de turno forzado
-      if(_jugada <= 0) {
-        clearInterval(_timerJugada);
-        _sonar('agotado');
-        if(_onTiempoJugadaAgotado) _onTiempoJugadaAgotado(rolActivo);
-      }
-
-      // Tiempo total agotado → derrota
-      const totalActivo = rolActivo === 'X' ? _totalX : _totalO;
-      if(cfg.total > 0 && totalActivo <= 0) {
-        _detenerTodo();
-        _sonar('agotado');
-        if(_onTiempoTotalAgotado) _onTiempoTotalAgotado(rolActivo);
-      }
-    }, 1000);
-  }
-
-  // ── API PÚBLICA ───────────────────────────────────────
-
-  /**
-   * Inicializar el cronómetro con un modo y rol
-   */
-  function init(modo, miRol, cbJugada, cbTotal) {
-    _modo = modo || 'clasico';
-    _miRol = miRol;
-    _onTiempoJugadaAgotado = cbJugada;
-    _onTiempoTotalAgotado  = cbTotal;
-    _pausado = false;
-    _pausaSolicitadaPor = null;
-
-    const cfg = MODOS[_modo];
-    _totalX = cfg.total;
-    _totalO = cfg.total;
-    _jugada = cfg.jugada;
-
-    // Mostrar u ocultar cronómetro
-    const cont = $('crono-container');
-    if(cont) {
-      if(cfg.total > 0) {
-        cont.classList.add('activo');
-        // Inicializar displays
-        const elX = $('crono-total-x');
-        const elO = $('crono-total-o');
-        const elJ = $('crono-jugada-tiempo');
-        if(elX) elX.textContent = _fmt(_totalX);
-        if(elO) elO.textContent = _fmt(_totalO);
-        if(elJ) elJ.textContent = _fmt(_jugada);
-      } else {
-        cont.classList.remove('activo');
-      }
-    }
-    // Ocultar selector de modo
-    const sel = $('crono-modo-selector');
-    if(sel) sel.style.display = 'none';
-  }
-
-  /**
-   * Arrancar el timer para un turno específico
-   */
-  function arrancarTurno(rolActivo) {
-    if(MODOS[_modo].jugada === 0) return;
-    _sonar('cambio');
-    _iniciarTimerJugada(rolActivo);
-  }
-
-  /**
-   * Detener todos los timers (fin de partida, reclamo, etc.)
-   */
-  function detener() {
-    _detenerTodo();
-    _activo = false;
-  }
-
-  /**
-   * Pausar / reanudar
-   */
-  function pausar() { _pausado = true; }
-  function reanudar() { _pausado = false; }
-  function estaPausado() { return _pausado; }
-
-  /**
-   * Obtener estado actual para guardar en Firebase
-   */
-  function getEstado() {
-    return { totalX: _totalX, totalO: _totalO, jugada: _jugada, modo: _modo };
-  }
-
-  /**
-   * Restaurar estado desde Firebase
-   */
-  function setEstado(e) {
-    if(!e) return;
-    _totalX = e.totalX ?? _totalX;
-    _totalO = e.totalO ?? _totalO;
-    _jugada = e.jugada ?? _jugada;
-    _actualizarDisplay();
-  }
-
-  function getModo() { return _modo; }
-
-  return {
-    init, arrancarTurno, detener, pausar, reanudar,
-    estaPausado, getEstado, setEstado, getModo, MODOS
-  };
-})();
-
-// ── SELECTOR DE MODO (antes del sorteo) ─────────────────
-let _modoSeleccionado = 'clasico';
-
-document.querySelectorAll('.crono-modo-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    if(!Firebase.isIniciado()) return; // solo cuando hay sala activa
-    // Solo antes de sortear
-    document.querySelectorAll('.crono-modo-btn').forEach(b => b.classList.remove('seleccionado'));
-    btn.classList.add('seleccionado');
-    _modoSeleccionado = btn.dataset.modo;
-    // Sincronizar modo con Firebase para que el oponente lo vea
-    if(window.Firebase) Firebase.setModo(_modoSeleccionado);
-  });
-});
-
-// ── BOTÓN PAUSA ──────────────────────────────────────────
-document.getElementById('btn-pausa-crono')?.addEventListener('click', () => {
-  if(!Firebase.isIniciado()) return;
-  Firebase.solicitarPausa(Firebase.getMiRol());
-});
-
-document.getElementById('btn-reanudar-crono')?.addEventListener('click', () => {
-  if(!Firebase.isIniciado()) return;
-  Firebase.reanudarPausa();
-});
-
-/* ═══════════════════════════════════════════════════════
-   SESIÓN Y EMPATE — Detección tablero lleno, contadores,
-   configurador de sesión (mejor de N)
-   ═══════════════════════════════════════════════════════ */
-const Sesion = (() => {
-  let _totalPartidas  = 0;   // partidas configuradas (0 = libre)
-  let _partidasJugadas = 0;
-  let _empates        = 0;
-
-  function init() {
-    _partidasJugadas = 0;
-    _empates         = 0;
-    _actualizarDisplay();
-  }
-
-  function _actualizarDisplay() {
-    const ep  = document.getElementById('stat-empates');
-    const pj  = document.getElementById('stat-partidas');
-    const pa  = document.getElementById('stat-partida-actual');
-    const sp  = document.getElementById('sesion-progreso');
-    if(ep) ep.textContent = _empates;
-    if(pj) pj.textContent = _partidasJugadas;
-    if(pa) pa.textContent = '#' + (_partidasJugadas + 1);
-    if(sp) {
-      sp.textContent = _totalPartidas > 0
-        ? 'Partida ' + (_partidasJugadas + 1) + ' de ' + _totalPartidas
-        : 'Partida #' + (_partidasJugadas + 1);
-    }
-  }
-
-  function registrarEmpate() {
-    _empates++;
-    _partidasJugadas++;
-    _actualizarDisplay();
-  }
-
-  function registrarPartida() {
-    _partidasJugadas++;
-    _actualizarDisplay();
-  }
-
-  function setTotal(n) { _totalPartidas = n; _actualizarDisplay(); }
-  function getTotal()  { return _totalPartidas; }
-
-  function verificarFinSesion(vX, vO) {
-    if(_totalPartidas === 0) return null; // libre
-    if(_partidasJugadas < _totalPartidas) return null;
-    // Fin de sesión
-    if(vX > vO)       return { ganador: 'X', vX, vO, empates: _empates };
-    else if(vO > vX)  return { ganador: 'O', vX, vO, empates: _empates };
-    else              return { ganador: 'EMPATE', vX, vO, empates: _empates };
-  }
-
-  function mostrarFinSesion(resultado, miRol) {
-    const banner = document.getElementById('sesion-ganador-banner');
-    const gtxt   = document.getElementById('sesion-ganador-txt');
-    const rtxt   = document.getElementById('sesion-resumen-txt');
-    if(!banner) return;
-    let gLabel = '';
-    if(resultado.ganador === 'X')      gLabel = '🔴 JUGADOR 1 (X)';
-    else if(resultado.ganador === 'O') gLabel = '🔵 JUGADOR 2 (O)';
-    else                               gLabel = '🤝 EMPATE TOTAL';
-    if(gtxt) {
-      gtxt.textContent = gLabel;
-      gtxt.style.color = resultado.ganador === 'X' ? 'var(--red-g)'
-                        : resultado.ganador === 'O' ? 'var(--blue-g)' : 'var(--gold)';
-    }
-    if(rtxt) rtxt.textContent =
-      'Victorias X: ' + resultado.vX + '   |   ' +
-      'Victorias O: ' + resultado.vO + '   |   ' +
-      'Empates: ' + resultado.empates + '
-' +
-      'Total partidas jugadas: ' + _partidasJugadas;
-    banner.style.display = 'block';
-  }
-
-  function getEstado() {
-    return { partidasJugadas: _partidasJugadas, empates: _empates, totalPartidas: _totalPartidas };
-  }
-
-  function fromFirebase(d) {
-    if(!d) return;
-    _empates         = d.empates         || 0;
-    _partidasJugadas = d.partidasJugadas || 0;
-    _totalPartidas   = d.totalPartidas   || 0;
-    _actualizarDisplay();
-  }
-
-  return { init, registrarEmpate, registrarPartida, setTotal, getTotal,
-           verificarFinSesion, mostrarFinSesion, getEstado, fromFirebase };
-})();
-
-// ── CONFIGURADOR DE SESIÓN ───────────────────────────────
-document.querySelectorAll('.sesion-btn-n').forEach(btn => {
-  btn.addEventListener('click', () => {
-    if(!Firebase.isIniciado()) return;
-    document.querySelectorAll('.sesion-btn-n').forEach(b => b.classList.remove('sel'));
-    btn.classList.add('sel');
-    const n = parseInt(btn.dataset.n);
-    Sesion.setTotal(n);
-    if(window.Firebase) Firebase.setSesionConfig(n);
-  });
-});
-
-// ── BANNER EMPATE ────────────────────────────────────────
-document.getElementById('btn-cerrar-empate')?.addEventListener('click', () => {
-  document.getElementById('empate-banner').style.display = 'none';
-});
-
-// ── BANNER FIN DE SESIÓN ─────────────────────────────────
-document.getElementById('btn-nueva-sesion')?.addEventListener('click', async () => {
-  document.getElementById('sesion-ganador-banner').style.display = 'none';
-  Sesion.init();
-  if(window.Firebase) await Firebase.nuevaSesion();
-});
-
-/* ═══════════════════════════════════════════════════════
-   TABLERO COMPLETO — Modal empate con countdown y
-   Regla de Prioridad de Reclamo Final
-   ═══════════════════════════════════════════════════════ */
-#tc-overlay{
-  display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:300;
-  align-items:center;justify-content:center;
-}
-#tc-overlay.visible{ display:flex; }
-#tc-modal{
-  background:linear-gradient(135deg,#1a1a1a,#252525);
-  border:3px solid var(--gold);border-radius:14px;
-  padding:28px 36px;text-align:center;min-width:320px;max-width:420px;
-  box-shadow:0 0 50px rgba(200,168,75,0.4);
-}
-#tc-modal h2{
-  font-family:'Orbitron',sans-serif;font-size:18px;
-  color:var(--gold);margin-bottom:8px;letter-spacing:2px;
-}
-#tc-modal p{ font-size:12px;color:#aaa;line-height:1.6;margin-bottom:14px; }
-#tc-countdown{
-  font-family:'Orbitron',sans-serif;font-size:36px;font-weight:900;
-  color:var(--gold);margin:10px 0;letter-spacing:4px;
-}
-#tc-countdown.urgente{ color:var(--red-g);text-shadow:0 0 12px var(--red); }
-.tc-btns{ display:flex;gap:12px;justify-content:center;margin-top:12px; }
-#btn-tc-si{
-  padding:10px 28px;background:linear-gradient(135deg,#005500,#009933);
-  color:#fff;border:none;border-radius:7px;cursor:pointer;
-  font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;letter-spacing:1px;
-}
-#btn-tc-no{
-  padding:10px 28px;background:linear-gradient(135deg,#7a0000,#cc2200);
-  color:#fff;border:none;border-radius:7px;cursor:pointer;
-  font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;letter-spacing:1px;
-}
-#btn-tc-si:disabled,#btn-tc-no:disabled{ opacity:0.3;cursor:not-allowed; }
-/* Modal prioridad */
-#prioridad-modal{
-  display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:300;
-  align-items:center;justify-content:center;
-}
-#prioridad-modal.visible{ display:flex; }
-#prioridad-box{
-  background:linear-gradient(135deg,#0a0a1a,#15153a);
-  border:3px solid var(--blue);border-radius:14px;
-  padding:28px 36px;text-align:center;min-width:320px;max-width:420px;
-  box-shadow:0 0 50px rgba(42,159,214,0.4);
-}
-#prioridad-box h2{
-  font-family:'Orbitron',sans-serif;font-size:16px;
-  color:var(--blue);margin-bottom:10px;letter-spacing:1px;
-}
-#prioridad-box .prioridad-jugador{
-  font-family:'Orbitron',sans-serif;font-size:20px;font-weight:900;
-  margin:10px 0;letter-spacing:2px;
-}
-#prioridad-box p{ font-size:11px;color:#aaa;line-height:1.5;margin-bottom:10px; }
-#btn-prioridad-ok{
-  padding:10px 24px;background:var(--gold);color:#111;
-  border:none;border-radius:7px;cursor:pointer;
-  font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;
-}
-
-/* ═══════════════════════════════════════════════════════
-   EMPATE FLOW — Tablero completo + Regla de Prioridad
-   de Reclamo Final
-   ═══════════════════════════════════════════════════════ */
-const EmpateFlow = (() => {
-  let _countdownInterval = null;
-  let _miRol = null;
-
-  function init(rol) { _miRol = rol; }
-
-  // ── Fase: tablero_completo (countdown SI/NO) ──────────
-  function mostrarModalTC(d) {
-    const ov = document.getElementById('tc-overlay');
-    ov.classList.add('visible');
-    const rivalTxt = document.getElementById('tc-estado-rival');
-    const miDecision = d.tc_decision && d.tc_decision[_miRol];
-    const rivalRol = _miRol === 'X' ? 'O' : 'X';
-    const rivalDecision = d.tc_decision && d.tc_decision[rivalRol];
-
-    document.getElementById('btn-tc-si').disabled = !!miDecision;
-    document.getElementById('btn-tc-no').disabled = !!miDecision;
-
-    if(rivalDecision) {
-      rivalTxt.textContent = 'Tu oponente ya respondió. Esperando tu decisión...';
-    } else {
-      rivalTxt.textContent = 'Esperando respuesta de ambos jugadores...';
-    }
-
-    // Countdown sincronizado por timestamp de inicio
-    clearInterval(_countdownInterval);
-    const inicio = d.tc_inicio || Date.now();
-    _countdownInterval = setInterval(() => {
-      const transcurrido = Math.floor((Date.now() - inicio) / 1000);
-      const restante = Math.max(0, 10 - transcurrido);
-      const el = document.getElementById('tc-countdown');
-      el.textContent = restante;
-      el.classList.toggle('urgente', restante <= 3);
-      if(restante <= 0) {
-        clearInterval(_countdownInterval);
-        if(_miRol === 'X') Firebase.resolverTimeoutEmpate();
-      }
-    }, 200);
-  }
-
-  function ocultarModalTC() {
-    document.getElementById('tc-overlay').classList.remove('visible');
-    clearInterval(_countdownInterval);
-  }
-
-  // ── Fase: prioridad_reclamo ────────────────────────────
-  function mostrarModalPrioridad(d) {
-    const modal = document.getElementById('prioridad-modal');
-    modal.classList.add('visible');
-    const jTxt = document.getElementById('prioridad-jugador-txt');
-    const desc = document.getElementById('prioridad-desc');
-    const prioritario = d.prioridad_jugador;
-    const nombre = prioritario === 'X' ? '🔴 JUGADOR 1 (X)' : '🔵 JUGADOR 2 (O)';
-    jTxt.textContent = nombre;
-    jTxt.style.color = prioritario === 'X' ? 'var(--red-g)' : 'var(--blue-g)';
-    const intento = d.prioridad_intento || 1;
-    desc.textContent = intento === 1
-      ? '(Jugador que inició la partida)'
-      : '(Segunda y última oportunidad — jugador que partió en segundo lugar)';
-  }
-
-  function ocultarModalPrioridad() {
-    document.getElementById('prioridad-modal').classList.remove('visible');
-  }
-
-  return { init, mostrarModalTC, ocultarModalTC, mostrarModalPrioridad, ocultarModalPrioridad };
-})();
-
-// ── EVENTOS BOTONES SI/NO ────────────────────────────────
-document.getElementById('btn-tc-si')?.addEventListener('click', () => {
-  if(window.Firebase) Firebase.responderEmpate(true);
-});
-document.getElementById('btn-tc-no')?.addEventListener('click', () => {
-  if(window.Firebase) Firebase.responderEmpate(false);
-});
-document.getElementById('btn-prioridad-ok')?.addEventListener('click', () => {
-  EmpateFlow.ocultarModalPrioridad();
-});
-
-/* ═══════════════════════════════════════════════════════
-   M17· IA — (pendiente de implementación)
-   Aquí irá el motor de inteligencia artificial
-   ═══════════════════════════════════════════════════════ */
-// TODO: implementar IA = (() => { ... })();
-
-/* ═══════════════════════════════════════════════════════
-   M18· RANKING — (pendiente de implementación)
-   Aquí irá el sistema de puntuación ELO y rankings
-   ═══════════════════════════════════════════════════════ */
-// TODO: implementar Ranking = (() => { ... })();
 
 </script>
 
