@@ -258,6 +258,18 @@ hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
 .crono-modo-btn:hover{ border-color:#666;color:#ccc; }
 .crono-modo-btn.seleccionado{ border-color:var(--gold);color:var(--gold);background:#2a2000; }
 .crono-modo-btn.clasico.seleccionado{ border-color:#555;color:#aaa;background:#222; }
+/* Modo ACTIVO en la partida en curso (verde neón) */
+.crono-modo-btn.activo{
+  border-color:#00ff66 !important;
+  color:#00ff66 !important;
+  background:rgba(0,255,102,0.12) !important;
+  box-shadow:0 0 10px rgba(0,255,102,0.5);
+}
+.crono-modo-btn.activo::after{
+  content:'●'; margin-left:6px; color:#00ff66;
+  text-shadow:0 0 6px #00ff66; animation:led-pulse 1.2s infinite;
+}
+@keyframes led-pulse{ 0%,100%{opacity:1} 50%{opacity:0.3} }
 /* Bloque de tiempo */
 .crono-bloque{
   display:flex;flex-direction:column;align-items:center;gap:2px;
@@ -1117,67 +1129,84 @@ const Juego = (() => {
   }
 
   function _faseJugando(d, miRol){
-    UI.bloquearBtns(['btn-nueva','btn-sortear'],true);
-    UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
-    // Limpiar amarillos residuales
-    document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el=>{
-      const g=el.closest('[data-id]'); if(!g) return;
-      const cid=g.dataset.id;
-      el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
-      el.style.stroke=el.style.strokeWidth=el.style.fill=el.style.filter='';
-      if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
-    });
-    // Iniciar cronómetro al sortear (primera vez)
-    if(d.crono_modo && !Cronometro.getModo().startsWith(d.crono_modo) ||
-       (d.crono_modo && d.sorteo_id && _sorteoVisto !== d.sorteo_id)) {
-      const modo = d.crono_modo || 'clasico';
-      Cronometro.init(modo, miRol,
-        // Callback: tiempo de jugada agotado
-        async (rolAgotado) => {
-          if(rolAgotado === miRol) await Firebase.turnoAgotado(rolAgotado);
-        },
-        // Callback: tiempo total agotado
-        async (rolAgotado) => {
-          if(rolAgotado === miRol) await Firebase.totalAgotado(rolAgotado);
-        }
-      );
+    try {
+      UI.bloquearBtns(['btn-nueva','btn-sortear'],true);
+      UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+      // Limpiar amarillos residuales
+      document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el=>{
+        const g=el.closest('[data-id]'); if(!g) return;
+        const cid=g.dataset.id;
+        el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
+        el.style.stroke=el.style.strokeWidth=el.style.fill=el.style.filter='';
+        if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
+      });
+
+      // Sorteo nuevo — SIEMPRE se procesa primero, antes de cualquier
+      // otra lógica que pudiera cortar la ejecución con return
+      let esNuevoSorteo = false;
+      if(d.sorteo_id && _sorteoVisto !== d.sorteo_id){
+        esNuevoSorteo = true;
+        _sorteoVisto = d.sorteo_id;
+        UI.bloquearBtns(['btn-sortear','btn-nueva'],true);
+        if(d.sorteo_quien !== miRol)
+          UI.modal('¡SORTEO!','Comienza el '+(d.ultimo_sorteo==='X'?'Jugador 1 (X)':'Jugador 2 (O)'));
+      }
+
+      // Reflejar visualmente el modo cronómetro elegido (para ambos jugadores)
+      if(d.crono_modo) marcarModoActivo(d.crono_modo);
+
+      // Iniciar cronómetro solo al detectar un sorteo nuevo real
+      if(esNuevoSorteo){
+        const modo = d.crono_modo || 'clasico';
+        try {
+          Cronometro.init(modo, miRol,
+            async (rolAgotado) => { if(rolAgotado === miRol) await Firebase.turnoAgotado(rolAgotado); },
+            async (rolAgotado) => { if(rolAgotado === miRol) await Firebase.totalAgotado(rolAgotado); }
+          );
+        } catch(e){ console.error('Error iniciando cronometro:', e); }
+      }
+
+      // Restaurar estado del cronómetro si viene de Firebase
+      if(d.crono_estado) Cronometro.setEstado(d.crono_estado);
+
+      // Manejar pausa
+      if(d.pausa_activa) {
+        Cronometro.pausar();
+        const banner=$('crono-pausa-banner');
+        if(banner) banner.style.display='block';
+        const msg=$('crono-pausa-msg');
+        if(msg) msg.textContent='Ambos jugadores aceptaron la pausa. Pulsa REANUDAR para continuar.';
+      } else {
+        Cronometro.reanudar();
+        const banner=$('crono-pausa-banner');
+        if(banner) banner.style.display='none';
+      }
+
+      // Arrancar timer del turno si es mi turno
+      if(d.turno === miRol){
+        try { Cronometro.arrancarTurno(miRol); } catch(e){ console.error('Error arrancarTurno:', e); }
+      }
+
+      // Detección de tablero completo (32 fichas) — SOLO si ya hubo jugadas.
+      // Esto evita falsos positivos justo después del sorteo con tablero vacío.
+      const jugadasHechas = d.jugadas || 0;
+      const lleno = jugadasHechas >= 32 &&
+                    Object.keys(Estado.tablero).length === 32 &&
+                    Object.values(Estado.tablero).every(v => v !== null);
+      if(lleno){
+        if(miRol==='X') Firebase.declararEmpate();
+        UI.bloquearTablero(true);
+        return;
+      }
+
+      const esMio = d.turno === miRol;
+      UI.bloquearTablero(!esMio);
+      UI.setMsg(esMio?'¡ES TU TURNO! Haz clic en una casilla.':'Esperando jugada del oponente...');
+    } catch(err){
+      console.error('Error en _faseJugando:', err);
+      // Failsafe: nunca dejar el tablero bloqueado por un error inesperado
+      UI.bloquearTablero(d.turno !== miRol);
     }
-    // Restaurar estado del cronómetro si viene de Firebase
-    if(d.crono_estado) Cronometro.setEstado(d.crono_estado);
-    // Manejar pausa
-    if(d.pausa_activa) {
-      Cronometro.pausar();
-      const banner=$('crono-pausa-banner');
-      if(banner) banner.style.display='block';
-      const msg=$('crono-pausa-msg');
-      if(msg) msg.textContent='Ambos jugadores aceptaron la pausa. Pulsa REANUDAR para continuar.';
-    } else {
-      Cronometro.reanudar();
-      const banner=$('crono-pausa-banner');
-      if(banner) banner.style.display='none';
-    }
-    // Arrancar timer del turno si es mi turno
-    if(d.turno === miRol) {
-      Cronometro.arrancarTurno(miRol);
-    } else {
-      // No es mi turno — detener timer de jugada local
-    }
-    // Sorteo nuevo
-    if(d.sorteo_id&&_sorteoVisto!==d.sorteo_id){
-      _sorteoVisto=d.sorteo_id;
-      UI.bloquearBtns(['btn-sortear','btn-nueva'],true);
-      if(d.sorteo_quien!==miRol)
-        UI.modal('¡SORTEO!','Comienza el '+(d.ultimo_sorteo==='X'?'Jugador 1 (X)':'Jugador 2 (O)'));
-    }
-    // Detección de tablero completo (32 fichas)
-    const lleno = Object.values(Estado.tablero).every(v => v !== null);
-    if(lleno && d.fase==='jugando'){
-      if(miRol==='X') Firebase.declararEmpate();
-      return;
-    }
-    const esMio=d.turno===miRol;
-    UI.bloquearTablero(!esMio);
-    UI.setMsg(esMio?'¡ES TU TURNO! Haz clic en una casilla.':'Esperando jugada del oponente...');
   }
 
   function reset(){
@@ -1698,14 +1727,22 @@ const Cronometro = (() => {
 // ── SELECTOR DE MODO (antes del sorteo) ─────────────────
 let _modoSeleccionado = 'clasico';
 
+// Marca visualmente (LED verde) el modo actualmente ACTIVO en la partida
+function marcarModoActivo(modo){
+  document.querySelectorAll('.crono-modo-btn').forEach(b=>{
+    b.classList.toggle('activo', b.dataset.modo === modo);
+  });
+}
+
+// Los botones de modo quedan SIEMPRE clicables — permite cambiar de
+// modalidad en cualquier momento si ambos jugadores lo desean
+// (el cambio se aplicará realmente en el próximo sorteo/partida)
 document.querySelectorAll('.crono-modo-btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    if(!Firebase.isIniciado()) return; // solo cuando hay sala activa
-    // Solo antes de sortear
+    if(!Firebase.isIniciado()) return; // requiere sala conectada
     document.querySelectorAll('.crono-modo-btn').forEach(b => b.classList.remove('seleccionado'));
     btn.classList.add('seleccionado');
     _modoSeleccionado = btn.dataset.modo;
-    // Sincronizar modo con Firebase para que el oponente lo vea
     if(window.Firebase) Firebase.setModo(_modoSeleccionado);
   });
 });
