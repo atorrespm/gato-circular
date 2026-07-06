@@ -256,15 +256,16 @@ hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
   color:#888;letter-spacing:1px;transition:all .2s;
 }
 .crono-modo-btn:hover{ border-color:#666;color:#ccc; }
-.crono-modo-btn.seleccionado{ border-color:var(--gold);color:var(--gold);background:#2a2000; }
-.crono-modo-btn.clasico.seleccionado{ border-color:#555;color:#aaa;background:#222; }
-/* Modo ACTIVO en la partida en curso (verde neón) */
+/* Único estado visual: verde neón para el modo ACTIVO/SELECCIONADO,
+   igual para los 4 botones (incluido Clásico) */
+.crono-modo-btn.seleccionado,
 .crono-modo-btn.activo{
   border-color:#00ff66 !important;
   color:#00ff66 !important;
   background:rgba(0,255,102,0.12) !important;
   box-shadow:0 0 10px rgba(0,255,102,0.5);
 }
+.crono-modo-btn.seleccionado::after,
 .crono-modo-btn.activo::after{
   content:'●'; margin-left:6px; color:#00ff66;
   text-shadow:0 0 6px #00ff66; animation:led-pulse 1.2s infinite;
@@ -990,11 +991,13 @@ const Reclamo = (() => {
    M12· JUEGO — Orquestador principal
    ═══════════════════════════════════════════════════════ */
 const Juego = (() => {
+  const $ = id => document.getElementById(id);
   let _sorteoVisto=null, _victoriaVista=false, _reclamoKey=null;
 
   function aplicarEstado(d, miRol) {
     if(!d) return;
     Estado.fromFirebase(d);
+    if(typeof Sesion !== 'undefined') Sesion.fromFirebase(d);
 
     // Render (omitir durante reclamo activo del reclamante)
     if(Reclamo.isActivo()){
@@ -1098,6 +1101,8 @@ const Juego = (() => {
     UI.setMsg('Pulsa SORTEAR PARTIDA para comenzar.');
     if(!d.sorteo_usado) UI.bloquearBtns(['btn-sortear'],false);
     UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+    // Marcar visualmente el modo activo (Clasico por defecto)
+    if(typeof marcarModoActivo === 'function') marcarModoActivo(d.crono_modo || 'clasico');
   }
 
   function _faseReclamo(d, miRol){
@@ -1669,9 +1674,8 @@ const Cronometro = (() => {
         cont.classList.remove('activo');
       }
     }
-    // Ocultar selector de modo
-    const sel = $('crono-modo-selector');
-    if(sel) sel.style.display = 'none';
+    // El selector de modo NUNCA se oculta — permite cambiar
+    // de modalidad en cualquier momento durante la sesión
   }
 
   /**
@@ -1800,7 +1804,8 @@ window.Firebase = {
       tablero:Estado.tableroVacio(),turno:null,fase:'esperando_sorteo',
       terminado:false,ganador:null,jugadas:0,fichasX:16,fichasO:16,
       j1:'online',j2:'espera',ts:Date.now(),
-      ultimo_sorteo:null,sorteo_id:null,sorteo_usado:false,victoriasX:0,victoriasO:0
+      ultimo_sorteo:null,sorteo_id:null,sorteo_usado:false,victoriasX:0,victoriasO:0,
+      crono_modo:'clasico'
     });
     $('lobby-codigo').textContent=_sala;
     UI.lobbyPaso('crear');
