@@ -992,12 +992,17 @@ const Reclamo = (() => {
    ═══════════════════════════════════════════════════════ */
 const Juego = (() => {
   const $ = id => document.getElementById(id);
-  let _sorteoVisto=null, _victoriaVista=false, _reclamoKey=null;
+  let _sorteoVisto=null, _victoriaVista=false, _reclamoKey=null, _turnoAnterior=null;
 
   function aplicarEstado(d, miRol) {
     if(!d) return;
     Estado.fromFirebase(d);
     if(typeof Sesion !== 'undefined') Sesion.fromFirebase(d);
+
+    // Resetear la bandera de victoria mostrada de forma SINCRONIZADA:
+    // apenas Firebase confirma que la partida ya no está terminada
+    // (nueva partida), sin depender de quién haya pulsado el botón
+    if(d.terminado === false) _victoriaVista = false;
 
     // Render (omitir durante reclamo activo del reclamante)
     if(Reclamo.isActivo()){
@@ -1079,8 +1084,8 @@ const Juego = (() => {
     UI.setMsg('Partida terminada. Pulsa Nueva Partida.');
     document.getElementById('btn-nueva').style.opacity='';
     document.getElementById('btn-nueva').style.pointerEvents='';
-    UI.bloquearBtns(['btn-sortear'],true);
-    UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+    UI.bloquearBtns(['btn-sortear'],false);
+    UI.bloquearBtns(['btn-reclamar','btn-confirmar'],true);
     if(!_victoriaVista&&d.ganador){
       _victoriaVista=true;
       if(d.fichas_ganadoras_reclamadas) Tablero.resaltarGanadores(d.fichas_ganadoras_reclamadas,d.ganador);
@@ -1107,6 +1112,7 @@ const Juego = (() => {
 
   function _faseReclamo(d, miRol){
     UI.bloquearTablero(true);
+    Cronometro.pausar();
     if(d.reclamante===miRol){
       UI.setMsg('RECLAMO ACTIVO: selecciona tus 4 fichas ganadoras.');
     } else {
@@ -1187,10 +1193,17 @@ const Juego = (() => {
         if(banner) banner.style.display='none';
       }
 
-      // Arrancar timer del turno si es mi turno
+      // Arrancar timer del turno solo si es un turno NUEVO
+      // (evita resetear la cuenta regresiva cuando se vuelve de un
+      // reclamo con línea inválida durante el mismo turno)
+      const turnoRealmenteCambio = (_turnoAnterior !== d.turno);
       if(d.turno === miRol){
-        try { Cronometro.arrancarTurno(miRol); } catch(e){ console.error('Error arrancarTurno:', e); }
+        try {
+          if(turnoRealmenteCambio) Cronometro.arrancarTurno(miRol);
+          else Cronometro.reanudar();
+        } catch(e){ console.error('Error arrancarTurno:', e); }
       }
+      _turnoAnterior = d.turno;
 
       // Detección de tablero completo (32 fichas) — SOLO si ya hubo jugadas.
       // Esto evita falsos positivos justo después del sorteo con tablero vacío.
@@ -1734,7 +1747,9 @@ let _modoSeleccionado = 'clasico';
 // Marca visualmente (LED verde) el modo actualmente ACTIVO en la partida
 function marcarModoActivo(modo){
   document.querySelectorAll('.crono-modo-btn').forEach(b=>{
-    b.classList.toggle('activo', b.dataset.modo === modo);
+    const esElActivo = b.dataset.modo === modo;
+    b.classList.toggle('activo', esElActivo);
+    b.classList.toggle('seleccionado', esElActivo);
   });
 }
 
@@ -1742,10 +1757,17 @@ function marcarModoActivo(modo){
 // modalidad en cualquier momento si ambos jugadores lo desean
 // (el cambio se aplicará realmente en el próximo sorteo/partida)
 document.querySelectorAll('.crono-modo-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
+  btn.addEventListener('click', async () => {
     if(!Firebase.isIniciado()) return; // requiere sala conectada
-    document.querySelectorAll('.crono-modo-btn').forEach(b => b.classList.remove('seleccionado'));
-    btn.classList.add('seleccionado');
+    // Bloquear cambio de modo mientras la partida está en curso
+    // (solo se puede elegir antes de sortear o luego de terminar/empatar)
+    const snap = await Firebase.snapshotFase();
+    if(snap && snap.sorteo_usado && !snap.terminado) return;
+    // Actualizar visualmente AMBAS clases de inmediato (optimistic UI)
+    document.querySelectorAll('.crono-modo-btn').forEach(b => {
+      b.classList.remove('seleccionado','activo');
+    });
+    btn.classList.add('seleccionado','activo');
     _modoSeleccionado = btn.dataset.modo;
     if(window.Firebase) Firebase.setModo(_modoSeleccionado);
   });
@@ -1853,6 +1875,7 @@ window.Firebase = {
 
   async confirmarVictoria(fichas){
     const snap=await get(_salaRef); const d=snap.val();
+    if(d.terminado){ return {ok:false, msg:'La partida ya tiene un ganador.'}; }
     const vX=(d.victoriasX||0)+(_rol==='X'?1:0);
     const vO=(d.victoriasO||0)+(_rol==='O'?1:0);
     const jugadas=(d.partidasJugadas||0)+1;
