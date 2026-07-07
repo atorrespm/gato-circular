@@ -1050,6 +1050,20 @@ const Juego = (() => {
     } else {
       UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
       UI.setMsg('Esperando a que el jugador con prioridad decida...');
+      // Mostrar en tiempo real las fichas que va marcando el jugador prioritario
+      if(d.fichas_marcadas_reclamo){
+        document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el=>{
+          const g=el.closest('[data-id]'); if(!g) return;
+          const cid=g.dataset.id;
+          if(!d.fichas_marcadas_reclamo.includes(cid)){
+            el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
+            if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
+          }
+        });
+        d.fichas_marcadas_reclamo.forEach(id=>{
+          Tablero.marcarReclamo(id, d.prioridad_jugador, true);
+        });
+      }
     }
   }
 
@@ -1180,13 +1194,16 @@ const Juego = (() => {
       // Restaurar estado del cronómetro si viene de Firebase
       if(d.crono_estado) Cronometro.setEstado(d.crono_estado);
 
-      // Manejar pausa
+      // Manejar pausa — bloquea el tablero para AMBOS jugadores
       if(d.pausa_activa) {
         Cronometro.pausar();
         const banner=$('crono-pausa-banner');
         if(banner) banner.style.display='block';
         const msg=$('crono-pausa-msg');
         if(msg) msg.textContent='Ambos jugadores aceptaron la pausa. Pulsa REANUDAR para continuar.';
+        UI.bloquearTablero(true);
+        UI.setMsg('Partida en pausa. Pulsa REANUDAR para continuar.');
+        return; // no seguir con la lógica normal de turno mientras está en pausa
       } else {
         Cronometro.reanudar();
         const banner=$('crono-pausa-banner');
@@ -1904,7 +1921,7 @@ window.Firebase = {
       fichas_ganadoras_reclamadas:null,fichas_marcadas_reclamo:null,
       reclamante:null,reclamo_fichas:null,
       victoriasX:d.victoriasX||0,victoriasO:d.victoriasO||0,
-      crono_modo:null,crono_estado:null,crono_turno_forzado:null,
+      crono_modo:d.crono_modo||'clasico',crono_estado:null,crono_turno_forzado:null,
       pausa_activa:false,pausa_solicitada:null,pausa_reanudar:null,
       fin_por_tiempo:false
     });
