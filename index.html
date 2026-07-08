@@ -992,7 +992,7 @@ const Reclamo = (() => {
    ═══════════════════════════════════════════════════════ */
 const Juego = (() => {
   const $ = id => document.getElementById(id);
-  let _sorteoVisto=null, _victoriaVista=false, _reclamoKey=null, _turnoAnterior=null;
+  let _sorteoVisto=null, _victoriaVista=false, _reclamoKey=null, _turnoAnterior=null, _reclamoCanceladoVisto=null;
 
   function aplicarEstado(d, miRol) {
     if(!d) return;
@@ -1165,6 +1165,14 @@ const Juego = (() => {
         el.style.stroke=el.style.strokeWidth=el.style.fill=el.style.filter='';
         if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
       });
+
+      // Aviso de reclamo cancelado — notificar también al oponente
+      if(d.reclamo_cancelado_ts && _reclamoCanceladoVisto !== d.reclamo_cancelado_ts){
+        _reclamoCanceladoVisto = d.reclamo_cancelado_ts;
+        if(!Reclamo.isActivo()){
+          UI.modal('Reclamo cancelado','El reclamo fue cancelado. El juego continúa.');
+        }
+      }
 
       // Sorteo nuevo — SIEMPRE se procesa primero, antes de cualquier
       // otra lógica que pudiera cortar la ejecución con return
@@ -1827,7 +1835,7 @@ const db = getDatabase(initializeApp({
 }));
 
 /* ── M13 · FIREBASE ─────────────────────────────────── */
-let _salaRef=null, _sala=null, _rol=null, _iniciado=false;
+let _salaRef=null, _sala=null, _rol=null, _iniciado=false, _enviandoJugada=false;
 const $=id=>document.getElementById(id);
 
 function _codigo(){
@@ -1871,16 +1879,24 @@ window.Firebase = {
   isIniciado(){ return _iniciado; },
 
   async jugar(id){
-    const snap=await get(_salaRef); if(!snap.exists()) return;
-    const d=snap.val(), t=Estado.tableroCompleto();
-    if(d.terminado||d.fase!=='jugando'||t[id]!==null||d.turno!==_rol) return;
-    t[id]=_rol; UI.bloquearTablero(true);
-    await set(ref(db,'salas/'+_sala),Object.assign({},d,{
-      tablero:t,turno:_rol==='X'?'O':'X',fase:'jugando',
-      jugadas:(d.jugadas||0)+1,
-      fichasX:_rol==='X'?(d.fichasX??16)-1:(d.fichasX??16),
-      fichasO:_rol==='O'?(d.fichasO??16)-1:(d.fichasO??16),
-    }));
+    // Evita doble invocación (doble clic accidental / doble listener)
+    if(_enviandoJugada) return;
+    _enviandoJugada = true;
+    try {
+      const snap=await get(_salaRef); if(!snap.exists()) return;
+      const d=snap.val(), t=Estado.tableroCompleto();
+      if(d.terminado||d.fase!=='jugando'||t[id]!==null||d.turno!==_rol) return;
+      t[id]=_rol; UI.bloquearTablero(true);
+      // update() en la misma referencia de sala (evita reconstruir el path)
+      await update(_salaRef,{
+        tablero:t,turno:_rol==='X'?'O':'X',fase:'jugando',
+        jugadas:(d.jugadas||0)+1,
+        fichasX:_rol==='X'?(d.fichasX??16)-1:(d.fichasX??16),
+        fichasO:_rol==='O'?(d.fichasO??16)-1:(d.fichasO??16),
+      });
+    } finally {
+      _enviandoJugada = false;
+    }
   },
 
   async publicarReclamo(fichas){
@@ -1905,7 +1921,8 @@ window.Firebase = {
   },
 
   async cancelarReclamo(){
-    await update(_salaRef,{fase:'jugando',reclamante:null,reclamo_fichas:null,fichas_marcadas_reclamo:null});
+    await update(_salaRef,{fase:'jugando',reclamante:null,reclamo_fichas:null,
+      fichas_marcadas_reclamo:null,reclamo_cancelado_ts:Date.now()});
   },
 
   async lineaInvalida(){
@@ -2179,7 +2196,8 @@ $('btn-reclamar').onclick = async ()=>{
     } else {
       await Firebase.cancelarReclamo();
       UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
-      UI.modal('Reclamo cancelado','El reclamo fue cancelado. El juego continúa.');
+      // El modal "Reclamo cancelado" ahora se muestra a AMBOS jugadores
+      // de forma centralizada en _faseJugando (via reclamo_cancelado_ts)
     }
     return;
   }
