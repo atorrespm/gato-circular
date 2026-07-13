@@ -644,6 +644,18 @@ hr.lsep{border:none;border-top:1px solid #2a2a2a;margin:14px 0;}
   <button id="btn-reanudar-crono">▶ REANUDAR</button>
 </div>
 
+<!-- Modal de confirmación de cambio de modo -->
+<div id="modo-confirm-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:250;align-items:center;justify-content:center;">
+  <div style="background:linear-gradient(135deg,#1a1a1a,#252525);border:3px solid var(--gold);border-radius:14px;padding:26px 34px;text-align:center;min-width:300px;max-width:400px;">
+    <h3 style="font-family:'Orbitron',sans-serif;font-size:15px;color:var(--gold);margin-bottom:10px;">⚠ CAMBIO DE MODALIDAD</h3>
+    <p id="modo-confirm-msg" style="font-size:12px;color:#aaa;line-height:1.6;margin-bottom:16px;"></p>
+    <div style="display:flex;gap:12px;justify-content:center;">
+      <button id="btn-modo-si" style="padding:10px 24px;background:linear-gradient(135deg,#005500,#009933);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">✔ SÍ</button>
+      <button id="btn-modo-no" style="padding:10px 24px;background:linear-gradient(135deg,#7a0000,#cc2200);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">✕ NO</button>
+    </div>
+  </div>
+</div>
+
 <!-- BANNER MODO RECLAMO -->
 <div id="modo-reclamo-banner">
   MODO RECLAMO: Selecciona las 4 fichas de tu línea ganadora
@@ -998,6 +1010,7 @@ const Juego = (() => {
     if(!d) return;
     Estado.fromFirebase(d);
     if(typeof Sesion !== 'undefined') Sesion.fromFirebase(d);
+    if(typeof _revisarModoPropuesto === 'function') _revisarModoPropuesto(d);
 
     // Resetear la bandera de victoria mostrada de forma SINCRONIZADA:
     // apenas Firebase confirma que la partida ya no está terminada
@@ -1188,23 +1201,24 @@ const Juego = (() => {
       // Reflejar visualmente el modo cronómetro elegido (para ambos jugadores)
       if(d.crono_modo) marcarModoActivo(d.crono_modo);
 
-      // Iniciar cronómetro solo al detectar un sorteo nuevo real
+      // Inicializar el motor del cronómetro solo al detectar un sorteo nuevo real
       if(esNuevoSorteo){
         const modo = d.crono_modo || 'clasico';
         try {
           Cronometro.init(modo, miRol,
-            async (rolAgotado) => { if(rolAgotado === miRol) await Firebase.turnoAgotado(rolAgotado); },
-            async (rolAgotado) => { if(rolAgotado === miRol) await Firebase.totalAgotado(rolAgotado); }
+            async (rolAgotado) => { await Firebase.turnoAgotado(rolAgotado); },
+            async (rolAgotado) => { await Firebase.totalAgotado(rolAgotado); }
           );
         } catch(e){ console.error('Error iniciando cronometro:', e); }
       }
 
-      // Restaurar estado del cronómetro si viene de Firebase
-      if(d.crono_estado) Cronometro.setEstado(d.crono_estado);
+      // El cronómetro se alimenta SIEMPRE del snapshot de Firebase
+      // (timestamps compartidos) — es idéntico para ambos jugadores,
+      // sin intervalos locales independientes que puedan desincronizarse
+      Cronometro.actualizar(d);
 
       // Manejar pausa — bloquea el tablero para AMBOS jugadores
       if(d.pausa_activa) {
-        Cronometro.pausar();
         const banner=$('crono-pausa-banner');
         if(banner) banner.style.display='block';
         const msg=$('crono-pausa-msg');
@@ -1213,20 +1227,8 @@ const Juego = (() => {
         UI.setMsg('Partida en pausa. Pulsa REANUDAR para continuar.');
         return; // no seguir con la lógica normal de turno mientras está en pausa
       } else {
-        Cronometro.reanudar();
         const banner=$('crono-pausa-banner');
         if(banner) banner.style.display='none';
-      }
-
-      // Arrancar timer del turno solo si es un turno NUEVO
-      // (evita resetear la cuenta regresiva cuando se vuelve de un
-      // reclamo con línea inválida durante el mismo turno)
-      const turnoRealmenteCambio = (_turnoAnterior !== d.turno);
-      if(d.turno === miRol){
-        try {
-          if(turnoRealmenteCambio) Cronometro.arrancarTurno(miRol);
-          else Cronometro.reanudar();
-        } catch(e){ console.error('Error arrancarTurno:', e); }
       }
       _turnoAnterior = d.turno;
 
@@ -1542,35 +1544,22 @@ const Cronometro = (() => {
     blitz:   { nombre:'Blitz',    jugada: 8,   total: 120  },
   };
 
-  // ── ESTADO ───────────────────────────────────────────
-  let _modo         = 'clasico';
-  let _activo       = false;
-  let _pausado      = false;
-  let _miRol        = null;
-
-  // Tiempos restantes en segundos
-  let _totalX       = 0;
-  let _totalO       = 0;
-  let _jugada       = 0;   // tiempo restante para jugada actual
-
-  // Intervalos
-  let _timerJugada  = null;
-  let _timerTotalX  = null;
-  let _timerTotalO  = null;
-
-  // Callback para cuando se agota el tiempo de jugada
-  let _onTiempoJugadaAgotado = null;
-  let _onTiempoTotalAgotado  = null;
-
-  // Pausa
-  let _pausaSolicitadaPor = null;  // 'X' o 'O'
+  // ── ESTADO (siempre derivado de Firebase, NUNCA local) ──
+  let _modo = 'clasico';
+  let _miRol = null;
+  let _ultimoD = null;          // último snapshot de Firebase recibido
+  let _tickInterval = null;
+  let _onJugadaAgotada = null;
+  let _onTotalAgotado = null;
+  let _avisoJugadaEnviado = null;  // evita mandar el aviso de tiempo agotado más de 1 vez por turno
+  let _avisoTotalEnviado = null;
 
   const $ = id => document.getElementById(id);
 
-  // ── UTILIDADES ───────────────────────────────────────
   function _fmt(seg) {
-    const m = Math.floor(Math.abs(seg) / 60);
-    const s = Math.abs(seg) % 60;
+    seg = Math.max(0, Math.ceil(seg));
+    const m = Math.floor(seg / 60);
+    const s = seg % 60;
     return m + ':' + String(s).padStart(2, '0');
   }
 
@@ -1599,171 +1588,112 @@ const Cronometro = (() => {
     } catch(e) {}
   }
 
-  // ── ACTUALIZAR DISPLAY ───────────────────────────────
-  function _actualizarDisplay() {
+  // ── CÁLCULO EN TIEMPO REAL (idéntico para ambos jugadores,
+  //    derivado exclusivamente de timestamps guardados en Firebase) ──
+  function _calcular() {
+    const d = _ultimoD;
     const cfg = MODOS[_modo];
-    if(cfg.total === 0) return; // modo clásico sin display
+    if(!d || cfg.total === 0) return null; // modo clasico: sin cronometro
 
-    // Tiempos totales
-    const elX = $('crono-total-x');
-    const elO = $('crono-total-o');
-    if(elX) elX.textContent = _fmt(_totalX);
-    if(elO) elO.textContent = _fmt(_totalO);
+    const pausado = !!d.pausa_activa;
+    const ahora = Date.now();
+    // Tiempo "congelado" acumulado por pausas (se resta del transcurrido)
+    const inicioTurno = d.turno_inicio_ts || ahora;
+    let transcurrido = (pausado ? (d.pausa_inicio_ts || ahora) : ahora) - inicioTurno;
+    transcurrido = Math.max(0, transcurrido) / 1000;
 
-    // Urgencia en totales
-    const bloqX = $('crono-bloque-x');
-    const bloqO = $('crono-bloque-o');
-    if(bloqX) bloqX.classList.toggle('urgente', _totalX <= 30 && _totalX > 0);
-    if(bloqO) bloqO.classList.toggle('urgente', _totalO <= 30 && _totalO > 0);
+    const jugadaRestante = Math.max(0, cfg.jugada - transcurrido);
 
-    // Tiempo de jugada
+    const totalXBase = d.crono_totalX ?? cfg.total;
+    const totalOBase = d.crono_totalO ?? cfg.total;
+    const turnoActivo = d.turno;
+    const totalXActual = turnoActivo === 'X' ? Math.max(0, totalXBase - transcurrido) : totalXBase;
+    const totalOActual = turnoActivo === 'O' ? Math.max(0, totalOBase - transcurrido) : totalOBase;
+
+    return { jugadaRestante, totalXActual, totalOActual, turnoActivo, pausado };
+  }
+
+  function _tick() {
+    const calc = _calcular();
+    if(!calc) return;
+    const { jugadaRestante, totalXActual, totalOActual, turnoActivo, pausado } = calc;
+
     const elJ = $('crono-jugada-tiempo');
-    if(elJ && cfg.jugada > 0) {
-      elJ.textContent = _fmt(_jugada);
-      const urgente = _jugada <= 5 && _jugada > 0;
+    if(elJ) {
+      elJ.textContent = _fmt(jugadaRestante);
+      const urgente = jugadaRestante <= 5 && jugadaRestante > 0;
       elJ.classList.toggle('urgente', urgente);
-      if(urgente) _sonar('urgente');
-    }
-
-    // Highlight del bloque activo
-    if(_miRol) {
-      const turnoActual = Estado.turno;
-      if(bloqX) bloqX.classList.toggle('mi-turno',   turnoActual === 'X' && _miRol === 'X');
-      if(bloqX) bloqX.classList.toggle('rival-turno', turnoActual !== 'X' || _miRol !== 'X');
-      if(bloqO) bloqO.classList.toggle('mi-turno',   turnoActual === 'O' && _miRol === 'O');
-      if(bloqO) bloqO.classList.toggle('rival-turno', turnoActual !== 'O' || _miRol !== 'O');
-    }
-  }
-
-  // ── DETENER TIMERS ────────────────────────────────────
-  function _detenerTodo() {
-    clearInterval(_timerJugada);
-    clearInterval(_timerTotalX);
-    clearInterval(_timerTotalO);
-    _timerJugada = _timerTotalX = _timerTotalO = null;
-  }
-
-  // ── INICIAR TIMER DE JUGADA ───────────────────────────
-  function _iniciarTimerJugada(rolActivo) {
-    const cfg = MODOS[_modo];
-    if(cfg.jugada === 0) return;
-
-    clearInterval(_timerJugada);
-    _jugada = cfg.jugada;
-    _actualizarDisplay();
-
-    _timerJugada = setInterval(() => {
-      if(_pausado) return;
-      _jugada--;
-      // Descontar del tiempo total del jugador activo
-      if(rolActivo === 'X') _totalX = Math.max(0, _totalX - 1);
-      else                  _totalO = Math.max(0, _totalO - 1);
-
-      _actualizarDisplay();
-
-      // Tiempo de jugada agotado → cambio de turno forzado
-      if(_jugada <= 0) {
-        clearInterval(_timerJugada);
-        _sonar('agotado');
-        if(_onTiempoJugadaAgotado) _onTiempoJugadaAgotado(rolActivo);
+      if(urgente && Math.ceil(jugadaRestante) !== _avisoJugadaEnviado) {
+        _sonar('urgente');
       }
+    }
+    const lbl = $('crono-jugada-label');
+    if(lbl) lbl.textContent = 'TURNO ' + (turnoActivo === 'X' ? 'JUGADOR 1' : 'JUGADOR 2');
 
-      // Tiempo total agotado → derrota
-      const totalActivo = rolActivo === 'X' ? _totalX : _totalO;
-      if(cfg.total > 0 && totalActivo <= 0) {
-        _detenerTodo();
+    const elX = $('crono-total-x'); if(elX) elX.textContent = _fmt(totalXActual);
+    const elO = $('crono-total-o'); if(elO) elO.textContent = _fmt(totalOActual);
+    const bloqX = $('crono-bloque-x'); if(bloqX) bloqX.classList.toggle('urgente', totalXActual <= 30 && totalXActual > 0);
+    const bloqO = $('crono-bloque-o'); if(bloqO) bloqO.classList.toggle('urgente', totalOActual <= 30 && totalOActual > 0);
+    if(bloqX) { bloqX.classList.toggle('mi-turno', turnoActivo==='X'); bloqX.classList.toggle('rival-turno', turnoActivo!=='X'); }
+    if(bloqO) { bloqO.classList.toggle('mi-turno', turnoActivo==='O'); bloqO.classList.toggle('rival-turno', turnoActivo!=='O'); }
+
+    if(pausado) return; // no reportar timeouts mientras está en pausa
+
+    // Solo el jugador ACTIVO reporta su propio timeout (evita doble-reporte)
+    if(_miRol === turnoActivo) {
+      const claveJugada = turnoActivo + '_' + (_ultimoD.turno_inicio_ts||0);
+      if(jugadaRestante <= 0 && _avisoJugadaEnviado !== claveJugada) {
+        _avisoJugadaEnviado = claveJugada;
         _sonar('agotado');
-        if(_onTiempoTotalAgotado) _onTiempoTotalAgotado(rolActivo);
+        if(_onJugadaAgotada) _onJugadaAgotada(turnoActivo);
       }
-    }, 1000);
+      const totalActivo = turnoActivo==='X' ? totalXActual : totalOActual;
+      const claveTotal = turnoActivo + '_total';
+      if(totalActivo <= 0 && _avisoTotalEnviado !== claveTotal) {
+        _avisoTotalEnviado = claveTotal;
+        _sonar('agotado');
+        if(_onTotalAgotado) _onTotalAgotado(turnoActivo);
+      }
+    }
   }
 
   // ── API PÚBLICA ───────────────────────────────────────
 
-  /**
-   * Inicializar el cronómetro con un modo y rol
-   */
   function init(modo, miRol, cbJugada, cbTotal) {
     _modo = modo || 'clasico';
     _miRol = miRol;
-    _onTiempoJugadaAgotado = cbJugada;
-    _onTiempoTotalAgotado  = cbTotal;
-    _pausado = false;
-    _pausaSolicitadaPor = null;
+    _onJugadaAgotada = cbJugada;
+    _onTotalAgotado = cbTotal;
+    _avisoJugadaEnviado = null;
+    _avisoTotalEnviado = null;
 
-    const cfg = MODOS[_modo];
-    _totalX = cfg.total;
-    _totalO = cfg.total;
-    _jugada = cfg.jugada;
-
-    // Mostrar u ocultar cronómetro
     const cont = $('crono-container');
-    if(cont) {
-      if(cfg.total > 0) {
-        cont.classList.add('activo');
-        // Inicializar displays
-        const elX = $('crono-total-x');
-        const elO = $('crono-total-o');
-        const elJ = $('crono-jugada-tiempo');
-        if(elX) elX.textContent = _fmt(_totalX);
-        if(elO) elO.textContent = _fmt(_totalO);
-        if(elJ) elJ.textContent = _fmt(_jugada);
-      } else {
-        cont.classList.remove('activo');
-      }
+    if(cont) cont.classList.toggle('activo', MODOS[_modo].total > 0);
+
+    clearInterval(_tickInterval);
+    if(MODOS[_modo].total > 0) {
+      _tickInterval = setInterval(_tick, 250);
+      _tick();
     }
-    // El selector de modo NUNCA se oculta — permite cambiar
-    // de modalidad en cualquier momento durante la sesión
   }
 
-  /**
-   * Arrancar el timer para un turno específico
-   */
-  function arrancarTurno(rolActivo) {
-    if(MODOS[_modo].jugada === 0) return;
-    _sonar('cambio');
-    _iniciarTimerJugada(rolActivo);
+  // Actualiza el snapshot de Firebase que alimenta todos los cálculos.
+  // Se llama en cada aplicarEstado — es la ÚNICA fuente de verdad.
+  function actualizar(d) {
+    _ultimoD = d;
+    if(MODOS[_modo] && MODOS[_modo].total > 0) _tick();
   }
 
-  /**
-   * Detener todos los timers (fin de partida, reclamo, etc.)
-   */
   function detener() {
-    _detenerTodo();
-    _activo = false;
-  }
-
-  /**
-   * Pausar / reanudar
-   */
-  function pausar() { _pausado = true; }
-  function reanudar() { _pausado = false; }
-  function estaPausado() { return _pausado; }
-
-  /**
-   * Obtener estado actual para guardar en Firebase
-   */
-  function getEstado() {
-    return { totalX: _totalX, totalO: _totalO, jugada: _jugada, modo: _modo };
-  }
-
-  /**
-   * Restaurar estado desde Firebase
-   */
-  function setEstado(e) {
-    if(!e) return;
-    _totalX = e.totalX ?? _totalX;
-    _totalO = e.totalO ?? _totalO;
-    _jugada = e.jugada ?? _jugada;
-    _actualizarDisplay();
+    clearInterval(_tickInterval);
+    _tickInterval = null;
+    const cont = $('crono-container');
+    if(cont) cont.classList.remove('activo');
   }
 
   function getModo() { return _modo; }
 
-  return {
-    init, arrancarTurno, detener, pausar, reanudar,
-    estaPausado, getEstado, setEstado, getModo, MODOS
-  };
+  return { init, actualizar, detener, getModo, MODOS };
 })();
 
 // ── SELECTOR DE MODO (antes del sorteo) ─────────────────
@@ -1778,25 +1708,53 @@ function marcarModoActivo(modo){
   });
 }
 
-// Los botones de modo quedan SIEMPRE clicables — permite cambiar de
-// modalidad en cualquier momento si ambos jugadores lo desean
-// (el cambio se aplicará realmente en el próximo sorteo/partida)
+// Los botones de modo quedan SIEMPRE clicables — permite proponer
+// un cambio de modalidad en cualquier momento. El cambio real requiere
+// confirmación mutua (Sí/No) mediante modal, salvo la selección inicial
+// antes del primer sorteo, que se aplica directamente.
 document.querySelectorAll('.crono-modo-btn').forEach(btn => {
   btn.addEventListener('click', async () => {
     if(!Firebase.isIniciado()) return; // requiere sala conectada
-    // Bloquear cambio de modo mientras la partida está en curso
-    // (solo se puede elegir antes de sortear o luego de terminar/empatar)
     const snap = await Firebase.snapshotFase();
-    if(snap && snap.sorteo_usado && !snap.terminado) return;
-    // Actualizar visualmente AMBAS clases de inmediato (optimistic UI)
-    document.querySelectorAll('.crono-modo-btn').forEach(b => {
-      b.classList.remove('seleccionado','activo');
-    });
-    btn.classList.add('seleccionado','activo');
-    _modoSeleccionado = btn.dataset.modo;
-    if(window.Firebase) Firebase.setModo(_modoSeleccionado);
+    if(!snap) return;
+    if(snap.sorteo_usado && !snap.terminado) return; // no cambiar en pleno juego
+    if(snap.crono_modo === btn.dataset.modo) return; // ya es el modo actual
+
+    if(!snap.sorteo_usado){
+      // Aún no se ha jugado ninguna partida — aplicar directo sin confirmación
+      document.querySelectorAll('.crono-modo-btn').forEach(b => b.classList.remove('seleccionado','activo'));
+      btn.classList.add('seleccionado','activo');
+      _modoSeleccionado = btn.dataset.modo;
+      await Firebase.setModo(_modoSeleccionado);
+    } else {
+      // Ya se jugó al menos una partida — requiere confirmación mutua
+      await Firebase.proponerModo(btn.dataset.modo);
+    }
   });
 });
+
+// ── MODAL CONFIRMACIÓN DE CAMBIO DE MODO ─────────────────
+let _modoPropuestoVisto = null;
+function _revisarModoPropuesto(d){
+  const overlay = document.getElementById('modo-confirm-overlay');
+  if(!overlay) return;
+  if(d.modo_propuesto){
+    const key = d.modo_propuesto.ts + '_' + d.modo_propuesto.modo;
+    if(_modoPropuestoVisto !== key){
+      _modoPropuestoVisto = key;
+      const nombreModo = {clasico:'Clásico',basico:'Básico',experto:'Experto',blitz:'Blitz'}[d.modo_propuesto.modo] || d.modo_propuesto.modo;
+      const quien = d.modo_propuesto.por === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)';
+      document.getElementById('modo-confirm-msg').textContent =
+        quien + ' propone cambiar a modalidad ' + nombreModo + '. ¿Confirmas el cambio?';
+      overlay.style.display = 'flex';
+    }
+  } else {
+    overlay.style.display = 'none';
+    _modoPropuestoVisto = null;
+  }
+}
+document.getElementById('btn-modo-si')?.addEventListener('click', () => Firebase.responderModo(true));
+document.getElementById('btn-modo-no')?.addEventListener('click', () => Firebase.responderModo(false));
 
 // ── BOTÓN PAUSA ──────────────────────────────────────────
 document.getElementById('btn-pausa-crono')?.addEventListener('click', () => {
@@ -1852,7 +1810,8 @@ window.Firebase = {
       terminado:false,ganador:null,jugadas:0,fichasX:16,fichasO:16,
       j1:'online',j2:'espera',ts:Date.now(),
       ultimo_sorteo:null,sorteo_id:null,sorteo_usado:false,victoriasX:0,victoriasO:0,
-      crono_modo:'clasico'
+      crono_modo:'clasico', turno_inicio_ts:null, crono_totalX:null, crono_totalO:null,
+      pausa_activa:false, pausa_inicio_ts:null
     });
     $('lobby-codigo').textContent=_sala;
     UI.lobbyPaso('crear');
@@ -1887,12 +1846,25 @@ window.Firebase = {
       const d=snap.val(), t=Estado.tableroCompleto();
       if(d.terminado||d.fase!=='jugando'||t[id]!==null||d.turno!==_rol) return;
       t[id]=_rol; UI.bloquearTablero(true);
+
+      // Descontar el tiempo realmente transcurrido en este turno del total
+      // del jugador que acaba de mover (cronómetro compartido por timestamp)
+      const cfgModo = Cronometro.MODOS[d.crono_modo||'clasico'];
+      let nuevoTotalX = d.crono_totalX, nuevoTotalO = d.crono_totalO;
+      if(cfgModo && cfgModo.total > 0 && d.turno_inicio_ts){
+        const elapsed = Math.max(0,(Date.now()-d.turno_inicio_ts)/1000);
+        if(_rol==='X') nuevoTotalX = Math.max(0,(d.crono_totalX??cfgModo.total)-elapsed);
+        else            nuevoTotalO = Math.max(0,(d.crono_totalO??cfgModo.total)-elapsed);
+      }
+
       // update() en la misma referencia de sala (evita reconstruir el path)
       await update(_salaRef,{
         tablero:t,turno:_rol==='X'?'O':'X',fase:'jugando',
         jugadas:(d.jugadas||0)+1,
         fichasX:_rol==='X'?(d.fichasX??16)-1:(d.fichasX??16),
         fichasO:_rol==='O'?(d.fichasO??16)-1:(d.fichasO??16),
+        crono_totalX:nuevoTotalX, crono_totalO:nuevoTotalO,
+        turno_inicio_ts:Date.now()
       });
     } finally {
       _enviandoJugada = false;
@@ -1900,8 +1872,10 @@ window.Firebase = {
   },
 
   async publicarReclamo(fichas){
+    const snap=await get(_salaRef); const d=snap.val();
     await update(_salaRef,{fase:'reclamo',reclamante:_rol,
-      reclamo_fichas:fichas,reclamo_ts:Date.now(),fichas_marcadas_reclamo:[]});
+      reclamo_fichas:fichas,reclamo_ts:Date.now(),fichas_marcadas_reclamo:[],
+      pausa_activa:true, pausa_inicio_ts:Date.now()});
   },
 
   async syncMarcadas(fichas){ await update(_salaRef,{fichas_marcadas_reclamo:fichas}); },
@@ -1920,13 +1894,28 @@ window.Firebase = {
       reclamante:null,victoriasX:vX,victoriasO:vO});
   },
 
+  async _reanudarSinPenalizar(d){
+    // Desplaza turno_inicio_ts para que el tiempo pausado no cuente
+    let nuevoInicio = d.turno_inicio_ts;
+    if(d.pausa_activa && d.pausa_inicio_ts && d.turno_inicio_ts){
+      const pausaDuracion = Date.now() - d.pausa_inicio_ts;
+      nuevoInicio = d.turno_inicio_ts + pausaDuracion;
+    }
+    return { turno_inicio_ts: nuevoInicio, pausa_activa:false, pausa_inicio_ts:null };
+  },
+
   async cancelarReclamo(){
-    await update(_salaRef,{fase:'jugando',reclamante:null,reclamo_fichas:null,
-      fichas_marcadas_reclamo:null,reclamo_cancelado_ts:Date.now()});
+    const snap=await get(_salaRef); const d=snap.val();
+    const reanudo = await this._reanudarSinPenalizar(d);
+    await update(_salaRef,Object.assign({fase:'jugando',reclamante:null,reclamo_fichas:null,
+      fichas_marcadas_reclamo:null,reclamo_cancelado_ts:Date.now()}, reanudo));
   },
 
   async lineaInvalida(){
-    await update(_salaRef,{fase:'jugando',reclamante:null,reclamo_fichas:null,fichas_marcadas_reclamo:null});
+    const snap=await get(_salaRef); const d=snap.val();
+    const reanudo = await this._reanudarSinPenalizar(d);
+    await update(_salaRef,Object.assign({fase:'jugando',reclamante:null,reclamo_fichas:null,
+      fichas_marcadas_reclamo:null}, reanudo));
   },
 
   async nuevaPartida(){
@@ -1938,8 +1927,9 @@ window.Firebase = {
       fichas_ganadoras_reclamadas:null,fichas_marcadas_reclamo:null,
       reclamante:null,reclamo_fichas:null,
       victoriasX:d.victoriasX||0,victoriasO:d.victoriasO||0,
-      crono_modo:d.crono_modo||'clasico',crono_estado:null,crono_turno_forzado:null,
-      pausa_activa:false,pausa_solicitada:null,pausa_reanudar:null,
+      crono_modo:d.crono_modo||'clasico',crono_turno_forzado:null,
+      turno_inicio_ts:null, crono_totalX:null, crono_totalO:null,
+      pausa_activa:false,pausa_solicitada:null,pausa_reanudar:null,pausa_inicio_ts:null,
       fin_por_tiempo:false
     });
   },
@@ -1948,12 +1938,30 @@ window.Firebase = {
     if(_salaRef) await update(_salaRef,{crono_modo: modo});
   },
 
+  async proponerModo(modo){
+    if(!_salaRef) return;
+    const snap=await get(_salaRef); const d=snap.val();
+    if(d.crono_modo === modo) return; // ya es el modo actual, nada que confirmar
+    await update(_salaRef,{modo_propuesto:{modo, por:_rol, ts:Date.now()}});
+  },
+
+  async responderModo(acepta){
+    if(!_salaRef) return;
+    const snap=await get(_salaRef); const d=snap.val();
+    if(!d.modo_propuesto) return;
+    if(acepta){
+      await update(_salaRef,{crono_modo:d.modo_propuesto.modo, modo_propuesto:null});
+    } else {
+      await update(_salaRef,{modo_propuesto:null});
+    }
+  },
+
   async solicitarPausa(rol){
     if(!_salaRef) return;
     const snap=await get(_salaRef); const d=snap.val();
     // Si ya hay solicitud del oponente → ambos aceptan → pausar
     if(d.pausa_solicitada && d.pausa_solicitada !== rol){
-      await update(_salaRef,{pausa_activa:true, pausa_solicitada:null});
+      await update(_salaRef,{pausa_activa:true, pausa_solicitada:null, pausa_inicio_ts:Date.now()});
     } else {
       await update(_salaRef,{pausa_solicitada:rol});
       UI.setMsg('Pausa solicitada. Esperando confirmación del oponente...');
@@ -1968,21 +1976,29 @@ window.Firebase = {
         await update(_salaRef,{pausa_reanudar: _rol});
         UI.setMsg('Reanudación solicitada. Esperando al oponente...');
       } else if(d.pausa_reanudar !== _rol){
-        await update(_salaRef,{pausa_activa:false, pausa_reanudar:null});
+        const reanudo = await this._reanudarSinPenalizar(d);
+        await update(_salaRef,Object.assign({pausa_reanudar:null}, reanudo));
       }
     }
   },
 
   async turnoAgotado(rol){
-    // Forzar cambio de turno por tiempo agotado
+    // Forzar cambio de turno por tiempo de jugada agotado
     const snap=await get(_salaRef); const d=snap.val();
-    if(!d||d.terminado) return;
-    const cronoState = Cronometro.getEstado();
+    if(!d||d.terminado||d.fase!=='jugando'||d.turno!==rol) return;
+    const cfgModo = Cronometro.MODOS[d.crono_modo||'clasico'];
+    let nuevoTotalX = d.crono_totalX, nuevoTotalO = d.crono_totalO;
+    if(cfgModo && cfgModo.total > 0){
+      // Se descuenta el tiempo completo de la jugada (se agotó por completo)
+      if(rol==='X') nuevoTotalX = Math.max(0,(d.crono_totalX??cfgModo.total)-cfgModo.jugada);
+      else           nuevoTotalO = Math.max(0,(d.crono_totalO??cfgModo.total)-cfgModo.jugada);
+    }
     await update(_salaRef,{
       turno: rol==='X'?'O':'X',
       jugadas: (d.jugadas||0)+1,
-      crono_estado: cronoState,
-      crono_turno_forzado: Date.now()
+      crono_totalX:nuevoTotalX, crono_totalO:nuevoTotalO,
+      crono_turno_forzado: Date.now(),
+      turno_inicio_ts: Date.now()
     });
   },
 
@@ -2061,7 +2077,8 @@ window.Firebase = {
     if((d.prioridad_intento||1) === 1) {
       await this._activarPrioridad(d, 2);
     } else {
-      await this._confirmarEmpateFinal(d);
+      const reanudo = await this._reanudarSinPenalizar(d);
+      await this._confirmarEmpateFinal(Object.assign({}, d, reanudo));
     }
   },
 
@@ -2115,9 +2132,18 @@ window.Firebase = {
     const primero=Math.random()<.5?'X':'O';
     const sid=Date.now().toString();
     UI.bloquearBtns(['btn-sortear','btn-nueva'],true);
+    // El modo se toma SIEMPRE del valor ya sincronizado en Firebase
+    // (d.crono_modo), nunca de una variable local del navegador que
+    // hace clic — evita que el modo cambie a Clásico según quién sortee
+    const modo = d.crono_modo || 'clasico';
+    const cfgModo = Cronometro.MODOS[modo];
     await update(_salaRef,{turno:primero,fase:'jugando',
       ultimo_sorteo:primero,sorteo_id:sid,sorteo_usado:true,sorteo_quien:_rol,
-      crono_modo: _modoSeleccionado||'clasico'});
+      crono_modo: modo,
+      turno_inicio_ts: Date.now(),
+      crono_totalX: cfgModo.total||0,
+      crono_totalO: cfgModo.total||0
+    });
     return {ok:true,primero};
   }
 };
