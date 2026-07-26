@@ -981,7 +981,7 @@ const Reclamo = (() => {
   }
 
   function seleccionar(id){
-    if(!_activo||!_perm.has(id)){ UI.modal('Ficha no válida','Solo puedes seleccionar fichas de líneas ganadoras.'); return; }
+    if(!_activo||!_perm.has(id)) return;
     const idx=_sel.indexOf(id);
     if(idx>=0){
       _sel.splice(idx,1); Tablero.marcarReclamo(id,_rol,false);
@@ -1011,6 +1011,8 @@ const Juego = (() => {
     Estado.fromFirebase(d);
     if(typeof Sesion !== 'undefined') Sesion.fromFirebase(d);
     if(typeof _revisarModoPropuesto === 'function') _revisarModoPropuesto(d);
+    if(window.Firebase && Firebase._revisarConsensoPausa) Firebase._revisarConsensoPausa(d);
+    if(window.Firebase && Firebase._revisarAceptacionSorteo) Firebase._revisarAceptacionSorteo(d);
 
     // Resetear la bandera de victoria mostrada de forma SINCRONIZADA:
     // apenas Firebase confirma que la partida ya no está terminada
@@ -1107,6 +1109,7 @@ const Juego = (() => {
   }
 
   function _faseTerminado(d, miRol){
+    Cronometro.detener();
     UI.bloquearTablero(true);
     UI.setMsg('Partida terminada. Pulsa Nueva Partida.');
     document.getElementById('btn-nueva').style.opacity='';
@@ -1139,7 +1142,7 @@ const Juego = (() => {
 
   function _faseReclamo(d, miRol){
     UI.bloquearTablero(true);
-    Cronometro.pausar();
+    Cronometro.actualizar(d);
     if(d.reclamante===miRol){
       UI.setMsg('RECLAMO ACTIVO: selecciona tus 4 fichas ganadoras.');
     } else {
@@ -1195,7 +1198,7 @@ const Juego = (() => {
         _sorteoVisto = d.sorteo_id;
         UI.bloquearBtns(['btn-sortear','btn-nueva'],true);
         if(d.sorteo_quien !== miRol)
-          UI.modal('¡SORTEO!','Comienza el '+(d.ultimo_sorteo==='X'?'Jugador 1 (X)':'Jugador 2 (O)'));
+          UI.modal('¡SORTEO!','Comienza el '+(d.ultimo_sorteo==='X'?'Jugador 1 (X)':'Jugador 2 (O)'),'ACEPTAR',()=>Firebase.aceptarSorteo());
       }
 
       // Reflejar visualmente el modo cronómetro elegido (para ambos jugadores)
@@ -1895,13 +1898,29 @@ window.Firebase = {
   },
 
   async _reanudarSinPenalizar(d){
-    // Desplaza turno_inicio_ts para que el tiempo pausado no cuente
     let nuevoInicio = d.turno_inicio_ts;
     if(d.pausa_activa && d.pausa_inicio_ts && d.turno_inicio_ts){
       const pausaDuracion = Date.now() - d.pausa_inicio_ts;
       nuevoInicio = d.turno_inicio_ts + pausaDuracion;
     }
     return { turno_inicio_ts: nuevoInicio, pausa_activa:false, pausa_inicio_ts:null };
+  },
+
+  // Penalizacion en tiempo por reclamo de victoria falso
+  PENALIZACION: { clasico:0, basico:15, experto:10, blitz:5 },
+
+  async _aplicarPenalizacion(d, rolPenalizado){
+    const modo = d.crono_modo || 'clasico';
+    const segundos = this.PENALIZACION[modo] || 0;
+    if(segundos <= 0) return { cambios:{}, huboTimeout:false, segundos:0 };
+    const cfgModo = Cronometro.MODOS[modo];
+    const totalActualBase = rolPenalizado==='X' ? (d.crono_totalX??cfgModo.total) : (d.crono_totalO??cfgModo.total);
+    const nuevoTotal = Math.max(0, totalActualBase - segundos);
+    const huboTimeout = nuevoTotal <= 0;
+    const cambios = { penalizacion_ts: Date.now(), penalizacion_rol: rolPenalizado, penalizacion_segundos: segundos };
+    if(rolPenalizado==='X') cambios.crono_totalX = nuevoTotal;
+    else                    cambios.crono_totalO = nuevoTotal;
+    return { cambios, huboTimeout, segundos };
   },
 
   async cancelarReclamo(){
@@ -1914,8 +1933,20 @@ window.Firebase = {
   async lineaInvalida(){
     const snap=await get(_salaRef); const d=snap.val();
     const reanudo = await this._reanudarSinPenalizar(d);
-    await update(_salaRef,Object.assign({fase:'jugando',reclamante:null,reclamo_fichas:null,
-      fichas_marcadas_reclamo:null}, reanudo));
+    const pen = await this._aplicarPenalizacion(d, d.reclamante);
+    if(pen.huboTimeout){
+      const ganador = d.reclamante==='X' ? 'O' : 'X';
+      const vX=(d.victoriasX||0)+(ganador==='X'?1:0);
+      const vO=(d.victoriasO||0)+(ganador==='O'?1:0);
+      await update(_salaRef,Object.assign({
+        terminado:true, ganador, fase:'terminado', fin_por_tiempo:true,
+        victoriasX:vX, victoriasO:vO, reclamante:null, reclamo_fichas:null,
+        fichas_marcadas_reclamo:null
+      }, pen.cambios, reanudo));
+    } else {
+      await update(_salaRef,Object.assign({fase:'jugando',reclamante:null,reclamo_fichas:null,
+        fichas_marcadas_reclamo:null}, reanudo, pen.cambios));
+    }
   },
 
   async nuevaPartida(){
@@ -1958,27 +1989,31 @@ window.Firebase = {
 
   async solicitarPausa(rol){
     if(!_salaRef) return;
-    const snap=await get(_salaRef); const d=snap.val();
-    // Si ya hay solicitud del oponente → ambos aceptan → pausar
-    if(d.pausa_solicitada && d.pausa_solicitada !== rol){
-      await update(_salaRef,{pausa_activa:true, pausa_solicitada:null, pausa_inicio_ts:Date.now()});
-    } else {
-      await update(_salaRef,{pausa_solicitada:rol});
-      UI.setMsg('Pausa solicitada. Esperando confirmación del oponente...');
-    }
+    const campo = rol==='X' ? 'pausa_pedida_X' : 'pausa_pedida_O';
+    await update(_salaRef,{[campo]: true});
+    UI.setMsg('Pausa solicitada. Esperando confirmación del oponente...');
   },
 
   async reanudarPausa(){
     if(!_salaRef) return;
-    const snap=await get(_salaRef); const d=snap.val();
-    if(d.pausa_activa){
-      if(!d.pausa_reanudar){
-        await update(_salaRef,{pausa_reanudar: _rol});
-        UI.setMsg('Reanudación solicitada. Esperando al oponente...');
-      } else if(d.pausa_reanudar !== _rol){
-        const reanudo = await this._reanudarSinPenalizar(d);
-        await update(_salaRef,Object.assign({pausa_reanudar:null}, reanudo));
-      }
+    const campo = _rol==='X' ? 'reanudar_pedido_X' : 'reanudar_pedido_O';
+    await update(_salaRef,{[campo]: true});
+    UI.setMsg('Reanudación solicitada. Esperando al oponente...');
+  },
+
+  async _revisarConsensoPausa(d){
+    if(_rol !== 'X') return;
+    if(!d.pausa_activa && d.pausa_pedida_X && d.pausa_pedida_O){
+      await update(_salaRef,{
+        pausa_activa:true, pausa_inicio_ts:Date.now(),
+        pausa_pedida_X:false, pausa_pedida_O:false
+      });
+    }
+    if(d.pausa_activa && d.reanudar_pedido_X && d.reanudar_pedido_O){
+      const reanudo = await this._reanudarSinPenalizar(d);
+      await update(_salaRef,Object.assign({
+        reanudar_pedido_X:false, reanudar_pedido_O:false
+      }, reanudo));
     }
   },
 
@@ -2071,9 +2106,10 @@ window.Firebase = {
   },
 
   async lineaInvalidaPrioridad(){
-    // El jugador prioritario marco linea invalida durante prioridad_reclamo
     const snap=await get(_salaRef); const d=snap.val();
     if(!d) return;
+    const pen = await this._aplicarPenalizacion(d, d.prioridad_jugador);
+    await update(_salaRef, pen.cambios);
     if((d.prioridad_intento||1) === 1) {
       await this._activarPrioridad(d, 2);
     } else {
@@ -2132,19 +2168,32 @@ window.Firebase = {
     const primero=Math.random()<.5?'X':'O';
     const sid=Date.now().toString();
     UI.bloquearBtns(['btn-sortear','btn-nueva'],true);
-    // El modo se toma SIEMPRE del valor ya sincronizado en Firebase
-    // (d.crono_modo), nunca de una variable local del navegador que
-    // hace clic — evita que el modo cambie a Clásico según quién sortee
     const modo = d.crono_modo || 'clasico';
     const cfgModo = Cronometro.MODOS[modo];
+    // turno_inicio_ts queda en null — el cronometro NO arranca hasta
+    // que ambos jugadores pulsen Aceptar (ver aceptarSorteo)
     await update(_salaRef,{turno:primero,fase:'jugando',
       ultimo_sorteo:primero,sorteo_id:sid,sorteo_usado:true,sorteo_quien:_rol,
       crono_modo: modo,
-      turno_inicio_ts: Date.now(),
+      turno_inicio_ts: null,
       crono_totalX: cfgModo.total||0,
-      crono_totalO: cfgModo.total||0
+      crono_totalO: cfgModo.total||0,
+      sorteo_aceptado_X:false, sorteo_aceptado_O:false
     });
     return {ok:true,primero};
+  },
+
+  async aceptarSorteo(){
+    if(!_salaRef) return;
+    const campo = _rol==='X' ? 'sorteo_aceptado_X' : 'sorteo_aceptado_O';
+    await update(_salaRef,{[campo]:true});
+  },
+
+  async _revisarAceptacionSorteo(d){
+    if(_rol !== 'X') return;
+    if(d.sorteo_usado && !d.turno_inicio_ts && d.sorteo_aceptado_X && d.sorteo_aceptado_O){
+      await update(_salaRef,{turno_inicio_ts: Date.now()});
+    }
   }
 };
 
@@ -2205,7 +2254,7 @@ $('btn-sortear').onclick = async ()=>{
   if(!Firebase.isIniciado()) return;
   const r=await Firebase.sortear();
   if(!r.ok){ UI.modal('Sorteo',r.msg); return; }
-  UI.modal('¡SORTEO!','Comienza el '+(r.primero==='X'?'Jugador 1 (X)':'Jugador 2 (O)'));
+  UI.modal('¡SORTEO!','Comienza el '+(r.primero==='X'?'Jugador 1 (X)':'Jugador 2 (O)'),'ACEPTAR',()=>Firebase.aceptarSorteo());
 };
 
 $('btn-reclamar').onclick = async ()=>{
@@ -2227,20 +2276,15 @@ $('btn-reclamar').onclick = async ()=>{
     }
     return;
   }
-  const lineas=Reglas.buscarVictoria(Estado.tablero,Firebase.getMiRol());
-  if(!lineas.length){
-    if(enPrioridad){
-      // No tiene línea -> pasa turno de prioridad automáticamente
-      await Firebase.lineaInvalidaPrioridad();
-      return;
-    }
-    UI.modal('Sin línea ganadora','No tienes ninguna línea ganadora. No puedes reclamar.'); return;
+  const miRolActual = Firebase.getMiRol();
+  const fichasPropias = Object.keys(Estado.tablero).filter(id => Estado.tablero[id] === miRolActual);
+  if(fichasPropias.length < 4){
+    UI.modal('Muy pronto','Aún no tienes suficientes fichas en el tablero.'); return;
   }
-  const fichas=Reglas.fichasGanadoras(Estado.tablero,Firebase.getMiRol());
-  if(!enPrioridad) await Firebase.publicarReclamo(fichas);
-  Reclamo.init(Firebase.getMiRol());
-  Reclamo.activar(fichas);
-  UI.modal('Modo Reclamo activo','Selecciona las 4 fichas de tu línea ganadora y pulsa CONFIRMAR.');
+  if(!enPrioridad) await Firebase.publicarReclamo(fichasPropias);
+  Reclamo.init(miRolActual);
+  Reclamo.activar(fichasPropias);
+  UI.modal('Modo Reclamo activo','Selecciona 4 fichas y pulsa CONFIRMAR.');
 };
 
 $('btn-confirmar').onclick = async ()=>{
