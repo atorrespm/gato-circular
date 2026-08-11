@@ -2561,7 +2561,7 @@ const pen = await this._aplicarPenalizacion(d, d.prioridad_jugador);
 const cambios = Object.assign({}, pen.cambios, {
 resultado_reclamo: {valido:false, jugador:d.prioridad_jugador, ts:Date.now(), segundos:pen.segundos}
 });
-// Si la penalización agotó el tiempo total → derrota por tiempo
+// Si la penalizacion dejo el tiempo total en 0, el reclamante pierde por tiempo
 if(pen.huboTimeout){
 const ganador = d.prioridad_jugador==='X' ? 'O' : 'X';
 const vX=(d.victoriasX||0)+(ganador==='X'?1:0);
