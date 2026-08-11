@@ -1085,28 +1085,36 @@ const Juego = (() => {
   // ── EMPATE FINAL ───────────────────────────────────────
   let _empateFinalMostrado = false;
   function _faseEmpateFinal(d, miRol){
-    EmpateFlow.ocultarModalTC();
-    EmpateFlow.ocultarModalPrioridad();
-    Cronometro.detener();
-    UI.bloquearTablero(true);
-    UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
-    if(!_empateFinalMostrado){
-      _empateFinalMostrado = true;
-      const banner=document.getElementById('empate-banner');
-      const msg=document.getElementById('empate-msg');
-      if(msg) msg.textContent='El tablero está completo. La partida termina en EMPATE.';
-      if(banner) banner.style.display='block';
-      setTimeout(async () => {
-        if(banner) banner.style.display='none';
-        _empateFinalMostrado=false;
-        _prioridadMostrada=null;
-        if(miRol==='X') await Firebase.limpiarTrasEmpate();
-        UI.bloquearBtns(['btn-nueva','btn-sortear'],false);
-      }, 3000);
-      const resSesion = Sesion.verificarFinSesion(d.victoriasX||0, d.victoriasO||0);
-      if(resSesion) setTimeout(() => Sesion.mostrarFinSesion(resSesion, miRol), 3500);
-    }
-  }
+EmpateFlow.ocultarModalTC();
+EmpateFlow.ocultarModalPrioridad();
+Cronometro.detener();
+UI.bloquearTablero(true);
+UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+// La línea del reclamo inválido permanece marcada en amarillo
+// (se reaplica tras cada render para que no se pierda al redibujar)
+if(d.fichas_marcadas_reclamo && d.prioridad_jugador){
+Tablero.reaplicarReclamo(d.fichas_marcadas_reclamo, d.prioridad_jugador);
+}
+if(!_empateFinalMostrado){
+_empateFinalMostrado = true;
+const mostrarEmpate = () => {
+const banner=document.getElementById('empate-banner');
+const msg=document.getElementById('empate-msg');
+if(msg) msg.textContent='El tablero está completo. La partida termina en EMPATE.';
+if(banner) banner.style.display='block';
+// SIN limpieza automática: el banner queda hasta pulsar ACEPTAR
+// y el tablero SOLO se limpia con Nueva Partida.
+const resSesion = Sesion.verificarFinSesion(d.victoriasX||0, d.victoriasO||0);
+if(resSesion) setTimeout(() => Sesion.mostrarFinSesion(resSesion, miRol), 3500);
+};
+if(d.resultado_reclamo && _resultadoReclamoVisto !== d.resultado_reclamo.ts){
+_resultadoReclamoVisto = d.resultado_reclamo.ts;
+EmpateFlow.mostrarModalResultado(d.resultado_reclamo, mostrarEmpate);
+} else {
+mostrarEmpate();
+}
+}
+}
 
   function _faseTerminado(d, miRol){
     Cronometro.detener();
@@ -1523,7 +1531,9 @@ document.querySelectorAll('.sesion-btn-n').forEach(btn => {
 
 // ── BANNER EMPATE ────────────────────────────────────────
 document.getElementById('btn-cerrar-empate')?.addEventListener('click', () => {
-  document.getElementById('empate-banner').style.display = 'none';
+document.getElementById('empate-banner').style.display = 'none';
+UI.bloquearBtns(['btn-nueva'],false);
+UI.setMsg('Partida terminada en empate. Pulsa Nueva Partida.');
 });
 
 // ── BANNER FIN DE SESIÓN ─────────────────────────────────
