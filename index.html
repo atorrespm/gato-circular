@@ -997,6 +997,21 @@ UI.actualizarPaneles(Estado);
 }
 // Estadísticas en tiempo real
 UI.setStats(d.victoriasX||0, d.victoriasO||0);
+// ── CORRECCIÓN 3: puerta centralizada del resultado de reclamo ──
+// El modal de validez (válido/inválido) debe verse en AMBOS clientes,
+// sin depender de la fase ni del orden de eventos de Firebase.
+if(!d.terminado && d.resultado_reclamo &&
+   _resultadoReclamoVisto !== d.resultado_reclamo.ts &&
+   (d.fase==='prioridad_reclamo' || d.fase==='empate_final')){
+_resultadoReclamoVisto = d.resultado_reclamo.ts;
+EmpateFlow.mostrarModalResultado(d.resultado_reclamo, function(){
+_dispatchFase(d, miRol);
+});
+return;
+}
+_dispatchFase(d, miRol);
+}
+function _dispatchFase(d, miRol){
 if(d.terminado)                              _faseTerminado(d, miRol);
 else if(d.fase==='esperando_sorteo'||!d.turno) _faseEspera(d);
 else if(d.fase==='reclamo')                  _faseReclamo(d, miRol);
@@ -1026,14 +1041,7 @@ const soyPrioritario = d.prioridad_jugador === miRol;
 const key = 'prio_'+d.prioridad_jugador+'_'+(d.prioridad_intento||1);
 if(_prioridadMostrada !== key){
 _prioridadMostrada = key;
-if(d.resultado_reclamo && _resultadoReclamoVisto !== d.resultado_reclamo.ts){
-_resultadoReclamoVisto = d.resultado_reclamo.ts;
-EmpateFlow.mostrarModalResultado(d.resultado_reclamo, function(){
 EmpateFlow.mostrarModalPrioridad(d);
-});
-} else {
-EmpateFlow.mostrarModalPrioridad(d);
-}
 }
 if(soyPrioritario){
 UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
@@ -1082,12 +1090,7 @@ if(banner) banner.style.display='block';
 const resSesion = Sesion.verificarFinSesion(d.victoriasX||0, d.victoriasO||0);
 if(resSesion) setTimeout(() => Sesion.mostrarFinSesion(resSesion, miRol), 3500);
 };
-if(d.resultado_reclamo && _resultadoReclamoVisto !== d.resultado_reclamo.ts){
-_resultadoReclamoVisto = d.resultado_reclamo.ts;
-EmpateFlow.mostrarModalResultado(d.resultado_reclamo, mostrarEmpate);
-} else {
 mostrarEmpate();
-}
 }
 }
 // ── PARTIDA TERMINADA ─────────────────────────────────
