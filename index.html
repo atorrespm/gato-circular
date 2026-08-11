@@ -2349,8 +2349,10 @@ nuevoInicio = d.turno_inicio_ts + pausaDuracion;
 }
 return { turno_inicio_ts: nuevoInicio, pausa_activa:false, pausa_inicio_ts:null };
 },
-// Penalizacion en tiempo por reclamo de victoria falso
-PENALIZACION: { clasico:0, basico:15, experto:10, blitz:5 },
+// Penalizacion en tiempo por reclamo de victoria falso (RG-018)
+// Equivale a perder una jugada completa del modo respectivo:
+// Basico 30s / Experto 15s / Blitz 8s. Clasico sin cronometro => 0.
+PENALIZACION: { clasico:0, basico:30, experto:15, blitz:8 },
 async _aplicarPenalizacion(d, rolPenalizado){
 const modo = d.crono_modo || 'clasico';
 const segundos = this.PENALIZACION[modo] || 0;
@@ -2559,14 +2561,23 @@ const pen = await this._aplicarPenalizacion(d, d.prioridad_jugador);
 const cambios = Object.assign({}, pen.cambios, {
 resultado_reclamo: {valido:false, jugador:d.prioridad_jugador, ts:Date.now(), segundos:pen.segundos}
 });
+// Si la penalización agotó el tiempo total → derrota por tiempo
+if(pen.huboTimeout){
+const ganador = d.prioridad_jugador==='X' ? 'O' : 'X';
+const vX=(d.victoriasX||0)+(ganador==='X'?1:0);
+const vO=(d.victoriasO||0)+(ganador==='O'?1:0);
+await update(_salaRef,Object.assign({}, cambios, {
+terminado:true, ganador:ganador, fase:'terminado', fin_por_tiempo:true,
+victoriasX:vX, victoriasO:vO, reclamante:null, fichas_marcadas_reclamo:null
+}));
+return;
+}
 await update(_salaRef, cambios);
 const dec = d.tc_decision_final || this._normalizarDecisiones(d);
 const ambosRechazan = dec.X==='rechaza' && dec.O==='rechaza';
 if(ambosRechazan && (d.prioridad_intento||1) === 1) {
-// Ambos rechazaron y falló el 1er reclamo → pasa al 2º jugador
 await this._activarPrioridad(d, 2, dec);
 } else {
-// Reclamo único fallido (o 2º intento fallido) → empate final
 const reanudo = await this._reanudarSinPenalizar(d);
 await this._confirmarEmpateFinal(Object.assign({}, d, reanudo));
 }
