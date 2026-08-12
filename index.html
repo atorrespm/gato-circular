@@ -219,7 +219,7 @@ padding:32px 48px;text-align:center;z-index:200;
 box-shadow:0 0 60px rgba(200,168,75,0.7);min-width:320px;
 }
 #sesion-ganador-banner h2{ font-family:'Orbitron',sans-serif;font-size:20px;color:var(--gold);margin-bottom:6px; }
-#sesion-ganador-banner .campeон{ font-family:'Orbitron',sans-serif;font-size:28px;font-weight:900;margin:10px 0; }
+#sesion-ganador-banner .campeon{ font-family:'Orbitron',sans-serif;font-size:28px;font-weight:900;margin:10px 0; }
 #sesion-ganador-banner p{ font-size:12px;color:#aaa;margin-bottom:14px;line-height:1.6; }
 #btn-nueva-sesion{
 padding:12px 28px;background:linear-gradient(135deg,#7a0000,#cc2200);
@@ -597,7 +597,7 @@ font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;
 <!-- BANNER GANADOR DE SESIÓN -->
 <div id="sesion-ganador-banner">
 <h2>🏆 FIN DE SESIÓN</h2>
-<div class="campeон" id="sesion-ganador-txt"></div>
+<div class="campeon" id="sesion-ganador-txt"></div>
 <p id="sesion-resumen-txt"></p>
 <button id="btn-nueva-sesion">↺ NUEVA SESIÓN</button>
 </div>
@@ -975,11 +975,11 @@ M12· JUEGO — Orquestador principal
 ═══════════════════════════════════════════════════════ */
 const Juego = (() => {
 const $ = id => document.getElementById(id);
-let _sorteoVisto=null, _victoriaVista=false, _reclamoKey=null, _turnoAnterior=null, _reclamoCanceladoVisto=null;
+let _sorteoVisto=null, _victoriaVista=false, _reclamoKey=null, _turnoAnterior=null, _reclamoCanceladoVisto=null, _ultimoD=null;
 let _resultadoReclamoVisto=null;   // CORRECCIÓN: control de orden de modales (validez antes que prioridad/empate)
 function aplicarEstado(d, miRol) {
 if(!d) return;
-Estado.fromFirebase(d);
+Estado.fromFirebase(d); _ultimoD = d;
 if(typeof Sesion !== 'undefined') Sesion.fromFirebase(d);
 if(typeof _revisarModoPropuesto === 'function') _revisarModoPropuesto(d);
 if(window.Firebase && Firebase._revisarConsensoPausa) Firebase._revisarConsensoPausa(d);
@@ -999,15 +999,14 @@ UI.actualizarPaneles(Estado);
 UI.setStats(d.victoriasX||0, d.victoriasO||0);
 // ── CORRECCIÓN 3: puerta centralizada del resultado de reclamo ──
 // El modal de validez (válido/inválido) debe verse en AMBOS clientes,
-// sin depender de la fase ni del orden de eventos de Firebase.
+// en CUALQUIER fase (jugando, prioridad_reclamo, empate_final).
 if(!d.terminado && d.resultado_reclamo &&
-   _resultadoReclamoVisto !== d.resultado_reclamo.ts &&
-   (d.fase==='prioridad_reclamo' || d.fase==='empate_final')){
-_resultadoReclamoVisto = d.resultado_reclamo.ts;
-EmpateFlow.mostrarModalResultado(d.resultado_reclamo, function(){
-_dispatchFase(d, miRol);
-});
-return;
+_resultadoReclamoVisto !== d.resultado_reclamo.ts){
+    _resultadoReclamoVisto = d.resultado_reclamo.ts;
+    EmpateFlow.mostrarModalResultado(d.resultado_reclamo, function(){
+        _dispatchFase(d, miRol);
+    });
+    return;
 }
 _dispatchFase(d, miRol);
 }
@@ -1038,14 +1037,18 @@ function _fasePrioridad(d, miRol){
 EmpateFlow.ocultarModalTC();
 UI.bloquearTablero(true);
 const soyPrioritario = d.prioridad_jugador === miRol;
-// Botones derivados SIEMPRE del estado (idempotente, sin depender de modales)
+const key = 'prio_'+d.prioridad_jugador+'_'+(d.prioridad_intento||1);
+if(_prioridadMostrada !== key){
+_prioridadMostrada = key;
+EmpateFlow.mostrarModalPrioridad(d);
+}
 if(soyPrioritario){
-UI.bloquearBtns(['btn-nueva','btn-sortear'],true);
 UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
 UI.setMsg('¡Tienes prioridad! Si tienes línea ganadora, pulsa RECLAMAR VICTORIA.');
-}else{
+} else {
 UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
 UI.setMsg('Esperando a que el jugador con prioridad decida...');
+// Mostrar en tiempo real las fichas que va marcando el jugador prioritario
 if(d.fichas_marcadas_reclamo){
 document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el=>{
 const g=el.closest('[data-id]'); if(!g) return;
@@ -1055,51 +1058,38 @@ el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
 if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
 }
 });
-d.fichas_marcadas_reclamo.forEach(id=>Tablero.marcarReclamo(id,d.prioridad_jugador,true));
-}
-}
-const key='prio_'+d.prioridad_jugador+'_'+(d.prioridad_intento||1);
-if(_prioridadMostrada!==key){
-_prioridadMostrada=key;
-if(d.resultado_reclamo && _resultadoReclamoVisto!==d.resultado_reclamo.ts){
-_resultadoReclamoVisto=d.resultado_reclamo.ts;
-EmpateFlow.mostrarModalResultado(d.resultado_reclamo,function(){EmpateFlow.mostrarModalPrioridad(d);});
-}else{
-EmpateFlow.mostrarModalPrioridad(d);
+d.fichas_marcadas_reclamo.forEach(id=>{
+Tablero.marcarReclamo(id, d.prioridad_jugador, true);
+});
 }
 }
 }
 // ── EMPATE FINAL ───────────────────────────────────────
 // CORRECCIÓN 2: si el empate viene precedido de un reclamo inválido,
 // se muestra PRIMERO el modal de validez y después el banner de empate.
-let _empateFinalKey=null;
+let _empateFinalMostrado = false;
 function _faseEmpateFinal(d, miRol){
 EmpateFlow.ocultarModalTC();
 EmpateFlow.ocultarModalPrioridad();
 Cronometro.detener();
 UI.bloquearTablero(true);
-UI.bloquearBtns(['btn-reclamar','btn-confirmar'],true);
+UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+// El tablero permanece con sus jugadas; si hubo reclamo inválido,
+// la línea marcada queda resaltada en amarillo, visible para ambos.
 if(d.fichas_marcadas_reclamo && d.prioridad_jugador){
-Tablero.reaplicarReclamo(d.fichas_marcadas_reclamo,d.prioridad_jugador);
+Tablero.reaplicarReclamo(d.fichas_marcadas_reclamo, d.prioridad_jugador);
 }
-const key='emp_'+(d.partidasJugadas||0);
-if(_empateFinalKey!==key){
-_empateFinalKey=key;
-const mostrarEmpate=()=>{
+if(!_empateFinalMostrado){
+_empateFinalMostrado = true;
+const mostrarEmpate = () => {
 const banner=document.getElementById('empate-banner');
 const msg=document.getElementById('empate-msg');
 if(msg) msg.textContent='El tablero está completo. La partida termina en EMPATE.';
 if(banner) banner.style.display='block';
-UI.bloquearBtns(['btn-nueva','btn-sortear'],false);
-const resSesion=Sesion.verificarFinSesion(d.victoriasX||0,d.victoriasO||0);
-if(resSesion) setTimeout(()=>Sesion.mostrarFinSesion(resSesion,miRol),3500);
+const resSesion = Sesion.verificarFinSesion(d.victoriasX||0, d.victoriasO||0);
+if(resSesion) setTimeout(() => Sesion.mostrarFinSesion(resSesion, miRol), 3500);
 };
-if(d.resultado_reclamo && _resultadoReclamoVisto!==d.resultado_reclamo.ts){
-_resultadoReclamoVisto=d.resultado_reclamo.ts;
-EmpateFlow.mostrarModalResultado(d.resultado_reclamo,mostrarEmpate);
-}else{
 mostrarEmpate();
-}
 }
 }
 // ── PARTIDA TERMINADA ─────────────────────────────────
@@ -1243,7 +1233,7 @@ UI.bloquearTablero(d.turno !== miRol);
 }
 function reset(){
 _sorteoVisto=null; _victoriaVista=false; _reclamoKey=null;
-_prioridadMostrada=null; _empateFinalKey=null; _resultadoReclamoVisto=null;
+_prioridadMostrada=null; _empateFinalMostrado=false; _resultadoReclamoVisto=null;
 window._empateYaMostrado=false;
 }
 return {aplicarEstado, reset};
@@ -2349,10 +2339,8 @@ nuevoInicio = d.turno_inicio_ts + pausaDuracion;
 }
 return { turno_inicio_ts: nuevoInicio, pausa_activa:false, pausa_inicio_ts:null };
 },
-// Penalizacion en tiempo por reclamo de victoria falso (RG-018)
-// Equivale a perder una jugada completa del modo respectivo:
-// Basico 30s / Experto 15s / Blitz 8s. Clasico sin cronometro => 0.
-PENALIZACION: { clasico:0, basico:30, experto:15, blitz:8 },
+// Penalizacion en tiempo por reclamo de victoria falso
+PENALIZACION: { clasico:0, basico:15, experto:10, blitz:5 },
 async _aplicarPenalizacion(d, rolPenalizado){
 const modo = d.crono_modo || 'clasico';
 const segundos = this.PENALIZACION[modo] || 0;
@@ -2370,25 +2358,29 @@ async cancelarReclamo(){
 const snap=await get(_salaRef); const d=snap.val();
 const reanudo = await this._reanudarSinPenalizar(d);
 await update(_salaRef,Object.assign({fase:'jugando',reclamante:null,reclamo_fichas:null,
-fichas_marcadas_reclamo:null,reclamo_cancelado_ts:Date.now()}, reanudo));
-},
+fichas_marcadas_reclamo:null,
+resultado_reclamo:{valido:false, jugador:d.reclamante, ts:Date.now(), segundos:pen.segundos}
+}, reanudo, pen.cambios));
+
 async lineaInvalida(){
-const snap=await get(_salaRef); const d=snap.val();
-const reanudo = await this._reanudarSinPenalizar(d);
-const pen = await this._aplicarPenalizacion(d, d.reclamante);
-if(pen.huboTimeout){
-const ganador = d.reclamante==='X' ? 'O' : 'X';
-const vX=(d.victoriasX||0)+(ganador==='X'?1:0);
-const vO=(d.victoriasO||0)+(ganador==='O'?1:0);
-await update(_salaRef,Object.assign({
-terminado:true, ganador, fase:'terminado', fin_por_tiempo:true,
-victoriasX:vX, victoriasO:vO, reclamante:null, reclamo_fichas:null,
-fichas_marcadas_reclamo:null
-}, pen.cambios, reanudo));
-} else {
-await update(_salaRef,Object.assign({fase:'jugando',reclamante:null,reclamo_fichas:null,
-fichas_marcadas_reclamo:null}, reanudo, pen.cambios));
-}
+    const snap=await get(_salaRef); const d=snap.val();
+    const reanudo = await this._reanudarSinPenalizar(d);
+    const pen = await this._aplicarPenalizacion(d, d.reclamante);
+    // ── NUEVO: resultado sincronizado visible para AMBOS jugadores ──
+    const resultado = {valido:false, jugador:d.reclamante, ts:Date.now(), segundos:pen.segundos};
+    if(pen.huboTimeout){
+        const ganador = d.reclamante==='X' ? 'O' : 'X';
+        const vX=(d.victoriasX||0)+(ganador==='X'?1:0);
+        const vO=(d.victoriasO||0)+(ganador==='O'?1:0);
+        await update(_salaRef,Object.assign({
+        terminado:true, ganador, fase:'terminado', fin_por_tiempo:true,
+        victoriasX:vX, victoriasO:vO, reclamante:null, reclamo_fichas:null,
+        fichas_marcadas_reclamo:null, resultado_reclamo:resultado
+        }, pen.cambios, reanudo));
+    } else {
+        await update(_salaRef,Object.assign({fase:'jugando',reclamante:null,reclamo_fichas:null,
+        fichas_marcadas_reclamo:null, resultado_reclamo:resultado}, reanudo, pen.cambios));
+    }
 },
 async nuevaPartida(){
 const snap=await get(_salaRef); const d=snap.val();
@@ -2555,32 +2547,40 @@ fin_sesion: finSesion
 },
 // ── CORRECCIÓN 2: publica resultado_reclamo (validez) para ambos jugadores ──
 async lineaInvalidaPrioridad(){
-const snap=await get(_salaRef); const d=snap.val();
-if(!d) return;
-const pen = await this._aplicarPenalizacion(d, d.prioridad_jugador);
-const cambios = Object.assign({}, pen.cambios, {
-resultado_reclamo: {valido:false, jugador:d.prioridad_jugador, ts:Date.now(), segundos:pen.segundos}
-});
-// Si la penalizacion dejo el tiempo total en 0, el reclamante pierde por tiempo
-if(pen.huboTimeout){
-const ganador = d.prioridad_jugador==='X' ? 'O' : 'X';
-const vX=(d.victoriasX||0)+(ganador==='X'?1:0);
-const vO=(d.victoriasO||0)+(ganador==='O'?1:0);
-await update(_salaRef,Object.assign({}, cambios, {
-terminado:true, ganador:ganador, fase:'terminado', fin_por_tiempo:true,
-victoriasX:vX, victoriasO:vO, reclamante:null, fichas_marcadas_reclamo:null
-}));
-return;
-}
-await update(_salaRef, cambios);
-const dec = d.tc_decision_final || this._normalizarDecisiones(d);
-const ambosRechazan = dec.X==='rechaza' && dec.O==='rechaza';
-if(ambosRechazan && (d.prioridad_intento||1) === 1) {
-await this._activarPrioridad(d, 2, dec);
-} else {
-const reanudo = await this._reanudarSinPenalizar(d);
-await this._confirmarEmpateFinal(Object.assign({}, d, reanudo));
-}
+    const snap=await get(_salaRef); const d=snap.val();
+    if(!d) return;
+    const pen = await this._aplicarPenalizacion(d, d.prioridad_jugador);
+    
+    const dec = d.tc_decision_final || this._normalizarDecisiones(d);
+    const ambosRechazan = dec.X==='rechaza' && dec.O==='rechaza';
+    
+    // Preparamos TODOS los cambios en un solo objeto
+    let cambios = Object.assign({}, pen.cambios, {
+        resultado_reclamo: {valido:false, jugador:d.prioridad_jugador, ts:Date.now(), segundos:pen.segundos},
+        fichas_marcadas_reclamo: null,
+        reclamante: null
+    });
+
+    if(ambosRechazan && (d.prioridad_intento||1) === 1) {
+        // Pasa al 2º jugador (Intento 2)
+        const prioritario = (d.prioridad_jugador==='X') ? 'O' : 'X';
+        cambios.fase = 'prioridad_reclamo';
+        cambios.prioridad_jugador = prioritario;
+        cambios.prioridad_intento = 2;
+        cambios.tc_decision_final = dec;
+    } else {
+        // Empate final
+        const reanudo = await this._reanudarSinPenalizar(d);
+        Object.assign(cambios, reanudo);
+        cambios.fase = 'empate_final';
+        cambios.empates = (d.empates||0)+1;
+        cambios.partidasJugadas = (d.partidasJugadas||0)+1;
+        const total = d.totalPartidas||0;
+        cambios.fin_sesion = total>0 && cambios.partidasJugadas>=total;
+    }
+    
+    // UN SOLO UPDATE ATÓMICO (Evita el race condition)
+    await update(_salaRef, cambios);
 },
 async limpiarTrasEmpate(){
 await update(_salaRef,{
@@ -2717,6 +2717,15 @@ const snapEstado = await Firebase.snapshotFase();
 if(!snapEstado) return;
 if(snapEstado.fase==='prioridad_reclamo'){
 if(snapEstado.prioridad_jugador !== Firebase.getMiRol()) return; // no le corresponde
+}else if(snapEstado.fase==='reclamo'){
+// Reclamo en curso: SOLO el reclamante puede anularlo pulsando de nuevo
+if(snapEstado.reclamante !== Firebase.getMiRol()) return;
+if(Reclamo.isActivo()){
+Reclamo.desactivar();
+await Firebase.cancelarReclamo();
+UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+}
+return;
 }else if(snapEstado.fase!=='jugando'){
 return; // fuera de juego activo no se puede reclamar (bloquea escenario 4)
 }
@@ -2732,35 +2741,37 @@ return;
 }
 const miRolActual = Firebase.getMiRol();
 const fichasPropias = Object.keys(Estado.tablero).filter(id => Estado.tablero[id] === miRolActual);
-if(fichasPropias.length < 4){ UI.modal('Muy pronto','Aún no tienes suficientes fichas en el tablero.'); return; }
+if(fichasPropias.length < 4){
+UI.modal('Muy pronto','Aún no tienes suficientes fichas en el tablero.'); return;
+}
 if(!enPrioridad) await Firebase.publicarReclamo(fichasPropias);
 Reclamo.init(miRolActual);
 Reclamo.activar(fichasPropias);
-UI.modal('Modo Reclamo activo','Selecciona 4 fichas y pulsa CONFIRMAR.');
+UI.modal('Modo Reclamo activo','Selecciona 4 fichas y pulsa CONFIRMAR.\nSi te equivocaste, pulsa de nuevo RECLAMAR VICTORIA para anular el reclamo antes de confirmar.');
 };
 $('btn-confirmar').onclick = async ()=>{
-if(!Firebase.isIniciado()||!Reclamo.isActivo()){ UI.modal('Sin reclamo activo','Primero pulsa RECLAMAR VICTORIA y selecciona 4 fichas.'); return; }
-const sel=Reclamo.getSel();
-if(sel.length!==4){ UI.modal('Faltan fichas','Debes seleccionar exactamente 4 fichas.'); return; }
-const snapEstado = await Firebase.snapshotFase();
-const enPrioridad = snapEstado && snapEstado.fase==='prioridad_reclamo';
-if(Reglas.esLineaValida(sel)){
-const miRol=Firebase.getMiRol();
-Reclamo.desactivar();
-Tablero.resaltarGanadores(sel,miRol);
-await Firebase.confirmarVictoria(sel);
-} else {
-Reclamo.desactivar();
-if(enPrioridad){
-// CORRECCIÓN 2: el modal de validez (inválida) lo muestra el flujo
-// central a AMBOS jugadores y en el orden correcto (validez → prioridad/empate)
-await Firebase.lineaInvalidaPrioridad();
-} else {
-await Firebase.lineaInvalida();
-UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
-UI.modal('Línea inválida','Las 4 fichas no forman una línea ganadora válida. El juego continúa.');
-}
-}
+    if(!Firebase.isIniciado()||!Reclamo.isActivo()){ UI.modal('Sin reclamo activo','Primero pulsa RECLAMAR VICTORIA y selecciona 4 fichas.'); return; }
+    const sel=Reclamo.getSel();
+    if(sel.length!==4){ UI.modal('Faltan fichas','Debes seleccionar exactamente 4 fichas.'); return; }
+    const snapEstado = await Firebase.snapshotFase();
+    const enPrioridad = snapEstado && snapEstado.fase==='prioridad_reclamo';
+    if(Reglas.esLineaValida(sel)){
+        const miRol=Firebase.getMiRol();
+        Reclamo.desactivar();
+        Tablero.resaltarGanadores(sel,miRol);
+        await Firebase.confirmarVictoria(sel);
+    } else {
+        Reclamo.desactivar();
+        if(enPrioridad){
+            await Firebase.lineaInvalidaPrioridad();
+        } else {
+            await Firebase.lineaInvalida();
+            UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+            // ── ELIMINADO: UI.modal() local ──
+            // El modal de línea inválida ahora lo muestra la puerta centralizada
+            // a AMBOS jugadores simultáneamente vía resultado_reclamo
+        }
+    }
 };
 // Clic sobre el overlay en modo reclamo (detección geométrica)
 $('tablero-block').addEventListener('click', e=>{
