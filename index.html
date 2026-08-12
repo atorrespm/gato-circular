@@ -1034,63 +1034,84 @@ EmpateFlow.mostrarModalTC(d);
 // validez y recién al cerrarlo el modal de prioridad (orden lógico).
 let _prioridadMostrada = null;
 function _fasePrioridad(d, miRol){
-EmpateFlow.ocultarModalTC();
-UI.bloquearTablero(true);
-const soyPrioritario = d.prioridad_jugador === miRol;
-const key = 'prio_'+d.prioridad_jugador+'_'+(d.prioridad_intento||1);
-if(_prioridadMostrada !== key){
-_prioridadMostrada = key;
-EmpateFlow.mostrarModalPrioridad(d);
-}
-if(soyPrioritario){
-UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
-UI.setMsg('¡Tienes prioridad! Si tienes línea ganadora, pulsa RECLAMAR VICTORIA.');
-} else {
-UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
-UI.setMsg('Esperando a que el jugador con prioridad decida...');
-// Mostrar en tiempo real las fichas que va marcando el jugador prioritario
-if(d.fichas_marcadas_reclamo){
-document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el=>{
-const g=el.closest('[data-id]'); if(!g) return;
-const cid=g.dataset.id;
-if(!d.fichas_marcadas_reclamo.includes(cid)){
-el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
-if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
-}
-});
-d.fichas_marcadas_reclamo.forEach(id=>{
-Tablero.marcarReclamo(id, d.prioridad_jugador, true);
-});
-}
-}
-}
+  EmpateFlow.ocultarModalTC();
+  UI.bloquearTablero(true);
+  const soyPrioritario = d.prioridad_jugador === miRol;
+  // Clave única incluyendo partidasJugadas para evitar que prioridades consecutivas
+  // bloqueen la visualización del modal en el Jugador 2
+  const key = 'prio_'+(d.partidasJugadas||0)+'_'+d.prioridad_jugador+'_'+(d.prioridad_intento||1);
+  if(_prioridadMostrada !== key){
+    _prioridadMostrada = key;
+    // Botones derivados SIEMPRE del estado (idempotente)
+    if(soyPrioritario){
+      UI.bloquearBtns(['btn-nueva','btn-sortear'],true);
+      UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+      UI.setMsg('¡Tienes prioridad! Si tienes línea ganadora, pulsa RECLAMAR VICTORIA.');
+    } else {
+      UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+      UI.setMsg('Esperando a que el jugador con prioridad decida...');
+      if(d.fichas_marcadas_reclamo){
+        document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el=>{
+          const g=el.closest('[data-id]'); if(!g) return;
+          const cid=g.dataset.id;
+          if(!d.fichas_marcadas_reclamo.includes(cid)){
+            el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
+            if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
+          }
+        });
+        d.fichas_marcadas_reclamo.forEach(id=>Tablero.marcarReclamo(id,d.prioridad_jugador,true));
+      }
+    }
+    if(d.resultado_reclamo && _resultadoReclamoVisto !== d.resultado_reclamo.ts){
+      _resultadoReclamoVisto = d.resultado_reclamo.ts;
+      EmpateFlow.mostrarModalResultado(d.resultado_reclamo, function(){
+        EmpateFlow.mostrarModalPrioridad(d);
+      });
+    } else {
+      EmpateFlow.mostrarModalPrioridad(d);
+    }
+  }
 // ── EMPATE FINAL ───────────────────────────────────────
 // CORRECCIÓN 2: si el empate viene precedido de un reclamo inválido,
 // se muestra PRIMERO el modal de validez y después el banner de empate.
-let _empateFinalMostrado = false;
+let _empateFinalKey = null;
 function _faseEmpateFinal(d, miRol){
-EmpateFlow.ocultarModalTC();
-EmpateFlow.ocultarModalPrioridad();
-Cronometro.detener();
-UI.bloquearTablero(true);
-UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
-// El tablero permanece con sus jugadas; si hubo reclamo inválido,
-// la línea marcada queda resaltada en amarillo, visible para ambos.
-if(d.fichas_marcadas_reclamo && d.prioridad_jugador){
-Tablero.reaplicarReclamo(d.fichas_marcadas_reclamo, d.prioridad_jugador);
-}
-if(!_empateFinalMostrado){
-_empateFinalMostrado = true;
-const mostrarEmpate = () => {
-const banner=document.getElementById('empate-banner');
-const msg=document.getElementById('empate-msg');
-if(msg) msg.textContent='El tablero está completo. La partida termina en EMPATE.';
-if(banner) banner.style.display='block';
-const resSesion = Sesion.verificarFinSesion(d.victoriasX||0, d.victoriasO||0);
-if(resSesion) setTimeout(() => Sesion.mostrarFinSesion(resSesion, miRol), 3500);
-};
-mostrarEmpate();
-}
+  EmpateFlow.ocultarModalTC();
+  EmpateFlow.ocultarModalPrioridad();
+  Cronometro.detener();
+  UI.bloquearTablero(true);
+  UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+  // Reaplica el amarillo de la línea reclamada (si existe)
+  if(d.fichas_marcadas_reclamo && d.prioridad_jugador){
+    Tablero.reaplicarReclamo(d.fichas_marcadas_reclamo, d.prioridad_jugador);
+  }
+  // Clave única basada en partidasJugadas para evitar que empates consecutivos
+  // bloqueen la visualización del modal en el Jugador 2
+  const key = 'emp_' + (d.partidasJugadas || 0);
+  if(_empateFinalKey !== key){
+    _empateFinalKey = key;
+    const mostrarEmpate = () => {
+      const banner=document.getElementById('empate-banner');
+      const msg=document.getElementById('empate-msg');
+      if(msg) msg.textContent='El tablero está completo. La partida termina en EMPATE.';
+      if(banner) banner.style.display='block';
+      UI.bloquearBtns(['btn-nueva','btn-sortear'],false);
+      // Solo el Jugador 1 limpia el estado en Firebase después de 3 segundos
+      setTimeout(async () => {
+        if(banner) banner.style.display='none';
+        _empateFinalKey=null;
+        if(miRol==='X') await Firebase.limpiarTrasEmpate();
+      }, 3000);
+      const resSesion = Sesion.verificarFinSesion(d.victoriasX||0, d.victoriasO||0);
+      if(resSesion) setTimeout(() => Sesion.mostrarFinSesion(resSesion, miRol), 3500);
+    };
+    if(d.resultado_reclamo && _resultadoReclamoVisto !== d.resultado_reclamo.ts){
+      _resultadoReclamoVisto = d.resultado_reclamo.ts;
+      EmpateFlow.mostrarModalResultado(d.resultado_reclamo, mostrarEmpate);
+    } else {
+      mostrarEmpate();
+    }
+  }
 }
 // ── PARTIDA TERMINADA ─────────────────────────────────
 // CORRECCIÓN 3: modal neutral y sincronizado de validez/victoria
@@ -1232,9 +1253,9 @@ UI.bloquearTablero(d.turno !== miRol);
 }
 }
 function reset(){
-_sorteoVisto=null; _victoriaVista=false; _reclamoKey=null;
-_prioridadMostrada=null; _empateFinalMostrado=false; _resultadoReclamoVisto=null;
-window._empateYaMostrado=false;
+  _sorteoVisto=null; _victoriaVista=false; _reclamoKey=null;
+  _prioridadMostrada=null; _empateFinalKey=null; _resultadoReclamoVisto=null;
+  window._empateYaMostrado=false;
 }
 return {aplicarEstado, reset};
 })();
