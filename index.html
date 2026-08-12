@@ -2355,13 +2355,16 @@ else                    cambios.crono_totalO = nuevoTotal;
 return { cambios, huboTimeout, segundos };
 },
 async cancelarReclamo(){
-const snap=await get(_salaRef); const d=snap.val();
-const reanudo = await this._reanudarSinPenalizar(d);
-await update(_salaRef,Object.assign({fase:'jugando',reclamante:null,reclamo_fichas:null,
-fichas_marcadas_reclamo:null,
-resultado_reclamo:{valido:false, jugador:d.reclamante, ts:Date.now(), segundos:pen.segundos}
-}, reanudo, pen.cambios));
-
+    const snap=await get(_salaRef); const d=snap.val();
+    const reanudo = await this._reanudarSinPenalizar(d);
+    await update(_salaRef,Object.assign({
+        fase:'jugando',
+        reclamante:null,
+        reclamo_fichas:null,
+        fichas_marcadas_reclamo:null,
+        reclamo_cancelado_ts:Date.now()
+    }, reanudo));
+},
 async lineaInvalida(){
     const snap=await get(_salaRef); const d=snap.val();
     const reanudo = await this._reanudarSinPenalizar(d);
