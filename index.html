@@ -1132,8 +1132,7 @@ if(d.fichas_ganadoras_reclamadas) Tablero.resaltarGanadores(d.fichas_ganadoras_r
 // Verificar fin de sesión
 const resSesion = Sesion.verificarFinSesion(d.victoriasX||0, d.victoriasO||0);
 if(resSesion) setTimeout(() => Sesion.mostrarFinSesion(resSesion, miRol), 2500);
-const porTiempo=d.fin_por_tiempo?'
-⏱️ Ganó por tiempo agotado del oponente.':'';
+const porTiempo=d.fin_por_tiempo?'⏱️ Ganó por tiempo agotado del oponente.':'';
 const nombreGanador=d.ganador==='X'?'Jugador 1 (X)':'Jugador 2 (O)';
 const titulo=d.fin_por_tiempo?'⏱️ TIEMPO AGOTADO':'🏆 RECLAMO DE VICTORIA VÁLIDO';
 setTimeout(()=>UI.modal(titulo, nombreGanador+' gana la partida.'+porTiempo),400);
@@ -1406,8 +1405,7 @@ if(t) t.textContent = '🏆 RECLAMO DE VICTORIA VÁLIDO';
 if(b) b.textContent = nombre+' gana la partida.';
 } else {
 if(t) t.textContent = '❌ RECLAMO DE VICTORIA INVÁLIDO';
-if(b) b.textContent = nombre+': las 4 fichas marcadas no forman una línea ganadora válida.'+(res.segundos?'
-Penalización: -'+res.segundos+' segundos.':'');
+if(b) b.textContent = nombre+': las 4 fichas marcadas no forman una línea ganadora válida.'+(res.segundos?' Penalización: -'+res.segundos+' segundos.':'');
 }
 document.getElementById('resultado-reclamo-modal').classList.add('visible');
 }
@@ -1509,8 +1507,7 @@ gtxt.style.color = resultado.ganador === 'X' ? 'var(--red-g)'
 if(rtxt) rtxt.textContent =
 'Victorias X: ' + resultado.vX + '   |   ' +
 'Victorias O: ' + resultado.vO + '   |   ' +
-'Empates: ' + resultado.empates + '
-' +
+'Empates: ' + resultado.empates + '\n' +
 'Total partidas jugadas: ' + _partidasJugadas;
 banner.style.display = 'block';
 }
@@ -2282,8 +2279,7 @@ UI.modal('Muy pronto','Aún no tienes suficientes fichas en el tablero.'); retur
 if(!enPrioridad) await Firebase.publicarReclamo(fichasPropias);
 Reclamo.init(miRolActual);
 Reclamo.activar(fichasPropias);
-UI.modal('Modo Reclamo activo','Selecciona 4 fichas y pulsa CONFIRMAR.
-Si te equivocaste, pulsa de nuevo RECLAMAR VICTORIA para anular el reclamo antes de confirmar.');
+UI.modal('Modo Reclamo activo','Selecciona 4 fichas y pulsa CONFIRMAR.\nSi te equivocaste, pulsa de nuevo RECLAMAR VICTORIA para anular el reclamo antes de confirmar.');
 };
 $('btn-confirmar').onclick = async ()=>{
 if(!Firebase.isIniciado()||!Reclamo.isActivo()){ UI.modal('Sin reclamo activo','Primero pulsa RECLAMAR VICTORIA y selecciona 4 fichas.'); return; }
