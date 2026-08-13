@@ -1077,34 +1077,52 @@ EmpateFlow.mostrarModalPrioridad(d);
 // se muestra PRIMERO el modal de validez y después el banner de empate.
 let _empateFinalKey = null;
 function _faseEmpateFinal(d, miRol){
-EmpateFlow.ocultarModalTC();
-EmpateFlow.ocultarModalPrioridad();
-Cronometro.detener();
-UI.bloquearTablero(true);
-UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
-// Reaplica el amarillo de la línea reclamada (si existe)
-if(d.fichas_marcadas_reclamo && d.prioridad_jugador){
-Tablero.reaplicarReclamo(d.fichas_marcadas_reclamo, d.prioridad_jugador);
+    EmpateFlow.ocultarModalTC();
+    EmpateFlow.ocultarModalPrioridad();
+    Cronometro.detener();
+    UI.bloquearTablero(true);
+    // Bloqueamos TODO excepto Nueva Partida (que mostraremos tras aceptar)
+    UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'], true);
+    
+    if(d.fichas_marcadas_reclamo && d.prioridad_jugador){
+        Tablero.reaplicarReclamo(d.fichas_marcadas_reclamo, d.prioridad_jugador);
+    }
+
+    const key = 'emp_' + (d.partidasJugadas || 0);
+    if(window._empateFinalKey !== key){
+        window._empateFinalKey = key;
+        
+        // Creamos el banner dinámicamente con botón ACEPTAR si no existe
+        let banner = document.getElementById('empate-banner');
+        if(!banner){
+            banner = document.createElement('div');
+            banner.id = 'empate-banner';
+            banner.style.cssText = 'display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:linear-gradient(135deg,#1a1500,#2a2500);border:3px solid var(--gold);border-radius:14px;padding:28px 40px;text-align:center;z-index:100;box-shadow:0 0 40px rgba(200,168,75,0.5);min-width:280px;';
+            banner.innerHTML = `
+                <h2 style="font-family:'Orbitron',sans-serif;font-size:22px;color:var(--gold);margin-bottom:8px;">🤝 EMPATE</h2>
+                <p id="empate-msg" style="font-size:13px;color:#aaa;margin-bottom:14px;line-height:1.5;">El tablero está completo. Ningún jugador reclamó victoria.<br>La partida termina en empate.</p>
+                <button id="btn-cerrar-empate" style="padding:10px 24px;background:var(--gold);color:#111;border:none;border-radius:6px;font-family:'Orbitron',sans-serif;font-weight:700;cursor:pointer;font-size:12px;">ACEPTAR</button>
+            `;
+            document.body.appendChild(banner);
+            
+            // Evento único para el botón ACEPTAR
+            document.getElementById('btn-cerrar-empate').addEventListener('click', () => {
+                banner.style.display = 'none';
+                // Solo desbloqueamos Nueva Partida, el resto sigue bloqueado
+                UI.bloquearBtns(['btn-nueva'], false);
+                UI.setMsg('Partida terminada en empate. Pulsa NUEVA PARTIDA para continuar.');
+            });
+        }
+        
+        banner.style.display = 'block';
+        const msg = document.getElementById('empate-msg');
+        if(msg) msg.textContent = 'El tablero está completo. La partida termina en EMPATE.';
+        
+        // NO hay setTimeout. El tablero permanece intacto hasta Nueva Partida.
+        const resSesion = Sesion.verificarFinSesion(d.victoriasX||0, d.victoriasO||0);
+        if(resSesion) setTimeout(() => Sesion.mostrarFinSesion(resSesion, miRol), 3500);
+    }
 }
-// Clave única basada en partidasJugadas para evitar que empates consecutivos
-// bloqueen la visualización del modal en el Jugador 2
-const key = 'emp_' + (d.partidasJugadas || 0);
-if(_empateFinalKey !== key){
-_empateFinalKey = key;
-const mostrarEmpate = () => {
-const banner=document.getElementById('empate-banner');
-const msg=document.getElementById('empate-msg');
-if(msg) msg.textContent='El tablero está completo. La partida termina en EMPATE.';
-if(banner) banner.style.display='block';
-UI.bloquearBtns(['btn-nueva','btn-sortear'],false);
-// Solo el Jugador 1 limpia el estado en Firebase después de 3 segundos
-setTimeout(async () => {
-if(banner) banner.style.display='none';
-_empateFinalKey=null;
-if(miRol==='X') await Firebase.limpiarTrasEmpate();
-}, 3000);
-const resSesion = Sesion.verificarFinSesion(d.victoriasX||0, d.victoriasO||0);
-if(resSesion) setTimeout(() => Sesion.mostrarFinSesion(resSesion, miRol), 3500);
 };
 if(d.resultado_reclamo && _resultadoReclamoVisto !== d.resultado_reclamo.ts){
 _resultadoReclamoVisto = d.resultado_reclamo.ts;
@@ -1113,6 +1131,42 @@ EmpateFlow.mostrarModalResultado(d.resultado_reclamo, mostrarEmpate);
 mostrarEmpate();
 }
 }
+}
+// --- MODAL DE CONFIRMACIÓN "NUEVA PARTIDA?" POST-EMPATE ---
+// Se muestra a AMBOS jugadores cuando cualquiera pulsa Nueva Partida tras un empate.
+// Solo limpia el tablero si ambos aceptan.
+let _npConfirmacionVista = null;
+function _mostrarConfirmacionNuevaPartida(miRol){
+    const key = 'np_' + (Date.now() % 10000); // Clave simple para evitar duplicados rápidos
+    if(_npConfirmacionVista === key) return; 
+    _npConfirmacionVista = key;
+
+    let overlay = document.getElementById('np-confirm-overlay');
+    if(!overlay){
+        overlay = document.createElement('div');
+        overlay.id = 'np-confirm-overlay';
+        overlay.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:300;align-items:center;justify-content:center;';
+        overlay.innerHTML = `
+            <div style="background:linear-gradient(135deg,#1a1a1a,#252525);border:3px solid var(--gold);border-radius:14px;padding:28px 36px;text-align:center;min-width:320px;max-width:420px;">
+                <h2 style="font-family:'Orbitron',sans-serif;font-size:18px;color:var(--gold);margin-bottom:10px;">¿NUEVA PARTIDA?</h2>
+                <p style="font-size:13px;color:#aaa;margin-bottom:16px;line-height:1.5;">Se iniciará una nueva partida y se limpiará el tablero actual.<br>¿Confirma esta acción?</p>
+                <div style="display:flex;gap:12px;justify-content:center;">
+                    <button id="btn-np-si" style="padding:10px 24px;background:linear-gradient(135deg,#005500,#009933);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">ACEPTAR</button>
+                    <button id="btn-np-no" style="padding:10px 24px;background:linear-gradient(135deg,#7a0000,#cc2200);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">NO ACEPTAR</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        
+        document.getElementById('btn-np-si').addEventListener('click', async () => {
+            overlay.style.display = 'none';
+            await Firebase.confirmarNuevaPartida();
+        });
+        document.getElementById('btn-np-no').addEventListener('click', () => {
+            overlay.style.display = 'none';
+        });
+    }
+    overlay.style.display = 'flex';
 }
 // ── PARTIDA TERMINADA ─────────────────────────────────
 // CORRECCIÓN 3: modal neutral y sincronizado de validez/victoria
@@ -1132,7 +1186,8 @@ if(d.fichas_ganadoras_reclamadas) Tablero.resaltarGanadores(d.fichas_ganadoras_r
 // Verificar fin de sesión
 const resSesion = Sesion.verificarFinSesion(d.victoriasX||0, d.victoriasO||0);
 if(resSesion) setTimeout(() => Sesion.mostrarFinSesion(resSesion, miRol), 2500);
-const porTiempo=d.fin_por_tiempo?'⏱️ Ganó por tiempo agotado del oponente.':'';
+const porTiempo=d.fin_por_tiempo?'
+⏱️ Ganó por tiempo agotado del oponente.':'';
 const nombreGanador=d.ganador==='X'?'Jugador 1 (X)':'Jugador 2 (O)';
 const titulo=d.fin_por_tiempo?'⏱️ TIEMPO AGOTADO':'🏆 RECLAMO DE VICTORIA VÁLIDO';
 setTimeout(()=>UI.modal(titulo, nombreGanador+' gana la partida.'+porTiempo),400);
@@ -1405,7 +1460,8 @@ if(t) t.textContent = '🏆 RECLAMO DE VICTORIA VÁLIDO';
 if(b) b.textContent = nombre+' gana la partida.';
 } else {
 if(t) t.textContent = '❌ RECLAMO DE VICTORIA INVÁLIDO';
-if(b) b.textContent = nombre+': las 4 fichas marcadas no forman una línea ganadora válida.'+(res.segundos?' Penalización: -'+res.segundos+' segundos.':'');
+if(b) b.textContent = nombre+': las 4 fichas marcadas no forman una línea ganadora válida.'+(res.segundos?'
+Penalización: -'+res.segundos+' segundos.':'');
 }
 document.getElementById('resultado-reclamo-modal').classList.add('visible');
 }
@@ -1507,7 +1563,8 @@ gtxt.style.color = resultado.ganador === 'X' ? 'var(--red-g)'
 if(rtxt) rtxt.textContent =
 'Victorias X: ' + resultado.vX + '   |   ' +
 'Victorias O: ' + resultado.vO + '   |   ' +
-'Empates: ' + resultado.empates + '\n' +
+'Empates: ' + resultado.empates + '
+' +
 'Total partidas jugadas: ' + _partidasJugadas;
 banner.style.display = 'block';
 }
@@ -1935,6 +1992,20 @@ tc_decision:null, tc_inicio:null, tc_decision_final:null, resultado_reclamo:null
 prioridad_jugador:null, prioridad_intento:null
 });
 },
+// ── NUEVA FUNCIÓN: Confirmación bilateral de Nueva Partida post-empate ─
+async confirmarNuevaPartida(){
+    // Solo limpia cuando se confirma desde el modal post-empate
+    Juego.reset(); Reclamo.desactivar(); Cronometro.detener();
+    const selModo=$('crono-modo-selector');
+    if(selModo){ selModo.style.display='flex'; }
+    document.querySelectorAll('.crono-modo-btn').forEach(b=>b.classList.remove('seleccionado'));
+    const btnClas=document.querySelector('.crono-modo-btn.clasico');
+    if(btnClas) btnClas.classList.add('seleccionado');
+    _modoSeleccionado='clasico';
+    await this.nuevaPartida();
+    UI.bloquearBtns(['btn-sortear'],false);
+    UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+},
 async setModo(modo){
 if(_salaRef) await update(_salaRef,{crono_modo: modo});
 },
@@ -2224,11 +2295,16 @@ if(!r.ok) $('lst-unirse').textContent=r.msg;
 };
 $('btn-nueva').onclick = async ()=>{
 if(!Firebase.isIniciado()) return;
+// Si estamos en fase de empate final, mostrar confirmación bilateral
+const snap = await Firebase.snapshotFase();
+if(snap && snap.fase === 'empate_final'){
+    _mostrarConfirmacionNuevaPartida(Firebase.getMiRol());
+    return;
+}
+// Comportamiento normal fuera de empate
 Juego.reset(); Reclamo.desactivar(); Cronometro.detener();
-// Mostrar selector de modo para nueva partida
 const selModo=$('crono-modo-selector');
 if(selModo){ selModo.style.display='flex'; }
-// Resetear selección a clásico
 document.querySelectorAll('.crono-modo-btn').forEach(b=>b.classList.remove('seleccionado'));
 const btnClas=document.querySelector('.crono-modo-btn.clasico');
 if(btnClas) btnClas.classList.add('seleccionado');
@@ -2279,7 +2355,10 @@ UI.modal('Muy pronto','Aún no tienes suficientes fichas en el tablero.'); retur
 if(!enPrioridad) await Firebase.publicarReclamo(fichasPropias);
 Reclamo.init(miRolActual);
 Reclamo.activar(fichasPropias);
-UI.modal('Modo Reclamo activo','Selecciona 4 fichas y pulsa CONFIRMAR.\nSi te equivocaste, pulsa de nuevo RECLAMAR VICTORIA para anular el reclamo antes de confirmar.');
+const msgReclamo = snapEstado.fase === 'prioridad_reclamo' 
+    ? 'Selecciona 4 fichas y pulsa CONFIRMAR.' 
+    : 'Selecciona 4 fichas y pulsa CONFIRMAR.\nSi te equivocaste, pulsa de nuevo RECLAMAR VICTORIA para anular el reclamo antes de confirmar.';
+UI.modal('Modo Reclamo activo', msgReclamo);
 };
 $('btn-confirmar').onclick = async ()=>{
 if(!Firebase.isIniciado()||!Reclamo.isActivo()){ UI.modal('Sin reclamo activo','Primero pulsa RECLAMAR VICTORIA y selecciona 4 fichas.'); return; }
