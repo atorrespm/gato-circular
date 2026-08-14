@@ -1239,13 +1239,14 @@ function _faseJugando(d, miRol){
 try {
 UI.bloquearBtns(['btn-nueva','btn-sortear'],true);
 UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
-// Limpiar amarillos residuales
+// Limpiar amarillos residuales antes de pintar los nuevos
 document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el=>{
-const g=el.closest('[data-id]'); if(!g) return;
-const cid=g.dataset.id;
-el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
-el.style.stroke=el.style.strokeWidth=el.style.fill=el.style.filter='';
-if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
+    const g=el.closest('[data-id]'); if(!g) return;
+    const cid=g.dataset.id;
+    if(!d.fichas_marcadas_reclamo.includes(cid)){
+        el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
+        if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
+    }
 });
 // Aviso de reclamo cancelado — notificar también al oponente
 if(d.reclamo_cancelado_ts && _reclamoCanceladoVisto !== d.reclamo_cancelado_ts){
@@ -2299,24 +2300,24 @@ const r=await Firebase.unirseASala(cod);
 if(!r.ok) $('lst-unirse').textContent=r.msg;
 };
 $('btn-nueva').onclick = async ()=>{
-if(!Firebase.isIniciado()) return;
-// Si estamos en fase de empate final, mostrar confirmación bilateral
-const snap = await Firebase.snapshotFase();
-if(snap && snap.fase === 'empate_final'){
-    _mostrarConfirmacionNuevaPartida(Firebase.getMiRol());
-    return;
-}
-// Comportamiento normal fuera de empate
-Juego.reset(); Reclamo.desactivar(); Cronometro.detener();
-const selModo=$('crono-modo-selector');
-if(selModo){ selModo.style.display='flex'; }
-document.querySelectorAll('.crono-modo-btn').forEach(b=>b.classList.remove('seleccionado'));
-const btnClas=document.querySelector('.crono-modo-btn.clasico');
-if(btnClas) btnClas.classList.add('seleccionado');
-_modoSeleccionado='clasico';
-await Firebase.nuevaPartida();
-UI.bloquearBtns(['btn-sortear'],false);
-UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+    if(!Firebase.isIniciado()) return;
+    // Verificar si estamos en fase de empate final para mostrar confirmación bilateral
+    const snap = await Firebase.snapshotFase();
+    if(snap && snap.fase === 'empate_final'){
+        _mostrarConfirmacionNuevaPartida(Firebase.getMiRol());
+        return;
+    }
+    // Comportamiento normal fuera de empate
+    Juego.reset(); Reclamo.desactivar(); Cronometro.detener();
+    const selModo=$('crono-modo-selector');
+    if(selModo){ selModo.style.display='flex'; }
+    document.querySelectorAll('.crono-modo-btn').forEach(b=>b.classList.remove('seleccionado'));
+    const btnClas=document.querySelector('.crono-modo-btn.clasico');
+    if(btnClas) btnClas.classList.add('seleccionado');
+    _modoSeleccionado='clasico';
+    await Firebase.nuevaPartida();
+    UI.bloquearBtns(['btn-sortear'],false);
+    UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
 };
 $('btn-sortear').onclick = async ()=>{
 if(!Firebase.isIniciado()) return;
