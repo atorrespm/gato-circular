@@ -1118,56 +1118,63 @@ function _faseEmpateFinal(d, miRol){
         const msg = document.getElementById('empate-msg');
         if(msg) msg.textContent = 'El tablero está completo. La partida termina en EMPATE.';
         
-        // NO hay setTimeout. El tablero permanece intacto hasta Nueva Partida.
-        const resSesion = Sesion.verificarFinSesion(d.victoriasX||0, d.victoriasO||0);
-        if(resSesion) setTimeout(() => Sesion.mostrarFinSesion(resSesion, miRol), 3500);
-    }
+            // NO hay setTimeout. El tablero permanece intacto hasta Nueva Partida.
+    const resSesion = Sesion.verificarFinSesion(d.victoriasX||0, d.victoriasO||0);
+    if(resSesion) setTimeout(() => Sesion.mostrarFinSesion(resSesion, miRol), 3500);
+
+  // Lógica de entrada a la fase de empate final
+  if(d.resultado_reclamo && _resultadoReclamoVisto !== d.resultado_reclamo.ts){
+    _resultadoReclamoVisto = d.resultado_reclamo.ts;
+    EmpateFlow.mostrarModalResultado(d.resultado_reclamo, mostrarEmpate);
+  } else {
+    mostrarEmpate();
+  }
 }
-};
-if(d.resultado_reclamo && _resultadoReclamoVisto !== d.resultado_reclamo.ts){
-_resultadoReclamoVisto = d.resultado_reclamo.ts;
-EmpateFlow.mostrarModalResultado(d.resultado_reclamo, mostrarEmpate);
-} else {
-mostrarEmpate();
 }
-}
-}
-// --- MODAL DE CONFIRMACIÓN "NUEVA PARTIDA?" POST-EMPATE ---
-// Se muestra a AMBOS jugadores cuando cualquiera pulsa Nueva Partida tras un empate.
-// Solo limpia el tablero si ambos aceptan.
-let _npConfirmacionVista = null;
+
+// Función auxiliar para el modal de confirmación bilateral post-empate
+let _npConfirmacionVista = null; // Inicialización explícita para evitar race conditions
 function _mostrarConfirmacionNuevaPartida(miRol){
-    const key = 'np_' + (Date.now() % 10000); // Clave simple para evitar duplicados rápidos
+    const key = 'np_' + (Date.now() % 10000);
     if(_npConfirmacionVista === key) return; 
     _npConfirmacionVista = key;
 
-    let overlay = document.getElementById('np-confirm-overlay');
-    if(!overlay){
-        overlay = document.createElement('div');
-        overlay.id = 'np-confirm-overlay';
-        overlay.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:300;align-items:center;justify-content:center;';
-        overlay.innerHTML = `
-            <div style="background:linear-gradient(135deg,#1a1a1a,#252525);border:3px solid var(--gold);border-radius:14px;padding:28px 36px;text-align:center;min-width:320px;max-width:420px;">
-                <h2 style="font-family:'Orbitron',sans-serif;font-size:18px;color:var(--gold);margin-bottom:10px;">¿NUEVA PARTIDA?</h2>
-                <p style="font-size:13px;color:#aaa;margin-bottom:16px;line-height:1.5;">Se iniciará una nueva partida y se limpiará el tablero actual.<br>¿Confirma esta acción?</p>
-                <div style="display:flex;gap:12px;justify-content:center;">
-                    <button id="btn-np-si" style="padding:10px 24px;background:linear-gradient(135deg,#005500,#009933);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">ACEPTAR</button>
-                    <button id="btn-np-no" style="padding:10px 24px;background:linear-gradient(135deg,#7a0000,#cc2200);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">NO ACEPTAR</button>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(overlay);
-        
-        document.getElementById('btn-np-si').addEventListener('click', async () => {
-            overlay.style.display = 'none';
-            await Firebase.confirmarNuevaPartida();
-        });
-        document.getElementById('btn-np-no').addEventListener('click', () => {
-            overlay.style.display = 'none';
-        });
-    }
-    overlay.style.display = 'flex';
+  let overlay = document.getElementById('np-confirm-overlay');
+  if(!overlay){
+    overlay = document.createElement('div');
+    overlay.id = 'np-confirm-overlay';
+    overlay.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:300;align-items:center;justify-content:center;';
+    overlay.innerHTML = `
+      <div style="background:linear-gradient(135deg,#1a1a1a,#252525);border:3px solid var(--gold);border-radius:14px;padding:28px 36px;text-align:center;min-width:320px;max-width:420px;">
+        <h2 style="font-family:'Orbitron',sans-serif;font-size:18px;color:var(--gold);margin-bottom:10px;">¿NUEVA PARTIDA?</h2>
+        <p style="font-size:13px;color:#aaa;margin-bottom:16px;line-height:1.5;">Se iniciará una nueva partida y se limpiará el tablero actual.<br>¿Confirma esta acción?</p>
+        <div style="display:flex;gap:12px;justify-content:center;">
+          <button id="btn-np-si" style="padding:10px 24px;background:linear-gradient(135deg,#005500,#009933);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">ACEPTAR</button>
+          <button id="btn-np-no" style="padding:10px 24px;background:linear-gradient(135deg,#7a0000,#cc2200);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">NO ACEPTAR</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    
+    // Verificar si ya existen listeners para evitar duplicados en reconstrucciones DOM
+const btnSi = document.getElementById('btn-np-si');
+const btnNo = document.getElementById('btn-np-no');
+if(btnSi && !btnSi.dataset.listenerAdded){
+    btnSi.addEventListener('click', async () => {
+        overlay.style.display = 'none';
+        await Firebase.confirmarNuevaPartida();
+    });
+    btnSi.dataset.listenerAdded = 'true';
 }
+if(btnNo && !btnNo.dataset.listenerAdded){
+    btnNo.addEventListener('click', () => {
+        overlay.style.display = 'none';
+    });
+    btnNo.dataset.listenerAdded = 'true';
+}
+}
+}
+
 // ── PARTIDA TERMINADA ─────────────────────────────────
 // CORRECCIÓN 3: modal neutral y sincronizado de validez/victoria
 // ("Reclamo de Victoria Válido – Jugador X gana la partida"),
@@ -1186,9 +1193,8 @@ if(d.fichas_ganadoras_reclamadas) Tablero.resaltarGanadores(d.fichas_ganadoras_r
 // Verificar fin de sesión
 const resSesion = Sesion.verificarFinSesion(d.victoriasX||0, d.victoriasO||0);
 if(resSesion) setTimeout(() => Sesion.mostrarFinSesion(resSesion, miRol), 2500);
-const porTiempo=d.fin_por_tiempo?'
-⏱️ Ganó por tiempo agotado del oponente.':'';
-const nombreGanador=d.ganador==='X'?'Jugador 1 (X)':'Jugador 2 (O)';
+const porTiempo = d.fin_por_tiempo ? '\n️ Ganó por tiempo agotado del oponente.' : '';
+const nombreGanador = d.ganador === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)';
 const titulo=d.fin_por_tiempo?'⏱️ TIEMPO AGOTADO':'🏆 RECLAMO DE VICTORIA VÁLIDO';
 setTimeout(()=>UI.modal(titulo, nombreGanador+' gana la partida.'+porTiempo),400);
 }
@@ -1309,9 +1315,10 @@ UI.bloquearTablero(d.turno !== miRol);
 }
 }
 function reset(){
-_sorteoVisto=null; _victoriaVista=false; _reclamoKey=null;
-_prioridadMostrada=null; _empateFinalKey=null; _resultadoReclamoVisto=null;
-window._empateYaMostrado=false;
+    _sorteoVisto=null; _victoriaVista=false; _reclamoKey=null;
+    _prioridadMostrada=null; _empateFinalKey=null; _resultadoReclamoVisto=null;
+    _npConfirmacionVista=null; // Limpieza de estado de confirmación de nueva partida
+    window._empateYaMostrado=false;
 }
 return {aplicarEstado, reset};
 })();
@@ -1460,8 +1467,7 @@ if(t) t.textContent = '🏆 RECLAMO DE VICTORIA VÁLIDO';
 if(b) b.textContent = nombre+' gana la partida.';
 } else {
 if(t) t.textContent = '❌ RECLAMO DE VICTORIA INVÁLIDO';
-if(b) b.textContent = nombre+': las 4 fichas marcadas no forman una línea ganadora válida.'+(res.segundos?'
-Penalización: -'+res.segundos+' segundos.':'');
+if(b) b.textContent = nombre+': las 4 fichas marcadas no forman una línea ganadora válida.'+(res.segundos?' Penalización: -'+res.segundos+' segundos.':'');
 }
 document.getElementById('resultado-reclamo-modal').classList.add('visible');
 }
@@ -1563,8 +1569,7 @@ gtxt.style.color = resultado.ganador === 'X' ? 'var(--red-g)'
 if(rtxt) rtxt.textContent =
 'Victorias X: ' + resultado.vX + '   |   ' +
 'Victorias O: ' + resultado.vO + '   |   ' +
-'Empates: ' + resultado.empates + '
-' +
+'Empates: ' + resultado.empates + '\n' +
 'Total partidas jugadas: ' + _partidasJugadas;
 banner.style.display = 'block';
 }
