@@ -1050,6 +1050,15 @@ UI.setMsg('¡Tienes prioridad! Si tienes línea ganadora, pulsa RECLAMAR VICTORI
 } else {
 UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
 UI.setMsg('Esperando a que el jugador con prioridad decida...');
+// Limpiar amarillos residuales antes de pintar los nuevos
+document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el=>{
+    const g=el.closest('[data-id]'); if(!g) return;
+    const cid=g.dataset.id;
+    if(!d.fichas_marcadas_reclamo.includes(cid)){
+        el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
+        if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
+    }
+});
 if(d.fichas_marcadas_reclamo){
 document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el=>{
 const g=el.closest('[data-id]'); if(!g) return;
