@@ -1052,7 +1052,7 @@ UI.setMsg('¡Tienes prioridad! Si tienes línea ganadora, pulsa RECLAMAR VICTORI
           UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
           UI.setMsg('Esperando a que el jugador con prioridad decida...');
           
-          // Limpieza segura: solo quitamos si NO están en la lista oficial
+          // PASO 1: Limpieza segura de amarillos NO oficiales
           const marcadas = d.fichas_marcadas_reclamo || [];
           document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el => {
             const g = el.closest('[data-id]'); if(!g) return;
@@ -1063,11 +1063,17 @@ UI.setMsg('¡Tienes prioridad! Si tienes línea ganadora, pulsa RECLAMAR VICTORI
             }
           });
           
-          // REAPLICACIÓN GARANTIZADA: Pintar SIEMPRE las oficiales tras limpiar
+          // PASO 2: Reaplicación FORZADA e INDEPENDIENTE tras limpieza
+          // Esto garantiza que aunque haya latencia, los amarillos siempre se pinten
           if(marcadas.length > 0){
-            marcadas.forEach(id => Tablero.marcarReclamo(id, d.prioridad_jugador, true));
+            // Pequeño delay para asegurar que el DOM está listo tras la limpieza
+            setTimeout(() => {
+              marcadas.forEach(id => Tablero.marcarReclamo(id, d.prioridad_jugador, true));
+            }, 50);
           }
         }
+
+
 if(d.resultado_reclamo && _resultadoReclamoVisto !== d.resultado_reclamo.ts){
 _resultadoReclamoVisto = d.resultado_reclamo.ts;
 EmpateFlow.mostrarModalResultado(d.resultado_reclamo, function(){
@@ -1111,9 +1117,11 @@ function _faseEmpateFinal(d, miRol){
           `;
           document.body.appendChild(banner);
           
-          // Listener único y seguro que dispara la misma confirmación que btn-nueva
+                    // Listener único que dispara confirmación bilateral con estado limpio
           document.getElementById('btn-cerrar-empate').addEventListener('click', () => {
             banner.style.display = 'none';
+            // Resetear estado de confirmación ANTES de llamar para evitar bloqueo
+            _npConfirmacionVista = null; 
             _mostrarConfirmacionNuevaPartida(miRol);
           });
         }
@@ -1137,51 +1145,56 @@ function _faseEmpateFinal(d, miRol){
 
 // Función auxiliar para el modal de confirmación bilateral post-empate
 let _npConfirmacionVista = null; // Inicialización explícita para evitar race conditions
-    function _mostrarConfirmacionNuevaPartida(miRol){
+        function _mostrarConfirmacionNuevaPartida(miRol){
       // Protección contra llamadas duplicadas en cascada
       const key = 'np_' + (Date.now() % 10000);
       if(_npConfirmacionVista === key) return;
       _npConfirmacionVista = key;
       
-      // Si ya existe el overlay visible, no hacer nada
-      const existingOverlay = document.getElementById('np-confirm-overlay');
-      if(existingOverlay && existingOverlay.style.display === 'flex') return;
-
-  let overlay = document.getElementById('np-confirm-overlay');
-  if(!overlay){
-    overlay = document.createElement('div');
-    overlay.id = 'np-confirm-overlay';
-    overlay.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:300;align-items:center;justify-content:center;';
-    overlay.innerHTML = `
-      <div style="background:linear-gradient(135deg,#1a1a1a,#252525);border:3px solid var(--gold);border-radius:14px;padding:28px 36px;text-align:center;min-width:320px;max-width:420px;">
-        <h2 style="font-family:'Orbitron',sans-serif;font-size:18px;color:var(--gold);margin-bottom:10px;">¿NUEVA PARTIDA?</h2>
-        <p style="font-size:13px;color:#aaa;margin-bottom:16px;line-height:1.5;">Se iniciará una nueva partida y se limpiará el tablero actual.<br>¿Confirma esta acción?</p>
-        <div style="display:flex;gap:12px;justify-content:center;">
-          <button id="btn-np-si" style="padding:10px 24px;background:linear-gradient(135deg,#005500,#009933);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">ACEPTAR</button>
-          <button id="btn-np-no" style="padding:10px 24px;background:linear-gradient(135deg,#7a0000,#cc2200);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">NO ACEPTAR</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(overlay);
-    
-    // Verificar si ya existen listeners para evitar duplicados en reconstrucciones DOM
-const btnSi = document.getElementById('btn-np-si');
-const btnNo = document.getElementById('btn-np-no');
-if(btnSi && !btnSi.dataset.listenerAdded){
-    btnSi.addEventListener('click', async () => {
-        overlay.style.display = 'none';
-        await Firebase.confirmarNuevaPartida();
-    });
-    btnSi.dataset.listenerAdded = 'true';
-}
-if(btnNo && !btnNo.dataset.listenerAdded){
-    btnNo.addEventListener('click', () => {
-        overlay.style.display = 'none';
-    });
-    btnNo.dataset.listenerAdded = 'true';
-}
-}
-}
+      let overlay = document.getElementById('np-confirm-overlay');
+      
+      // Si existe pero está oculto, reutilizarlo y mostrarlo
+      if(overlay && overlay.style.display !== 'flex'){
+        overlay.style.display = 'flex';
+        return; // Ya tiene listeners válidos, solo mostrar
+      }
+      
+      // Si no existe, crearlo desde cero
+      if(!overlay){
+        overlay = document.createElement('div');
+        overlay.id = 'np-confirm-overlay';
+        overlay.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:300;align-items:center;justify-content:center;';
+        overlay.innerHTML = `
+<div style="background:linear-gradient(135deg,#1a1a1a,#252525);border:3px solid var(--gold);border-radius:14px;padding:28px 36px;text-align:center;min-width:320px;max-width:420px;">
+<h2 style="font-family:'Orbitron',sans-serif;font-size:18px;color:var(--gold);margin-bottom:10px;">¿NUEVA PARTIDA?</h2>
+<p style="font-size:13px;color:#aaa;margin-bottom:16px;line-height:1.5;">Se iniciará una nueva partida y se limpiará el tablero actual.<br>¿Confirma esta acción?</p>
+<div style="display:flex;gap:12px;justify-content:center;">
+<button id="btn-np-si" style="padding:10px 24px;background:linear-gradient(135deg,#005500,#009933);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">ACEPTAR</button>
+<button id="btn-np-no" style="padding:10px 24px;background:linear-gradient(135deg,#7a0000,#cc2200);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">NO ACEPTAR</button>
+</div>
+</div>
+`;
+        document.body.appendChild(overlay);
+        
+        // Registrar listeners UNA SOLA VEZ
+        const btnSi = document.getElementById('btn-np-si');
+        const btnNo = document.getElementById('btn-np-no');
+        if(btnSi && !btnSi.dataset.listenerAdded){
+          btnSi.addEventListener('click', async () => {
+            overlay.style.display = 'none';
+            await Firebase.confirmarNuevaPartida();
+          });
+          btnSi.dataset.listenerAdded = 'true';
+        }
+        if(btnNo && !btnNo.dataset.listenerAdded){
+          btnNo.addEventListener('click', () => {
+            overlay.style.display = 'none';
+            _npConfirmacionVista = null; // Permitir reintento si cancela
+          });
+          btnNo.dataset.listenerAdded = 'true';
+        }
+      }
+    }
 
 // ── PARTIDA TERMINADA ─────────────────────────────────
 // CORRECCIÓN 3: modal neutral y sincronizado de validez/victoria
