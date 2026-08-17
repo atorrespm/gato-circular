@@ -1047,29 +1047,27 @@ if(soyPrioritario){
 UI.bloquearBtns(['btn-nueva','btn-sortear'],true);
 UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
 UI.setMsg('¡Tienes prioridad! Si tienes línea ganadora, pulsa RECLAMAR VICTORIA.');
-} else {
-    UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
-    UI.setMsg('Esperando a que el jugador con prioridad decida...');
-}
-
-// ── CORRECCIÓN QUIRÚRGICA: Sincronización visual de reclamo para AMBOS jugadores ──
-// Se mueve fuera del condicional de "modal mostrado" para garantizar que el tablero
-// se actualice incluso si el modal ya está visible pero el estado de fichas cambia
-// o llega con retraso.
-if (d.fichas_marcadas_reclamo && d.fichas_marcadas_reclamo.length > 0) {
-    // 1. Limpieza total previa para evitar residuos de estados anteriores
-    document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el => {
-        el.classList.remove('ficha-seleccionada-x', 'ficha-seleccionada-o');
-    });
-    // 2. Reaplicado forzoso. Tablero.reaplicarReclamo debe ser idempotente.
-    // Esto garantiza que el oponente vea el amarillo aunque no sea su turno.
-    Tablero.reaplicarReclamo(d.fichas_marcadas_reclamo, d.prioridad_jugador);
-} else {
-    // Si no hay fichas marcadas (ej. inicio de fase), asegurar limpieza
-    document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el => {
-        el.classList.remove('ficha-seleccionada-x', 'ficha-seleccionada-o');
-    });
-}
+        } else {
+          UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+          UI.setMsg('Esperando a que el jugador con prioridad decida...');
+          
+          // CORRECCIÓN: Limpieza segura + Reaplicación garantizada
+          const marcadas = d.fichas_marcadas_reclamo || [];
+          document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el => {
+            const g = el.closest('[data-id]'); if(!g) return;
+            const cid = g.dataset.id;
+            // Solo quitar si NO está en la lista oficial de marcadas
+            if(!marcadas.includes(cid)){
+              el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
+              if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
+            }
+          });
+          
+          // Reaplicar SIEMPRE las marcadas oficiales tras la limpieza
+          if(marcadas.length > 0){
+            marcadas.forEach(id => Tablero.marcarReclamo(id, d.prioridad_jugador, true));
+          }
+        }
 if(d.resultado_reclamo && _resultadoReclamoVisto !== d.resultado_reclamo.ts){
 _resultadoReclamoVisto = d.resultado_reclamo.ts;
 EmpateFlow.mostrarModalResultado(d.resultado_reclamo, function(){
@@ -1100,28 +1098,25 @@ function _faseEmpateFinal(d, miRol){
     if(window._empateFinalKey !== key){
         window._empateFinalKey = key;
         
-        // Creamos el banner dinámicamente con botón ACEPTAR si no existe
+                // CORRECCIÓN: Unificar flujo de aceptación de empate con confirmación bilateral
         let banner = document.getElementById('empate-banner');
         if(!banner){
-            banner = document.createElement('div');
-            banner.id = 'empate-banner';
-            banner.style.cssText = 'display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:linear-gradient(135deg,#1a1500,#2a2500);border:3px solid var(--gold);border-radius:14px;padding:28px 40px;text-align:center;z-index:100;box-shadow:0 0 40px rgba(200,168,75,0.5);min-width:280px;';
-            banner.innerHTML = `
-                <h2 style="font-family:'Orbitron',sans-serif;font-size:22px;color:var(--gold);margin-bottom:8px;">🤝 EMPATE</h2>
-                <p id="empate-msg" style="font-size:13px;color:#aaa;margin-bottom:14px;line-height:1.5;">El tablero está completo. Ningún jugador reclamó victoria.<br>La partida termina en empate.</p>
-                <button id="btn-cerrar-empate" style="padding:10px 24px;background:var(--gold);color:#111;border:none;border-radius:6px;font-family:'Orbitron',sans-serif;font-weight:700;cursor:pointer;font-size:12px;">ACEPTAR</button>
-            `;
-            document.body.appendChild(banner);
-            
-            // Evento único para el botón ACEPTAR
-            document.getElementById('btn-cerrar-empate').addEventListener('click', () => {
-                banner.style.display = 'none';
-                // Solo desbloqueamos Nueva Partida, el resto sigue bloqueado
-                UI.bloquearBtns(['btn-nueva'], false);
-                UI.setMsg('Partida terminada en empate. Pulsa NUEVA PARTIDA para continuar.');
-            });
+          banner = document.createElement('div');
+          banner.id = 'empate-banner';
+          banner.style.cssText = 'display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:linear-gradient(135deg,#1a1500,#2a2500);border:3px solid var(--gold);border-radius:14px;padding:28px 40px;text-align:center;z-index:100;box-shadow:0 0 40px rgba(200,168,75,0.5);min-width:280px;';
+          banner.innerHTML = `
+            <h2 style="font-family:'Orbitron',sans-serif;font-size:22px;color:var(--gold);margin-bottom:8px;">🤝 EMPATE</h2>
+            <p id="empate-msg" style="font-size:13px;color:#aaa;margin-bottom:14px;line-height:1.5;">El tablero está completo. Ningún jugador reclamó victoria.<br>La partida termina en empate.</p>
+            <button id="btn-cerrar-empate" style="padding:10px 24px;background:var(--gold);color:#111;border:none;border-radius:6px;font-family:'Orbitron',sans-serif;font-weight:700;cursor:pointer;font-size:12px;">ACEPTAR Y CONTINUAR</button>
+          `;
+          document.body.appendChild(banner);
+          
+          // Listener único y seguro que dispara la misma confirmación que btn-nueva
+          document.getElementById('btn-cerrar-empate').addEventListener('click', () => {
+            banner.style.display = 'none';
+            _mostrarConfirmacionNuevaPartida(miRol);
+          });
         }
-        
         banner.style.display = 'block';
         const msg = document.getElementById('empate-msg');
         if(msg) msg.textContent = 'El tablero está completo. La partida termina en EMPATE.';
@@ -1140,54 +1135,17 @@ function _faseEmpateFinal(d, miRol){
 }
 }
 
-// ── CORRECCIÓN QUIRÚRGICA: Nueva Partida tras Empate ──
-// Cambiamos la clave volátil por una basada en estado persistente para evitar
-// bloqueos por actualizaciones rápidas de Firebase.
-let _npConfirmacionVista = null;
-
-function _mostrarConfirmacionNuevaPartida(miRol, d) {
-    // Clave estable basada en el contador de partidas y estado de sesión
-    const key = 'np_confirm_' + (d.partidasJugadas || 0) + '_' + (d.fin_sesion ? 'fin' : 'cont');
-    
-    if (_npConfirmacionVista === key) return;
-    _npConfirmacionVista = key;
-
-    const bannerId = 'empate-banner';
-    let banner = document.getElementById(bannerId);
-    
-    // Si el banner no existe, lo creamos. Si existe, solo actualizamos texto/visibilidad.
-    if (!banner) {
-        banner = document.createElement('div');
-        banner.id = bannerId;
-        banner.className = 'empate-banner-anim'; // Asume que esta clase existe en CSS
-        banner.innerHTML = `
-            <div class="empate-msg">Ambos aceptaron el empate.</div>
-            <button id="btn-nueva-post-empate" class="lbtn primary">🔄 NUEVA PARTIDA</button>
-        `;
-        document.getElementById('app').appendChild(banner); // O el contenedor padre adecuado
-        
-        // Listener único usando delegación o verificación para evitar duplicados
-        const btn = document.getElementById('btn-nueva-post-empate');
-        if (btn) {
-            btn.onclick = async () => {
-                btn.disabled = true;
-                btn.textContent = '⏳ Reiniciando...';
-                try {
-                    await Juego.nuevaPartida();
-                    // Limpieza local tras éxito
-                    banner.remove();
-                    _npConfirmacionVista = null; // Resetear para permitir futura nueva partida
-                } catch (e) {
-                    console.error("Error en nuevaPartida:", e);
-                    btn.disabled = false;
-                    btn.textContent = '❌ Reintentar';
-                }
-            };
-        }
-    }
-    
-    banner.style.display = 'flex'; // O 'block' según CSS
-}
+// Función auxiliar para el modal de confirmación bilateral post-empate
+let _npConfirmacionVista = null; // Inicialización explícita para evitar race conditions
+    function _mostrarConfirmacionNuevaPartida(miRol){
+      // Protección contra llamadas duplicadas en cascada
+      const key = 'np_' + (Date.now() % 10000);
+      if(_npConfirmacionVista === key) return;
+      _npConfirmacionVista = key;
+      
+      // Si ya existe el overlay visible, no hacer nada
+      const existingOverlay = document.getElementById('np-confirm-overlay');
+      if(existingOverlay && existingOverlay.style.display === 'flex') return;
 
   let overlay = document.getElementById('np-confirm-overlay');
   if(!overlay){
@@ -1221,6 +1179,7 @@ if(btnNo && !btnNo.dataset.listenerAdded){
         overlay.style.display = 'none';
     });
     btnNo.dataset.listenerAdded = 'true';
+}
 }
 }
 
