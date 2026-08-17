@@ -1047,23 +1047,23 @@ if(soyPrioritario){
 UI.bloquearBtns(['btn-nueva','btn-sortear'],true);
 UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
 UI.setMsg('¡Tienes prioridad! Si tienes línea ganadora, pulsa RECLAMAR VICTORIA.');
-        } else {
+                } else {
+          // Oponente: Bloquear todo y mostrar espera
           UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
           UI.setMsg('Esperando a que el jugador con prioridad decida...');
           
-          // CORRECCIÓN: Limpieza segura + Reaplicación garantizada
+          // Limpieza segura: solo quitamos si NO están en la lista oficial
           const marcadas = d.fichas_marcadas_reclamo || [];
           document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el => {
             const g = el.closest('[data-id]'); if(!g) return;
             const cid = g.dataset.id;
-            // Solo quitar si NO está en la lista oficial de marcadas
             if(!marcadas.includes(cid)){
               el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
               if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
             }
           });
           
-          // Reaplicar SIEMPRE las marcadas oficiales tras la limpieza
+          // REAPLICACIÓN GARANTIZADA: Pintar SIEMPRE las oficiales tras limpiar
           if(marcadas.length > 0){
             marcadas.forEach(id => Tablero.marcarReclamo(id, d.prioridad_jugador, true));
           }
