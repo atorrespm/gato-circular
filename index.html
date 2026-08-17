@@ -1047,11 +1047,12 @@ if(soyPrioritario){
 UI.bloquearBtns(['btn-nueva','btn-sortear'],true);
 UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
 UI.setMsg('¡Tienes prioridad! Si tienes línea ganadora, pulsa RECLAMAR VICTORIA.');
-                        } else {
+                } else {
+          // Oponente: Bloquear todo y mostrar espera
           UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
           UI.setMsg('Esperando a que el jugador con prioridad decida...');
           
-          // Limpieza segura SIN timeout
+          // PASO 1: Limpieza segura de amarillos NO oficiales
           const marcadas = d.fichas_marcadas_reclamo || [];
           document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el => {
             const g = el.closest('[data-id]'); if(!g) return;
@@ -1062,13 +1063,16 @@ UI.setMsg('¡Tienes prioridad! Si tienes línea ganadora, pulsa RECLAMAR VICTORI
             }
           });
           
-          // Reaplicación FORZADA con requestAnimationFrame (SVG-safe)
+          // PASO 2: Reaplicación FORZADA e INDEPENDIENTE tras limpieza
+          // Esto garantiza que aunque haya latencia, los amarillos siempre se pinten
           if(marcadas.length > 0){
-            requestAnimationFrame(() => {
+            // Pequeño delay para asegurar que el DOM está listo tras la limpieza
+            setTimeout(() => {
               marcadas.forEach(id => Tablero.marcarReclamo(id, d.prioridad_jugador, true));
-            });
+            }, 50);
           }
         }
+
 
 if(d.resultado_reclamo && _resultadoReclamoVisto !== d.resultado_reclamo.ts){
 _resultadoReclamoVisto = d.resultado_reclamo.ts;
@@ -1141,24 +1145,26 @@ function _faseEmpateFinal(d, miRol){
 
 // Función auxiliar para el modal de confirmación bilateral post-empate
 let _npConfirmacionVista = null; // Inicialización explícita para evitar race conditions
-            function _mostrarConfirmacionNuevaPartida(miRol){
+        function _mostrarConfirmacionNuevaPartida(miRol){
+      // Protección contra llamadas duplicadas en cascada
       const key = 'np_' + (Date.now() % 10000);
       if(_npConfirmacionVista === key) return;
       _npConfirmacionVista = key;
       
       let overlay = document.getElementById('np-confirm-overlay');
       
-      // Si existe, asegurar que sea visible (independientemente de display inicial)
-      if(overlay){
+      // Si existe pero está oculto, reutilizarlo y mostrarlo
+      if(overlay && overlay.style.display !== 'flex'){
         overlay.style.display = 'flex';
-        return;
+        return; // Ya tiene listeners válidos, solo mostrar
       }
       
-      // Creación desde cero solo si no existe
-      overlay = document.createElement('div');
-      overlay.id = 'np-confirm-overlay';
-      overlay.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:300;align-items:center;justify-content:center;';
-   overlay.innerHTML = `
+      // Si no existe, crearlo desde cero
+      if(!overlay){
+        overlay = document.createElement('div');
+        overlay.id = 'np-confirm-overlay';
+        overlay.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:300;align-items:center;justify-content:center;';
+        overlay.innerHTML = `
 <div style="background:linear-gradient(135deg,#1a1a1a,#252525);border:3px solid var(--gold);border-radius:14px;padding:28px 36px;text-align:center;min-width:320px;max-width:420px;">
 <h2 style="font-family:'Orbitron',sans-serif;font-size:18px;color:var(--gold);margin-bottom:10px;">¿NUEVA PARTIDA?</h2>
 <p style="font-size:13px;color:#aaa;margin-bottom:16px;line-height:1.5;">Se iniciará una nueva partida y se limpiará el tablero actual.<br>¿Confirma esta acción?</p>
@@ -1188,8 +1194,7 @@ let _npConfirmacionVista = null; // Inicialización explícita para evitar race 
           btnNo.dataset.listenerAdded = 'true';
         }
       }
-    }
-
+    
 // ── PARTIDA TERMINADA ─────────────────────────────────
 // CORRECCIÓN 3: modal neutral y sincronizado de validez/victoria
 // ("Reclamo de Victoria Válido – Jugador X gana la partida"),
@@ -1613,7 +1618,12 @@ Sesion.setTotal(n);
 if(window.Firebase) Firebase.setSesionConfig(n);
 });
 });
-
+// ── BANNER EMPATE ────────────────────────────────────────
+document.getElementById('btn-cerrar-empate')?.addEventListener('click', () => {
+document.getElementById('empate-banner').style.display = 'none';
+UI.bloquearBtns(['btn-nueva','btn-sortear'],false);
+UI.setMsg('Partida terminada en empate. Pulsa Nueva Partida.');
+});
 // ── BANNER FIN DE SESIÓN ─────────────────────────────────
 document.getElementById('btn-nueva-sesion')?.addEventListener('click', async () => {
 document.getElementById('sesion-ganador-banner').style.display = 'none';
