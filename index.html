@@ -1048,28 +1048,27 @@ UI.bloquearBtns(['btn-nueva','btn-sortear'],true);
 UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
 UI.setMsg('¡Tienes prioridad! Si tienes línea ganadora, pulsa RECLAMAR VICTORIA.');
 } else {
-UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
-UI.setMsg('Esperando a que el jugador con prioridad decida...');
-// Limpiar amarillos residuales antes de pintar los nuevos
-document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el=>{
-    const g=el.closest('[data-id]'); if(!g) return;
-    const cid=g.dataset.id;
-    if(!d.fichas_marcadas_reclamo.includes(cid)){
-        el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
-        if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
-    }
-});
-if(d.fichas_marcadas_reclamo){
-document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el=>{
-const g=el.closest('[data-id]'); if(!g) return;
-const cid=g.dataset.id;
-if(!d.fichas_marcadas_reclamo.includes(cid)){
-el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
-if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
+    UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+    UI.setMsg('Esperando a que el jugador con prioridad decida...');
 }
-});
-d.fichas_marcadas_reclamo.forEach(id=>Tablero.marcarReclamo(id,d.prioridad_jugador,true));
-}
+
+// ── CORRECCIÓN QUIRÚRGICA: Sincronización visual de reclamo para AMBOS jugadores ──
+// Se mueve fuera del condicional de "modal mostrado" para garantizar que el tablero
+// se actualice incluso si el modal ya está visible pero el estado de fichas cambia
+// o llega con retraso.
+if (d.fichas_marcadas_reclamo && d.fichas_marcadas_reclamo.length > 0) {
+    // 1. Limpieza total previa para evitar residuos de estados anteriores
+    document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el => {
+        el.classList.remove('ficha-seleccionada-x', 'ficha-seleccionada-o');
+    });
+    // 2. Reaplicado forzoso. Tablero.reaplicarReclamo debe ser idempotente.
+    // Esto garantiza que el oponente vea el amarillo aunque no sea su turno.
+    Tablero.reaplicarReclamo(d.fichas_marcadas_reclamo, d.prioridad_jugador);
+} else {
+    // Si no hay fichas marcadas (ej. inicio de fase), asegurar limpieza
+    document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el => {
+        el.classList.remove('ficha-seleccionada-x', 'ficha-seleccionada-o');
+    });
 }
 if(d.resultado_reclamo && _resultadoReclamoVisto !== d.resultado_reclamo.ts){
 _resultadoReclamoVisto = d.resultado_reclamo.ts;
@@ -1141,12 +1140,54 @@ function _faseEmpateFinal(d, miRol){
 }
 }
 
-// Función auxiliar para el modal de confirmación bilateral post-empate
-let _npConfirmacionVista = null; // Inicialización explícita para evitar race conditions
-function _mostrarConfirmacionNuevaPartida(miRol){
-    const key = 'np_' + (Date.now() % 10000);
-    if(_npConfirmacionVista === key) return; 
+// ── CORRECCIÓN QUIRÚRGICA: Nueva Partida tras Empate ──
+// Cambiamos la clave volátil por una basada en estado persistente para evitar
+// bloqueos por actualizaciones rápidas de Firebase.
+let _npConfirmacionVista = null;
+
+function _mostrarConfirmacionNuevaPartida(miRol, d) {
+    // Clave estable basada en el contador de partidas y estado de sesión
+    const key = 'np_confirm_' + (d.partidasJugadas || 0) + '_' + (d.fin_sesion ? 'fin' : 'cont');
+    
+    if (_npConfirmacionVista === key) return;
     _npConfirmacionVista = key;
+
+    const bannerId = 'empate-banner';
+    let banner = document.getElementById(bannerId);
+    
+    // Si el banner no existe, lo creamos. Si existe, solo actualizamos texto/visibilidad.
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = bannerId;
+        banner.className = 'empate-banner-anim'; // Asume que esta clase existe en CSS
+        banner.innerHTML = `
+            <div class="empate-msg">Ambos aceptaron el empate.</div>
+            <button id="btn-nueva-post-empate" class="lbtn primary">🔄 NUEVA PARTIDA</button>
+        `;
+        document.getElementById('app').appendChild(banner); // O el contenedor padre adecuado
+        
+        // Listener único usando delegación o verificación para evitar duplicados
+        const btn = document.getElementById('btn-nueva-post-empate');
+        if (btn) {
+            btn.onclick = async () => {
+                btn.disabled = true;
+                btn.textContent = '⏳ Reiniciando...';
+                try {
+                    await Juego.nuevaPartida();
+                    // Limpieza local tras éxito
+                    banner.remove();
+                    _npConfirmacionVista = null; // Resetear para permitir futura nueva partida
+                } catch (e) {
+                    console.error("Error en nuevaPartida:", e);
+                    btn.disabled = false;
+                    btn.textContent = '❌ Reintentar';
+                }
+            };
+        }
+    }
+    
+    banner.style.display = 'flex'; // O 'block' según CSS
+}
 
   let overlay = document.getElementById('np-confirm-overlay');
   if(!overlay){
