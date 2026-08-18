@@ -1187,8 +1187,8 @@ function _mostrarConfirmacionNuevaPartida(miRol, solicitud=null){
 }
 function _mostrarMaxNoNuevaPartida(d, miRol){
   const alert = d.nueva_partida_max_alert;
-  if(!alert || _npMaxAlertVisto === alert.ts) return;
-  _npMaxAlertVisto = alert.ts;
+  if(!alert) return;
+  if(_npMaxAlertVisto !== alert.ts) _npMaxAlertVisto = alert.ts;
   let overlay = document.getElementById('np-max-overlay');
   if(!overlay){
     overlay = document.createElement('div');
@@ -1196,11 +1196,22 @@ function _mostrarMaxNoNuevaPartida(d, miRol){
     overlay.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:340;align-items:center;justify-content:center;';
     overlay.innerHTML = `<div style="background:linear-gradient(135deg,#1a1a1a,#252525);border:3px solid var(--red);border-radius:14px;padding:28px 36px;text-align:center;min-width:330px;max-width:440px;box-shadow:0 0 50px rgba(224,48,48,.4);">
 <h2 style="font-family:'Orbitron',sans-serif;font-size:16px;color:var(--red-g);margin-bottom:10px;">⚠ LÍMITE ALCANZADO</h2>
-<p style="font-size:13px;color:#aaa;line-height:1.6;margin-bottom:16px;">Se ha superado el número máximo de veces para No Aceptar Nueva Partida.<br>El tablero se Reiniciará.</p>
+<p id="np-max-msg" style="font-size:13px;color:#aaa;line-height:1.6;margin-bottom:16px;">Se ha alcanzado el máximo de 3 intentos rechazados para Nueva Partida.<br>Si ambos jugadores aceptan, el tablero se reiniciará.</p>
 <button id="btn-np-max-ok" style="padding:10px 24px;background:var(--gold);color:#111;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">ACEPTAR</button>
 </div>`;
     document.body.appendChild(overlay);
     document.getElementById('btn-np-max-ok')?.addEventListener('click', () => Firebase.aceptarMaxNuevaPartida());
+  }
+  const dec = alert.decisiones || {};
+  const miDecision = dec[miRol];
+  const msg = document.getElementById('np-max-msg');
+  const btn = document.getElementById('btn-np-max-ok');
+  if(miDecision === true){
+    if(msg) msg.textContent = 'Has aceptado. Esperando que el otro jugador acepte para reiniciar el tablero.';
+    if(btn) btn.disabled = true;
+  } else {
+    if(msg) msg.textContent = 'Se ha alcanzado el máximo de 3 intentos rechazados para Nueva Partida. Si ambos jugadores aceptan, el tablero se reiniciará.';
+    if(btn) btn.disabled = false;
   }
   overlay.style.display='flex';
 }
@@ -1225,9 +1236,11 @@ function _revisarNuevaPartida(d, miRol){
   const dec = solicitud.decisiones || {};
   if(dec.X === false || dec.O === false){
     _ocultarConfirmacionNuevaPartida();
+    // En este estado la partida queda SOLO para estudio:
+    // Nueva Partida es el único botón habilitado.
     UI.bloquearBtns(['btn-nueva'], false);
-    UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar'], true);
-    UI.setMsg('Nueva Partida rechazada. La partida anterior permanece visible.');
+    UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar','btn-abandonar'], true);
+    UI.setMsg('Nueva Partida rechazada. La partida anterior permanece visible para estudio.');
     return;
   }
   _mostrarConfirmacionNuevaPartida(miRol, solicitud);
@@ -1253,6 +1266,23 @@ UI.bloquearBtns(['btn-reclamar','btn-confirmar'],true);
 // Tras un abandono, el ganador conserva el tablero y recibe una notificación.
 const abandono = d.abandono;
 if(abandono){
+  // El jugador que abandonó sale inmediatamente de la sala.
+  // No debe recibir ningún modal posterior de abandono/victoria.
+  if(abandono.abandonador === miRol){
+    UI.cerrarModal();
+    EmpateFlow.ocultarModalTC();
+    EmpateFlow.ocultarModalPrioridad();
+    EmpateFlow.ocultarModalResultado();
+    _ocultarConfirmacionNuevaPartida();
+    _ocultarMaxNoNuevaPartida();
+    const abOv=document.getElementById('abandono-confirm-overlay');
+    if(abOv) abOv.style.display='none';
+    Estado.tablero = Estado.tableroVacio();
+    Tablero.render(Estado.tablero, ()=>{});
+    Juego.reset();
+    Firebase.salirLocalTrasAbandono();
+    return;
+  }
   const esGanador = abandono.ganador === miRol;
   // El ganador que queda solo conserva SIEMPRE la posibilidad de salir
   // voluntariamente del tablero, sin penalización.
@@ -2133,8 +2163,13 @@ async responderNuevaPartida(acepta){
     }
     const nuevoNo=(d.nueva_partida_no_count||0)+1;
     const cambios={nueva_partida_solicitud:null,nueva_partida_no_count:nuevoNo};
-    if(nuevoNo>=4){
-      cambios.nueva_partida_max_alert={ts:Date.now(),por:_rol,count:nuevoNo};
+    if(nuevoNo>=3){
+      cambios.nueva_partida_max_alert={
+        ts:Date.now(),
+        por:_rol,
+        count:nuevoNo,
+        decisiones:{X:null,O:null}
+      };
     }
     await update(_salaRef,cambios);
 },
@@ -2142,12 +2177,19 @@ async aceptarMaxNuevaPartida(){
     if(!_salaRef) return;
     const snap=await get(_salaRef); const d=snap.val();
     if(!d || !d.nueva_partida_max_alert) return;
-    const ts=Date.now();
-    await update(_salaRef,{
-      nueva_partida_max_alert:null,
-      nueva_partida_no_count:0,
-      nueva_partida_solicitud:{ts,por:_rol,decisiones:{X:null,O:null}}
-    });
+    const alert=d.nueva_partida_max_alert;
+    const decisiones=Object.assign({}, alert.decisiones||{});
+    decisiones[_rol]=true;
+    if(decisiones.X===true && decisiones.O===true){
+      await update(_salaRef,{
+        nueva_partida_max_alert:null,
+        nueva_partida_no_count:0,
+        nueva_partida_solicitud:null
+      });
+      await this.confirmarNuevaPartida();
+      return;
+    }
+    await update(_salaRef,{['nueva_partida_max_alert/decisiones/'+_rol]:true});
 },
 async setModo(modo){
 if(_salaRef) await update(_salaRef,{crono_modo: modo});
@@ -2492,7 +2534,7 @@ $('btn-nueva').onclick = async ()=>{
     UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
 };
 let _abandonoConfirmCb = null;
-function _mostrarConfirmacionAbandono(cb){
+function _mostrarConfirmacionAbandono(cb, yaGanoPorAbandono=false){
   _abandonoConfirmCb = cb;
   let ov=document.getElementById('abandono-confirm-overlay');
   if(!ov){
@@ -2501,7 +2543,7 @@ function _mostrarConfirmacionAbandono(cb){
     ov.style.cssText='display:flex;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:350;align-items:center;justify-content:center;';
     ov.innerHTML=`<div style="background:linear-gradient(135deg,#1a1a1a,#252525);border:3px solid var(--red);border-radius:14px;padding:28px 36px;text-align:center;min-width:320px;max-width:420px;box-shadow:0 0 50px rgba(224,48,48,.4);">
 <h2 style="font-family:'Orbitron',sans-serif;font-size:18px;color:var(--red-g);margin-bottom:10px;">🚪 ¿ABANDONAR PARTIDA?</h2>
-<p style="font-size:13px;color:#aaa;line-height:1.6;margin-bottom:16px;">Si abandonas la partida, tu oponente será declarado ganador.</p>
+<p id="abandon-msg" style="font-size:13px;color:#aaa;line-height:1.6;margin-bottom:16px;"></p>
 <div style="display:flex;gap:12px;justify-content:center;"><button id="btn-ab-si" style="padding:10px 24px;background:linear-gradient(135deg,#7a0000,#cc2200);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">SÍ</button><button id="btn-ab-no" style="padding:10px 24px;background:#444;color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">NO</button></div>
 </div>`;
     document.body.appendChild(ov);
@@ -2511,6 +2553,12 @@ function _mostrarConfirmacionAbandono(cb){
     document.getElementById('btn-ab-no')?.addEventListener('click', ()=>{
       ov.style.display='none'; _abandonoConfirmCb=null;
     });
+  }
+  const msg=document.getElementById('abandon-msg');
+  if(msg){
+    msg.textContent = yaGanoPorAbandono
+      ? 'Si abandona la partida, se reiniciará el tablero. No será penalizado en su ranking.'
+      : 'Si abandona la partida, su oponente será declarado ganador.';
   }
   ov.style.display='flex';
 }
@@ -2522,7 +2570,7 @@ $('btn-abandonar').onclick = async ()=>{
     _mostrarConfirmacionAbandono(async ()=>{
       await Firebase.abandonarPartida();
       Firebase.salirLocalTrasAbandono();
-    });
+    }, true);
     return;
   }
   if(snap.terminado || snap.fase!=='jugando') return;
