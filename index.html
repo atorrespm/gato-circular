@@ -1065,7 +1065,13 @@ document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach
 });
 marcadas.forEach(id => Tablero.marcarReclamo(id, d.prioridad_jugador, true));
 
+// El modal de prioridad es informativo y debe aparecer UNA sola vez al
+// entrar en cada intento. Una vez que el jugador ya comenzó a marcar fichas,
+// NUNCA debe volver a aparecer por nuevas actualizaciones de Firebase.
+// Esto además protege explícitamente el caso del Jugador 1, donde las
+// sincronizaciones de fichas pueden llegar inmediatamente después del clic.
 if(_prioridadMostrada === key) return;
+if(marcadas.length > 0 || Reclamo.isActivo()) return;
 _prioridadMostrada = key;
 
 // Si existe resultado pendiente, primero se informa la validez y, al aceptar,
@@ -1140,6 +1146,10 @@ function _ocultarConfirmacionNuevaPartida(){
   _npConfirmacionVista = null;
 }
 function _mostrarConfirmacionNuevaPartida(miRol, solicitud=null){
+  // Si todavía está visible el modal local de victoria/abandono, se cierra
+  // antes de mostrar la confirmación bilateral. Así el modal de Nueva Partida
+  // no queda oculto detrás del modal de resultado en ninguno de los dos clientes.
+  UI.cerrarModal();
   const key = solicitud && solicitud.ts ? 'np_' + solicitud.ts : 'np_local';
   _npConfirmacionVista = key;
   let overlay = document.getElementById('np-confirm-overlay');
@@ -1244,7 +1254,14 @@ UI.bloquearBtns(['btn-reclamar','btn-confirmar'],true);
 const abandono = d.abandono;
 if(abandono){
   const esGanador = abandono.ganador === miRol;
+  // El ganador que queda solo conserva SIEMPRE la posibilidad de salir
+  // voluntariamente del tablero, sin penalización.
   UI.bloquearBtns(['btn-abandonar'], !esGanador);
+  if(esGanador) {
+    UI.bloquearBtns(['btn-nueva'], false);
+    const btnAb = document.getElementById('btn-abandonar');
+    if(btnAb){ btnAb.style.opacity=''; btnAb.style.pointerEvents=''; }
+  }
   if(esGanador && abandono.abandonador !== miRol){
     if(_abandonoVisto !== abandono.ts){
       _abandonoVisto = abandono.ts;
@@ -1267,7 +1284,13 @@ if(resSesion) setTimeout(() => Sesion.mostrarFinSesion(resSesion, miRol), 2500);
 const porTiempo = d.fin_por_tiempo ? '\n Ganó por tiempo agotado del oponente.' : '';
 const nombreGanador = d.ganador === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)';
 const titulo=d.fin_por_tiempo?'⏱️ TIEMPO AGOTADO':'🏆 RECLAMO DE VICTORIA VÁLIDO';
-if(!abandono) setTimeout(()=>UI.modal(titulo, nombreGanador+' gana la partida.'+porTiempo),400);
+if(!abandono && !d.nueva_partida_solicitud) {
+  setTimeout(()=>{
+    // No reaparecer encima del modal bilateral si mientras tanto alguien
+    // solicitó una Nueva Partida.
+    if(!_npConfirmacionVista && !_npFinalizacionEnCurso) UI.modal(titulo, nombreGanador+' gana la partida.'+porTiempo);
+  },400);
+}
 }
 }
 function _faseEspera(d){
