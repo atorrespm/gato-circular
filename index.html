@@ -120,6 +120,7 @@ M3 · PANELES CSS — Laterales, botones, modal
 #btn-sortear{background:linear-gradient(135deg,#6a5200,#b8922a);color:#111}
 #btn-reclamar{background:linear-gradient(135deg,#005500,#009933);color:#fff}
 #btn-confirmar{background:linear-gradient(135deg,#003070,#0055bb);color:#fff}
+#btn-abandonar{background:linear-gradient(135deg,#4a0000,#7a0000);color:#fff}
 #overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:99}
 #modal{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:linear-gradient(135deg,#1a1a1a,#252525);border:2px solid var(--gold);border-radius:12px;padding:28px 36px;text-align:center;z-index:100;box-shadow:0 0 40px rgba(0,0,0,.9);min-width:280px}
 #modal h2{font-family:'Orbitron',sans-serif;font-size:20px;margin-bottom:7px}
@@ -556,6 +557,7 @@ font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;
 <button class="btn" id="btn-sortear">⇄ SORTEAR PARTIDA</button>
 <button class="btn" id="btn-reclamar">🏆 RECLAMAR VICTORIA</button>
 <button class="btn" id="btn-confirmar">✔ CONFIRMAR</button>
+<button class="btn" id="btn-abandonar">🚪 ABANDONAR PARTIDA</button>
 </div>
 <!-- MODAL TABLERO COMPLETO (countdown + SI/NO) -->
 <div id="tc-overlay">
@@ -976,7 +978,7 @@ M12· JUEGO — Orquestador principal
 const Juego = (() => {
 const $ = id => document.getElementById(id);
 let _sorteoVisto=null, _victoriaVista=false, _reclamoKey=null, _turnoAnterior=null, _reclamoCanceladoVisto=null, _ultimoD=null;
-let _resultadoReclamoVisto=null;   // CORRECCIÓN: control de orden de modales (validez antes que prioridad/empate)
+let _resultadoReclamoVisto=null, _abandonoVisto=null;   // CORRECCIÓN: control de orden de modales (validez antes que prioridad/empate)
 function aplicarEstado(d, miRol) {
 if(!d) return;
 Estado.fromFirebase(d); _ultimoD = d;
@@ -1024,7 +1026,7 @@ else if(d.fase==='jugando')                  _faseJugando(d, miRol);
 function _faseTableroCompleto(d, miRol){
 Cronometro.detener();
 UI.bloquearTablero(true);
-UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar','btn-abandonar'],true);
 UI.setMsg('Tablero completo. Confirma si aceptas el empate.');
 EmpateFlow.init(miRol);
 EmpateFlow.mostrarModalTC(d);
@@ -1035,50 +1037,46 @@ EmpateFlow.mostrarModalTC(d);
 // validez y recién al cerrarlo el modal de prioridad (orden lógico).
 let _prioridadMostrada = null;
 function _fasePrioridad(d, miRol){
-{
 EmpateFlow.ocultarModalTC();
 UI.bloquearTablero(true);
 const soyPrioritario = d.prioridad_jugador === miRol;
-// Clave única incluyendo partidasJugadas para evitar que prioridades consecutivas
-// bloqueen la visualización del modal en el Jugador 2
 const key = 'prio_'+(d.partidasJugadas||0)+'_'+d.prioridad_jugador+'_'+(d.prioridad_intento||1);
-if(_prioridadMostrada !== key){
-_prioridadMostrada = key;
-// Botones derivados SIEMPRE del estado (idempotente)
+
+// El estado visual de botones se recalcula siempre, pero el MODAL DE PRIORIDAD
+// se muestra solamente una vez por intento de prioridad.
 if(soyPrioritario){
-UI.bloquearBtns(['btn-nueva','btn-sortear'],true);
-UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
-UI.setMsg('¡Tienes prioridad! Si tienes línea ganadora, pulsa RECLAMAR VICTORIA.');
+  UI.bloquearBtns(['btn-nueva','btn-sortear','btn-abandonar'],true);
+  UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+  UI.setMsg('¡Tienes prioridad! Si tienes línea ganadora, pulsa RECLAMAR VICTORIA.');
 } else {
-UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
-UI.setMsg('Esperando a que el jugador con prioridad decida...');
-}
+  UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar','btn-abandonar'],true);
+  UI.setMsg('Esperando a que el jugador con prioridad decida...');
 }
 
-// SINCRONIZACIÓN CONTINUA DE LAS FICHAS MARCADAS.
-// No debe quedar dentro del bloque de _prioridadMostrada, porque
-// Firebase cambia fichas_marcadas_reclamo mientras el mismo intento continúa.
-{
+// Sincronización continua de las fichas marcadas durante ESTE intento.
 const marcadas = d.fichas_marcadas_reclamo || [];
 document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el => {
-const g = el.closest('[data-id]'); if(!g) return;
-const cid = g.dataset.id;
-if(!marcadas.includes(cid)){
-el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
-if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
-}
+  const g = el.closest('[data-id]'); if(!g) return;
+  const cid = g.dataset.id;
+  if(!marcadas.includes(cid)){
+    el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
+    if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
+  }
 });
 marcadas.forEach(id => Tablero.marcarReclamo(id, d.prioridad_jugador, true));
-}
 
+if(_prioridadMostrada === key) return;
+_prioridadMostrada = key;
+
+// Si existe resultado pendiente, primero se informa la validez y, al aceptar,
+// se muestra UNA sola vez el modal de prioridad de este intento.
 if(d.resultado_reclamo && _resultadoReclamoVisto !== d.resultado_reclamo.ts){
-_resultadoReclamoVisto = d.resultado_reclamo.ts;
-EmpateFlow.mostrarModalResultado(d.resultado_reclamo, function(){
-EmpateFlow.mostrarModalPrioridad(d);
-});
+  _resultadoReclamoVisto = d.resultado_reclamo.ts;
+  EmpateFlow.mostrarModalResultado(d.resultado_reclamo, function(){
+    EmpateFlow.mostrarModalPrioridad(d);
+  });
 } else {
-EmpateFlow.mostrarModalPrioridad(d);
-}
+  EmpateFlow.mostrarModalPrioridad(d);
 }
 }
 // ── EMPATE FINAL ───────────────────────────────────────
@@ -1091,7 +1089,7 @@ function _faseEmpateFinal(d, miRol){
     Cronometro.detener();
     UI.bloquearTablero(true);
     // Bloqueamos TODO excepto Nueva Partida (que mostraremos tras aceptar)
-    UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'], true);
+    UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar','btn-abandonar'], true);
     
     if(d.fichas_marcadas_reclamo && d.prioridad_jugador){
         Tablero.reaplicarReclamo(d.fichas_marcadas_reclamo, d.prioridad_jugador);
@@ -1132,9 +1130,10 @@ function _faseEmpateFinal(d, miRol){
 }
 }
 
-// Función auxiliar para el modal de confirmación bilateral post-empate
+// ── CONFIRMACIÓN BILATERAL DE NUEVA PARTIDA ─────────────────────────
 let _npConfirmacionVista = null;
 let _npFinalizacionEnCurso = null;
+let _npMaxAlertVisto = null;
 function _ocultarConfirmacionNuevaPartida(){
   const overlay = document.getElementById('np-confirm-overlay');
   if(overlay) overlay.style.display = 'none';
@@ -1144,7 +1143,6 @@ function _mostrarConfirmacionNuevaPartida(miRol, solicitud=null){
   const key = solicitud && solicitud.ts ? 'np_' + solicitud.ts : 'np_local';
   _npConfirmacionVista = key;
   let overlay = document.getElementById('np-confirm-overlay');
-
   if(!overlay){
     overlay = document.createElement('div');
     overlay.id = 'np-confirm-overlay';
@@ -1156,20 +1154,11 @@ function _mostrarConfirmacionNuevaPartida(miRol, solicitud=null){
 <div style="display:flex;gap:12px;justify-content:center;">
 <button id="btn-np-si" style="padding:10px 24px;background:linear-gradient(135deg,#005500,#009933);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">SÍ</button>
 <button id="btn-np-no" style="padding:10px 24px;background:linear-gradient(135deg,#7a0000,#cc2200);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">NO</button>
-</div>
-</div>`;
+</div></div>`;
     document.body.appendChild(overlay);
-
-    const btnSi = document.getElementById('btn-np-si');
-    const btnNo = document.getElementById('btn-np-no');
-    if(btnSi) btnSi.addEventListener('click', async () => {
-      if(window.Firebase) await Firebase.responderNuevaPartida(true);
-    });
-    if(btnNo) btnNo.addEventListener('click', async () => {
-      if(window.Firebase) await Firebase.responderNuevaPartida(false);
-    });
+    document.getElementById('btn-np-si')?.addEventListener('click', () => Firebase.responderNuevaPartida(true));
+    document.getElementById('btn-np-no')?.addEventListener('click', () => Firebase.responderNuevaPartida(false));
   }
-
   overlay.style.display = 'flex';
   const msg = document.getElementById('np-confirm-msg');
   const btnSi = document.getElementById('btn-np-si');
@@ -1186,15 +1175,43 @@ function _mostrarConfirmacionNuevaPartida(miRol, solicitud=null){
     if(btnNo) btnNo.disabled = false;
   }
 }
-
-// Observador sincronizado de la solicitud bilateral de Nueva Partida.
+function _mostrarMaxNoNuevaPartida(d, miRol){
+  const alert = d.nueva_partida_max_alert;
+  if(!alert || _npMaxAlertVisto === alert.ts) return;
+  _npMaxAlertVisto = alert.ts;
+  let overlay = document.getElementById('np-max-overlay');
+  if(!overlay){
+    overlay = document.createElement('div');
+    overlay.id = 'np-max-overlay';
+    overlay.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:340;align-items:center;justify-content:center;';
+    overlay.innerHTML = `<div style="background:linear-gradient(135deg,#1a1a1a,#252525);border:3px solid var(--red);border-radius:14px;padding:28px 36px;text-align:center;min-width:330px;max-width:440px;box-shadow:0 0 50px rgba(224,48,48,.4);">
+<h2 style="font-family:'Orbitron',sans-serif;font-size:16px;color:var(--red-g);margin-bottom:10px;">⚠ LÍMITE ALCANZADO</h2>
+<p style="font-size:13px;color:#aaa;line-height:1.6;margin-bottom:16px;">Se ha superado el número máximo de veces para No Aceptar Nueva Partida.<br>El tablero se Reiniciará.</p>
+<button id="btn-np-max-ok" style="padding:10px 24px;background:var(--gold);color:#111;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">ACEPTAR</button>
+</div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('btn-np-max-ok')?.addEventListener('click', () => Firebase.aceptarMaxNuevaPartida());
+  }
+  overlay.style.display='flex';
+}
+function _ocultarMaxNoNuevaPartida(){
+  const overlay=document.getElementById('np-max-overlay');
+  if(overlay) overlay.style.display='none';
+}
 function _revisarNuevaPartida(d, miRol){
-  const solicitud = d.nueva_partida_solicitud;
-  if(d.fase !== 'empate_final' || !solicitud){
+  const alert = d.nueva_partida_max_alert;
+  if(alert){
     _ocultarConfirmacionNuevaPartida();
+    _mostrarMaxNoNuevaPartida(d, miRol);
     return;
   }
-
+  _ocultarMaxNoNuevaPartida();
+  const faseFinal = d.fase === 'empate_final' || d.terminado === true;
+  const solicitud = d.nueva_partida_solicitud;
+  if(!faseFinal || !solicitud){
+    if(!solicitud) _ocultarConfirmacionNuevaPartida();
+    return;
+  }
   const dec = solicitud.decisiones || {};
   if(dec.X === false || dec.O === false){
     _ocultarConfirmacionNuevaPartida();
@@ -1203,9 +1220,7 @@ function _revisarNuevaPartida(d, miRol){
     UI.setMsg('Nueva Partida rechazada. La partida anterior permanece visible.');
     return;
   }
-
   _mostrarConfirmacionNuevaPartida(miRol, solicitud);
-
   if(dec.X === true && dec.O === true && _npFinalizacionEnCurso !== solicitud.ts){
     _npFinalizacionEnCurso = solicitud.ts;
     Firebase.confirmarNuevaPartida();
@@ -1222,25 +1237,44 @@ UI.bloquearTablero(true);
 UI.setMsg('Partida terminada. Pulsa Nueva Partida.');
 document.getElementById('btn-nueva').style.opacity='';
 document.getElementById('btn-nueva').style.pointerEvents='';
-UI.bloquearBtns(['btn-sortear'],false);
+UI.bloquearBtns(['btn-sortear'],true);
 UI.bloquearBtns(['btn-reclamar','btn-confirmar'],true);
+
+// Tras un abandono, el ganador conserva el tablero y recibe una notificación.
+const abandono = d.abandono;
+if(abandono){
+  const esGanador = abandono.ganador === miRol;
+  UI.bloquearBtns(['btn-abandonar'], !esGanador);
+  if(esGanador && abandono.abandonador !== miRol){
+    if(_abandonoVisto !== abandono.ts){
+      _abandonoVisto = abandono.ts;
+      const nombreAbandona = abandono.abandonador === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)';
+      UI.modal('Partida abandonada', nombreAbandona+' ha abandonado la partida.\nUd. es el ganador.');
+    }
+    UI.setMsg('Tu oponente abandonó. Eres el ganador. El tablero permanece visible.');
+  } else if(!esGanador){
+    UI.setMsg('Has abandonado la partida. Tu oponente es el ganador.');
+  }
+} else {
+  UI.bloquearBtns(['btn-abandonar'],true);
+}
+
 if(!_victoriaVista&&d.ganador){
 _victoriaVista=true;
 if(d.fichas_ganadoras_reclamadas) Tablero.resaltarGanadores(d.fichas_ganadoras_reclamadas,d.ganador);
-// Verificar fin de sesión
 const resSesion = Sesion.verificarFinSesion(d.victoriasX||0, d.victoriasO||0);
 if(resSesion) setTimeout(() => Sesion.mostrarFinSesion(resSesion, miRol), 2500);
-const porTiempo = d.fin_por_tiempo ? '\n️ Ganó por tiempo agotado del oponente.' : '';
+const porTiempo = d.fin_por_tiempo ? '\n Ganó por tiempo agotado del oponente.' : '';
 const nombreGanador = d.ganador === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)';
 const titulo=d.fin_por_tiempo?'⏱️ TIEMPO AGOTADO':'🏆 RECLAMO DE VICTORIA VÁLIDO';
-setTimeout(()=>UI.modal(titulo, nombreGanador+' gana la partida.'+porTiempo),400);
+if(!abandono) setTimeout(()=>UI.modal(titulo, nombreGanador+' gana la partida.'+porTiempo),400);
 }
 }
 function _faseEspera(d){
 UI.bloquearTablero(true);
 UI.setMsg('Pulsa SORTEAR PARTIDA para comenzar.');
 if(!d.sorteo_usado) UI.bloquearBtns(['btn-sortear'],false);
-UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+UI.bloquearBtns(['btn-reclamar','btn-confirmar','btn-abandonar'],true);
 // Marcar visualmente el modo activo (Clasico por defecto)
 if(typeof marcarModoActivo === 'function') marcarModoActivo(d.crono_modo || 'clasico');
 }
@@ -1250,7 +1284,7 @@ Cronometro.actualizar(d);
 if(d.reclamante===miRol){
 UI.setMsg('RECLAMO ACTIVO: selecciona tus 4 fichas ganadoras.');
 } else {
-UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar','btn-abandonar'],true);
 UI.setMsg('Tu oponente está marcando su línea ganadora...');
 const key='rec_'+(d.reclamo_ts||'');
 if(_reclamoKey!==key){
@@ -1275,7 +1309,7 @@ d.fichas_marcadas_reclamo.forEach(id=>Tablero.marcarReclamo(id,d.reclamante,true
 function _faseJugando(d, miRol){
 try {
 UI.bloquearBtns(['btn-nueva','btn-sortear'],true);
-UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+UI.bloquearBtns(['btn-reclamar','btn-confirmar','btn-abandonar'],false);
 // Limpiar amarillos residuales antes de pintar los nuevos
 document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el=>{
     const g=el.closest('[data-id]'); if(!g) return;
@@ -1355,7 +1389,7 @@ UI.bloquearTablero(d.turno !== miRol);
 function reset(){
     _sorteoVisto=null; _victoriaVista=false; _reclamoKey=null;
     _prioridadMostrada=null; _empateFinalKey=null; _resultadoReclamoVisto=null;
-    _npConfirmacionVista=null; // Limpieza de estado de confirmación de nueva partida
+    _npConfirmacionVista=null; _npMaxAlertVisto=null; _npFinalizacionEnCurso=null; _abandonoVisto=null; // Limpieza de estado de fin de partida
     _npFinalizacionEnCurso=null;
     window._empateYaMostrado=false;
 }
@@ -1877,7 +1911,7 @@ appId:             "1:1029841004696:web:f784ab513dd301d58a48ed",
 databaseURL:       "https://gato-circular-default-rtdb.firebaseio.com"
 }));
 /* ── M13 · FIREBASE ─────────────────────────────────── */
-let _salaRef=null, _sala=null, _rol=null, _iniciado=false, _enviandoJugada=false;
+let _salaRef=null, _sala=null, _rol=null, _iniciado=false, _enviandoJugada=false, _unsubSala=null;
 const $=id=>document.getElementById(id);
 function _codigo(){
 const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -1893,8 +1927,9 @@ terminado:false,ganador:null,jugadas:0,fichasX:16,fichasO:16,
 j1:'online',j2:'espera',ts:Date.now(),
 ultimo_sorteo:null,sorteo_id:null,sorteo_usado:false,victoriasX:0,victoriasO:0,
 crono_modo:'clasico', turno_inicio_ts:null, crono_totalX:null, crono_totalO:null,
-pausa_activa:false, pausa_inicio_ts:null,
-nueva_partida_solicitud:null
+nueva_partida_no_count:0, nueva_partida_max_alert:null, nueva_partida_solicitud:null,
+abandono:null,
+pausa_activa:false, pausa_inicio_ts:null
 });
 $('lobby-codigo').textContent=_sala;
 UI.lobbyPaso('crear');
@@ -2037,7 +2072,8 @@ pausa_activa:false,pausa_solicitada:null,pausa_reanudar:null,pausa_inicio_ts:nul
 fin_por_tiempo:false,
 tc_decision:null, tc_inicio:null, tc_decision_final:null, resultado_reclamo:null,
 prioridad_jugador:null, prioridad_intento:null,
-nueva_partida_solicitud:null
+nueva_partida_no_count:0, nueva_partida_max_alert:null, nueva_partida_solicitud:null,
+abandono:null
 });
 },
 // ── NUEVA FUNCIÓN: Confirmación bilateral de Nueva Partida post-empate ─
@@ -2057,21 +2093,38 @@ async confirmarNuevaPartida(){
 async solicitarNuevaPartida(){
     if(!_salaRef) return;
     const snap=await get(_salaRef); const d=snap.val();
-    if(!d || d.fase!=='empate_final') return;
-    if(d.nueva_partida_solicitud) return;
-    await update(_salaRef,{
-      nueva_partida_solicitud:{
-        ts:Date.now(), por:_rol,
-        decisiones:{X:null,O:null}
-      }
-    });
+    if(!d || !(d.fase==='empate_final' || d.terminado===true)) return;
+    if(d.nueva_partida_solicitud || d.nueva_partida_max_alert) return;
+    await update(_salaRef,{nueva_partida_solicitud:{ts:Date.now(),por:_rol,decisiones:{X:null,O:null}}});
 },
 async responderNuevaPartida(acepta){
     if(!_salaRef) return;
     const snap=await get(_salaRef); const d=snap.val();
-    if(!d || d.fase!=='empate_final' || !d.nueva_partida_solicitud) return;
-    const base='nueva_partida_solicitud/decisiones/'+_rol;
-    await update(_salaRef,{[base]: !!acepta});
+    if(!d || !(d.fase==='empate_final' || d.terminado===true) || !d.nueva_partida_solicitud) return;
+    const solicitud=d.nueva_partida_solicitud;
+    const decisiones=Object.assign({}, solicitud.decisiones||{});
+    decisiones[_rol]=!!acepta;
+    if(acepta){
+      await update(_salaRef,{['nueva_partida_solicitud/decisiones/'+_rol]:true});
+      return;
+    }
+    const nuevoNo=(d.nueva_partida_no_count||0)+1;
+    const cambios={nueva_partida_solicitud:null,nueva_partida_no_count:nuevoNo};
+    if(nuevoNo>=4){
+      cambios.nueva_partida_max_alert={ts:Date.now(),por:_rol,count:nuevoNo};
+    }
+    await update(_salaRef,cambios);
+},
+async aceptarMaxNuevaPartida(){
+    if(!_salaRef) return;
+    const snap=await get(_salaRef); const d=snap.val();
+    if(!d || !d.nueva_partida_max_alert) return;
+    const ts=Date.now();
+    await update(_salaRef,{
+      nueva_partida_max_alert:null,
+      nueva_partida_no_count:0,
+      nueva_partida_solicitud:{ts,por:_rol,decisiones:{X:null,O:null}}
+    });
 },
 async setModo(modo){
 if(_salaRef) await update(_salaRef,{crono_modo: modo});
@@ -2279,8 +2332,40 @@ reclamante:null,reclamo_fichas:null,
 victoriasX:0,victoriasO:0,empates:0,partidasJugadas:0,
 crono_modo:null,empate_detectado:false,fin_sesion:false,
 tc_decision:null, tc_inicio:null, tc_decision_final:null, resultado_reclamo:null,
-prioridad_jugador:null, prioridad_intento:null
+prioridad_jugador:null, prioridad_intento:null, nueva_partida_no_count:0, nueva_partida_max_alert:null, nueva_partida_solicitud:null, abandono:null
 });
+},
+async abandonarPartida(){
+    if(!_salaRef) return;
+    const snap=await get(_salaRef); const d=snap.val();
+    if(!d) return;
+    // Si el oponente ya abandonó, este clic solo registra la salida local del ganador.
+    // No modifica victorias ni ranking de comportamiento.
+    if(d.abandono && d.abandono.ganador===_rol){
+      await update(_salaRef,{'abandono/salida_ganador_ts':Date.now(),'abandono/salida_ganador':true});
+      return;
+    }
+    if(d.terminado || d.fase!=='jugando') return;
+    const ganador=_rol==='X'?'O':'X';
+    const vX=(d.victoriasX||0)+(ganador==='X'?1:0);
+    const vO=(d.victoriasO||0)+(ganador==='O'?1:0);
+    const jugadas=(d.partidasJugadas||0)+1;
+    const total=d.totalPartidas||0;
+    const finSesion=total>0&&jugadas>=total;
+    await update(_salaRef,{
+      terminado:true,ganador,fase:'terminado',
+      victoriasX:vX,victoriasO:vO,partidasJugadas:jugadas,fin_sesion:finSesion,
+      abandono:{abandonador:_rol,ganador,ts:Date.now(),penaliza_abandonador:true,salida_ganador:false},
+      nueva_partida_solicitud:null,nueva_partida_max_alert:null
+    });
+},
+salirLocalTrasAbandono(){
+    if(_unsubSala){ _unsubSala(); _unsubSala=null; }
+    _iniciado=false;
+    UI.bloquearTablero(true);
+    UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar','btn-abandonar'],true);
+    UI.lobbyPaso('inicio');
+    UI.lobbyVisible(true);
 },
 async totalAgotado(rol){
 // El jugador que agotó su tiempo pierde
@@ -2329,7 +2414,8 @@ await update(_salaRef,{turno_inicio_ts: Date.now()});
 }
 };
 function _escuchar(){
-onValue(_salaRef, snap=>{
+if(_unsubSala) _unsubSala();
+_unsubSala = onValue(_salaRef, snap=>{
 if(!snap.exists()) return;
 const d=snap.val();
 if(!_iniciado&&d.j1==='online'&&d.j2==='online'){
@@ -2366,7 +2452,7 @@ $('btn-nueva').onclick = async ()=>{
     if(!Firebase.isIniciado()) return;
     // En empate_final, iniciar la solicitud bilateral; el modal se replica en ambos clientes.
     const snap = await Firebase.snapshotFase();
-    if(snap && snap.fase === 'empate_final'){
+    if(snap && (snap.fase === 'empate_final' || snap.terminado === true)){
         await Firebase.solicitarNuevaPartida();
         return;
     }
@@ -2381,6 +2467,43 @@ $('btn-nueva').onclick = async ()=>{
     await Firebase.nuevaPartida();
     UI.bloquearBtns(['btn-sortear'],false);
     UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+};
+let _abandonoConfirmCb = null;
+function _mostrarConfirmacionAbandono(cb){
+  _abandonoConfirmCb = cb;
+  let ov=document.getElementById('abandono-confirm-overlay');
+  if(!ov){
+    ov=document.createElement('div');
+    ov.id='abandono-confirm-overlay';
+    ov.style.cssText='display:flex;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:350;align-items:center;justify-content:center;';
+    ov.innerHTML=`<div style="background:linear-gradient(135deg,#1a1a1a,#252525);border:3px solid var(--red);border-radius:14px;padding:28px 36px;text-align:center;min-width:320px;max-width:420px;box-shadow:0 0 50px rgba(224,48,48,.4);">
+<h2 style="font-family:'Orbitron',sans-serif;font-size:18px;color:var(--red-g);margin-bottom:10px;">🚪 ¿ABANDONAR PARTIDA?</h2>
+<p style="font-size:13px;color:#aaa;line-height:1.6;margin-bottom:16px;">Si abandonas la partida, tu oponente será declarado ganador.</p>
+<div style="display:flex;gap:12px;justify-content:center;"><button id="btn-ab-si" style="padding:10px 24px;background:linear-gradient(135deg,#7a0000,#cc2200);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">SÍ</button><button id="btn-ab-no" style="padding:10px 24px;background:#444;color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">NO</button></div>
+</div>`;
+    document.body.appendChild(ov);
+    document.getElementById('btn-ab-si')?.addEventListener('click', async ()=>{
+      ov.style.display='none'; const cb=_abandonoConfirmCb; _abandonoConfirmCb=null; if(cb) await cb(true);
+    });
+    document.getElementById('btn-ab-no')?.addEventListener('click', ()=>{
+      ov.style.display='none'; _abandonoConfirmCb=null;
+    });
+  }
+  ov.style.display='flex';
+}
+$('btn-abandonar').onclick = async ()=>{
+  if(!Firebase.isIniciado()) return;
+  const snap=await Firebase.snapshotFase();
+  if(!snap) return;
+  if(snap.abandono && snap.abandono.ganador===Firebase.getMiRol()){
+    _mostrarConfirmacionAbandono(async ()=>{
+      await Firebase.abandonarPartida();
+      Firebase.salirLocalTrasAbandono();
+    });
+    return;
+  }
+  if(snap.terminado || snap.fase!=='jugando') return;
+  _mostrarConfirmacionAbandono(async ()=>{ await Firebase.abandonarPartida(); });
 };
 $('btn-sortear').onclick = async ()=>{
 if(!Firebase.isIniciado()) return;
