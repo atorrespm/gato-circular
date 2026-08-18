@@ -1009,6 +1009,7 @@ _dispatchFase(d, miRol);
 return;
 }
 _dispatchFase(d, miRol);
+if(typeof _revisarNuevaPartida === 'function') _revisarNuevaPartida(d, miRol);
 }
 function _dispatchFase(d, miRol){
 if(d.terminado)                              _faseTerminado(d, miRol);
@@ -1034,6 +1035,7 @@ EmpateFlow.mostrarModalTC(d);
 // validez y recién al cerrarlo el modal de prioridad (orden lógico).
 let _prioridadMostrada = null;
 function _fasePrioridad(d, miRol){
+{
 EmpateFlow.ocultarModalTC();
 UI.bloquearTablero(true);
 const soyPrioritario = d.prioridad_jugador === miRol;
@@ -1047,32 +1049,27 @@ if(soyPrioritario){
 UI.bloquearBtns(['btn-nueva','btn-sortear'],true);
 UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
 UI.setMsg('¡Tienes prioridad! Si tienes línea ganadora, pulsa RECLAMAR VICTORIA.');
-                } else {
-          // Oponente: Bloquear todo y mostrar espera
-          UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
-          UI.setMsg('Esperando a que el jugador con prioridad decida...');
-          
-          // PASO 1: Limpieza segura de amarillos NO oficiales
-          const marcadas = d.fichas_marcadas_reclamo || [];
-          document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el => {
-            const g = el.closest('[data-id]'); if(!g) return;
-            const cid = g.dataset.id;
-            if(!marcadas.includes(cid)){
-              el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
-              if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
-            }
-          });
-          
-          // PASO 2: Reaplicación FORZADA e INDEPENDIENTE tras limpieza
-          // Esto garantiza que aunque haya latencia, los amarillos siempre se pinten
-          if(marcadas.length > 0){
-            // Pequeño delay para asegurar que el DOM está listo tras la limpieza
-            setTimeout(() => {
-              marcadas.forEach(id => Tablero.marcarReclamo(id, d.prioridad_jugador, true));
-            }, 50);
-          }
-        }
+} else {
+UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+UI.setMsg('Esperando a que el jugador con prioridad decida...');
+}
+}
 
+// SINCRONIZACIÓN CONTINUA DE LAS FICHAS MARCADAS.
+// No debe quedar dentro del bloque de _prioridadMostrada, porque
+// Firebase cambia fichas_marcadas_reclamo mientras el mismo intento continúa.
+{
+const marcadas = d.fichas_marcadas_reclamo || [];
+document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el => {
+const g = el.closest('[data-id]'); if(!g) return;
+const cid = g.dataset.id;
+if(!marcadas.includes(cid)){
+el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
+if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
+}
+});
+marcadas.forEach(id => Tablero.marcarReclamo(id, d.prioridad_jugador, true));
+}
 
 if(d.resultado_reclamo && _resultadoReclamoVisto !== d.resultado_reclamo.ts){
 _resultadoReclamoVisto = d.resultado_reclamo.ts;
@@ -1116,14 +1113,6 @@ function _faseEmpateFinal(d, miRol){
             <button id="btn-cerrar-empate" style="padding:10px 24px;background:var(--gold);color:#111;border:none;border-radius:6px;font-family:'Orbitron',sans-serif;font-weight:700;cursor:pointer;font-size:12px;">ACEPTAR Y CONTINUAR</button>
           `;
           document.body.appendChild(banner);
-          
-                    // Listener único que dispara confirmación bilateral con estado limpio
-          document.getElementById('btn-cerrar-empate').addEventListener('click', () => {
-            banner.style.display = 'none';
-            // Resetear estado de confirmación ANTES de llamar para evitar bloqueo
-            _npConfirmacionVista = null; 
-            _mostrarConfirmacionNuevaPartida(miRol);
-          });
         }
         banner.style.display = 'block';
         const msg = document.getElementById('empate-msg');
@@ -1144,57 +1133,85 @@ function _faseEmpateFinal(d, miRol){
 }
 
 // Función auxiliar para el modal de confirmación bilateral post-empate
-let _npConfirmacionVista = null; // Inicialización explícita para evitar race conditions
-        function _mostrarConfirmacionNuevaPartida(miRol){
-      // Protección contra llamadas duplicadas en cascada
-      const key = 'np_' + (Date.now() % 10000);
-      if(_npConfirmacionVista === key) return;
-      _npConfirmacionVista = key;
-      
-      let overlay = document.getElementById('np-confirm-overlay');
-      
-      // Si existe pero está oculto, reutilizarlo y mostrarlo
-      if(overlay && overlay.style.display !== 'flex'){
-        overlay.style.display = 'flex';
-        return; // Ya tiene listeners válidos, solo mostrar
-      }
-      
-      // Si no existe, crearlo desde cero
-      if(!overlay){
-        overlay = document.createElement('div');
-        overlay.id = 'np-confirm-overlay';
-        overlay.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:300;align-items:center;justify-content:center;';
-        overlay.innerHTML = `
+let _npConfirmacionVista = null;
+let _npFinalizacionEnCurso = null;
+function _ocultarConfirmacionNuevaPartida(){
+  const overlay = document.getElementById('np-confirm-overlay');
+  if(overlay) overlay.style.display = 'none';
+  _npConfirmacionVista = null;
+}
+function _mostrarConfirmacionNuevaPartida(miRol, solicitud=null){
+  const key = solicitud && solicitud.ts ? 'np_' + solicitud.ts : 'np_local';
+  _npConfirmacionVista = key;
+  let overlay = document.getElementById('np-confirm-overlay');
+
+  if(!overlay){
+    overlay = document.createElement('div');
+    overlay.id = 'np-confirm-overlay';
+    overlay.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:300;align-items:center;justify-content:center;';
+    overlay.innerHTML = `
 <div style="background:linear-gradient(135deg,#1a1a1a,#252525);border:3px solid var(--gold);border-radius:14px;padding:28px 36px;text-align:center;min-width:320px;max-width:420px;">
 <h2 style="font-family:'Orbitron',sans-serif;font-size:18px;color:var(--gold);margin-bottom:10px;">¿NUEVA PARTIDA?</h2>
-<p style="font-size:13px;color:#aaa;margin-bottom:16px;line-height:1.5;">Se iniciará una nueva partida y se limpiará el tablero actual.<br>¿Confirma esta acción?</p>
+<p id="np-confirm-msg" style="font-size:13px;color:#aaa;margin-bottom:16px;line-height:1.5;">Ambos jugadores deben aceptar para limpiar el tablero.</p>
 <div style="display:flex;gap:12px;justify-content:center;">
-<button id="btn-np-si" style="padding:10px 24px;background:linear-gradient(135deg,#005500,#009933);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">ACEPTAR</button>
-<button id="btn-np-no" style="padding:10px 24px;background:linear-gradient(135deg,#7a0000,#cc2200);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">NO ACEPTAR</button>
+<button id="btn-np-si" style="padding:10px 24px;background:linear-gradient(135deg,#005500,#009933);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">SÍ</button>
+<button id="btn-np-no" style="padding:10px 24px;background:linear-gradient(135deg,#7a0000,#cc2200);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">NO</button>
 </div>
-</div>
-`;
-        document.body.appendChild(overlay);
-        
-        // Registrar listeners UNA SOLA VEZ
-        const btnSi = document.getElementById('btn-np-si');
-        const btnNo = document.getElementById('btn-np-no');
-        if(btnSi && !btnSi.dataset.listenerAdded){
-          btnSi.addEventListener('click', async () => {
-            overlay.style.display = 'none';
-            await Firebase.confirmarNuevaPartida();
-          });
-          btnSi.dataset.listenerAdded = 'true';
-        }
-        if(btnNo && !btnNo.dataset.listenerAdded){
-          btnNo.addEventListener('click', () => {
-            overlay.style.display = 'none';
-            _npConfirmacionVista = null; // Permitir reintento si cancela
-          });
-          btnNo.dataset.listenerAdded = 'true';
-        }
-      }
-    }
+</div>`;
+    document.body.appendChild(overlay);
+
+    const btnSi = document.getElementById('btn-np-si');
+    const btnNo = document.getElementById('btn-np-no');
+    if(btnSi) btnSi.addEventListener('click', async () => {
+      if(window.Firebase) await Firebase.responderNuevaPartida(true);
+    });
+    if(btnNo) btnNo.addEventListener('click', async () => {
+      if(window.Firebase) await Firebase.responderNuevaPartida(false);
+    });
+  }
+
+  overlay.style.display = 'flex';
+  const msg = document.getElementById('np-confirm-msg');
+  const btnSi = document.getElementById('btn-np-si');
+  const btnNo = document.getElementById('btn-np-no');
+  const dec = solicitud && solicitud.decisiones ? solicitud.decisiones : {};
+  const miDecision = dec[miRol];
+  if(miDecision === true){
+    if(msg) msg.textContent = 'Has aceptado. Esperando la decisión del otro jugador...';
+    if(btnSi) btnSi.disabled = true;
+    if(btnNo) btnNo.disabled = true;
+  } else {
+    if(msg) msg.textContent = 'Ambos jugadores deben aceptar para limpiar el tablero.';
+    if(btnSi) btnSi.disabled = false;
+    if(btnNo) btnNo.disabled = false;
+  }
+}
+
+// Observador sincronizado de la solicitud bilateral de Nueva Partida.
+function _revisarNuevaPartida(d, miRol){
+  const solicitud = d.nueva_partida_solicitud;
+  if(d.fase !== 'empate_final' || !solicitud){
+    _ocultarConfirmacionNuevaPartida();
+    return;
+  }
+
+  const dec = solicitud.decisiones || {};
+  if(dec.X === false || dec.O === false){
+    _ocultarConfirmacionNuevaPartida();
+    UI.bloquearBtns(['btn-nueva'], false);
+    UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar'], true);
+    UI.setMsg('Nueva Partida rechazada. La partida anterior permanece visible.');
+    return;
+  }
+
+  _mostrarConfirmacionNuevaPartida(miRol, solicitud);
+
+  if(dec.X === true && dec.O === true && _npFinalizacionEnCurso !== solicitud.ts){
+    _npFinalizacionEnCurso = solicitud.ts;
+    Firebase.confirmarNuevaPartida();
+  }
+}
+
 // ── PARTIDA TERMINADA ─────────────────────────────────
 // CORRECCIÓN 3: modal neutral y sincronizado de validez/victoria
 // ("Reclamo de Victoria Válido – Jugador X gana la partida"),
@@ -1339,6 +1356,7 @@ function reset(){
     _sorteoVisto=null; _victoriaVista=false; _reclamoKey=null;
     _prioridadMostrada=null; _empateFinalKey=null; _resultadoReclamoVisto=null;
     _npConfirmacionVista=null; // Limpieza de estado de confirmación de nueva partida
+    _npFinalizacionEnCurso=null;
     window._empateYaMostrado=false;
 }
 return {aplicarEstado, reset};
@@ -1621,7 +1639,9 @@ if(window.Firebase) Firebase.setSesionConfig(n);
 // ── BANNER EMPATE ────────────────────────────────────────
 document.getElementById('btn-cerrar-empate')?.addEventListener('click', () => {
 document.getElementById('empate-banner').style.display = 'none';
+// El tablero permanece intacto. Solo se habilitan Nueva Partida y Sortear.
 UI.bloquearBtns(['btn-nueva','btn-sortear'],false);
+UI.bloquearBtns(['btn-reclamar','btn-confirmar'],true);
 UI.setMsg('Partida terminada en empate. Pulsa Nueva Partida.');
 });
 // ── BANNER FIN DE SESIÓN ─────────────────────────────────
@@ -1873,7 +1893,8 @@ terminado:false,ganador:null,jugadas:0,fichasX:16,fichasO:16,
 j1:'online',j2:'espera',ts:Date.now(),
 ultimo_sorteo:null,sorteo_id:null,sorteo_usado:false,victoriasX:0,victoriasO:0,
 crono_modo:'clasico', turno_inicio_ts:null, crono_totalX:null, crono_totalO:null,
-pausa_activa:false, pausa_inicio_ts:null
+pausa_activa:false, pausa_inicio_ts:null,
+nueva_partida_solicitud:null
 });
 $('lobby-codigo').textContent=_sala;
 UI.lobbyPaso('crear');
@@ -2015,12 +2036,13 @@ turno_inicio_ts:null, crono_totalX:null, crono_totalO:null,
 pausa_activa:false,pausa_solicitada:null,pausa_reanudar:null,pausa_inicio_ts:null,
 fin_por_tiempo:false,
 tc_decision:null, tc_inicio:null, tc_decision_final:null, resultado_reclamo:null,
-prioridad_jugador:null, prioridad_intento:null
+prioridad_jugador:null, prioridad_intento:null,
+nueva_partida_solicitud:null
 });
 },
 // ── NUEVA FUNCIÓN: Confirmación bilateral de Nueva Partida post-empate ─
 async confirmarNuevaPartida(){
-    // Solo limpia cuando se confirma desde el modal post-empate
+    // Solo llega aquí cuando AMBOS jugadores respondieron SÍ.
     Juego.reset(); Reclamo.desactivar(); Cronometro.detener();
     const selModo=$('crono-modo-selector');
     if(selModo){ selModo.style.display='flex'; }
@@ -2031,6 +2053,25 @@ async confirmarNuevaPartida(){
     await this.nuevaPartida();
     UI.bloquearBtns(['btn-sortear'],false);
     UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+},
+async solicitarNuevaPartida(){
+    if(!_salaRef) return;
+    const snap=await get(_salaRef); const d=snap.val();
+    if(!d || d.fase!=='empate_final') return;
+    if(d.nueva_partida_solicitud) return;
+    await update(_salaRef,{
+      nueva_partida_solicitud:{
+        ts:Date.now(), por:_rol,
+        decisiones:{X:null,O:null}
+      }
+    });
+},
+async responderNuevaPartida(acepta){
+    if(!_salaRef) return;
+    const snap=await get(_salaRef); const d=snap.val();
+    if(!d || d.fase!=='empate_final' || !d.nueva_partida_solicitud) return;
+    const base='nueva_partida_solicitud/decisiones/'+_rol;
+    await update(_salaRef,{[base]: !!acepta});
 },
 async setModo(modo){
 if(_salaRef) await update(_salaRef,{crono_modo: modo});
@@ -2175,7 +2216,8 @@ const finSesion=total>0&&jugadas>=total;
 await update(_salaRef,{
 fase:'empate_final',
 empates, partidasJugadas:jugadas,
-fin_sesion: finSesion
+fin_sesion: finSesion,
+nueva_partida_solicitud:null
 });
 },
 // ── CORRECCIÓN 2: publica resultado_reclamo (validez) para ambos jugadores ──
@@ -2207,6 +2249,7 @@ cambios.empates = (d.empates||0)+1;
 cambios.partidasJugadas = (d.partidasJugadas||0)+1;
 const total = d.totalPartidas||0;
 cambios.fin_sesion = total>0 && cambios.partidasJugadas>=total;
+    cambios.nueva_partida_solicitud = null;
 }
 // UN SOLO UPDATE ATÓMICO (Evita el race condition)
 await update(_salaRef, cambios);
@@ -2321,10 +2364,10 @@ if(!r.ok) $('lst-unirse').textContent=r.msg;
 };
 $('btn-nueva').onclick = async ()=>{
     if(!Firebase.isIniciado()) return;
-    // Verificar si estamos en fase de empate final para mostrar confirmación bilateral
+    // En empate_final, iniciar la solicitud bilateral; el modal se replica en ambos clientes.
     const snap = await Firebase.snapshotFase();
     if(snap && snap.fase === 'empate_final'){
-        _mostrarConfirmacionNuevaPartida(Firebase.getMiRol());
+        await Firebase.solicitarNuevaPartida();
         return;
     }
     // Comportamiento normal fuera de empate
