@@ -1017,6 +1017,13 @@ _dispatchFase(d, miRol);
 });
 return;
 }
+// Puerta central de transición del empate: cualquier snapshot de Firebase
+// vuelve a evaluar si las dos decisiones ya permiten pasar a prioridad.
+if(d.fase==='tablero_completo' && d.tc_decision &&
+   d.tc_decision.X!==undefined && d.tc_decision.O!==undefined &&
+   !(d.prioridad_reclamo_activa)){
+  Firebase.revisarEstadoEmpate(d).catch(e=>console.warn('revisarEstadoEmpate:',e));
+}
 _dispatchFase(d, miRol);
 if(typeof _revisarNuevaPartida === 'function') _revisarNuevaPartida(d, miRol);
 }
@@ -2346,38 +2353,34 @@ O: dec.O === true ? 'acepta' : dec.O === false ? 'rechaza' : 'sin_eleccion'
 async responderEmpate(aceptaEmpate){
 const snap=await get(_salaRef); const d=snap.val();
 if(!d||d.fase!=='tablero_completo') return;
-// V8: actualizar únicamente la propiedad de este jugador para evitar
-// que una respuesta simultánea sobrescriba la decisión del otro jugador.
+// Escritura por propiedad: nunca reemplazar el objeto completo tc_decision.
 await update(_salaRef,{[`tc_decision/${_rol}`]:aceptaEmpate});
-
-// Volvemos a leer Firebase después de guardar. Esto elimina la condición
-// de carrera cuando ambos jugadores responden casi simultáneamente.
-const snapActual = await get(_salaRef);
-const actual = snapActual.exists() ? snapActual.val() : null;
-if(!actual || actual.fase!=='tablero_completo') return;
-
-const decisionesActuales = actual.tc_decision || {};
-if(decisionesActuales.X !== undefined && decisionesActuales.O !== undefined) {
-  const dec = this._normalizarDecisiones(actual);
-  if(dec.X==='rechaza' || dec.O==='rechaza') {
-    // Alguien rechazó — activar prioridad de reclamo
-    await this._activarPrioridad(actual, 1, dec);
-  } else {
-    // Ambos aceptan — empate final
-    await this._confirmarEmpateFinal(actual);
-  }
+// La transición se evalúa desde el estado consolidado.
+const snapActual=await get(_salaRef); const actual=snapActual.val();
+if(actual) await this.revisarEstadoEmpate(actual);
+},
+async revisarEstadoEmpate(d){
+if(!d||d.fase!=='tablero_completo') return;
+const dec=d.tc_decision||{};
+const tieneX=dec.X!==undefined, tieneO=dec.O!==undefined;
+if(!tieneX || !tieneO) return;
+const norm=this._normalizarDecisiones(d);
+if(norm.X==='rechaza' || norm.O==='rechaza'){
+  await this._activarPrioridad(d,1,norm);
+}else{
+  await this._confirmarEmpateFinal(d);
 }
-// Si el otro aun no responde, esperamos su respuesta o el timeout
 },
 async resolverTimeoutEmpate(){
 const snap=await get(_salaRef); const d=snap.val();
 if(!d||d.fase!=='tablero_completo') return;
-const dec = this._normalizarDecisiones(d);
-if(dec.X==='rechaza' || dec.O==='rechaza') {
-// Alguien dijo NO antes del timeout — activar prioridad
-await this._activarPrioridad(d, 1, dec);
-} else {
-// Nadie rechazó a tiempo -> empate automatico
+const dec=this._normalizarDecisiones(d);
+if(dec.X==='rechaza' || dec.O==='rechaza'){
+await this._activarPrioridad(d,1,dec);
+}else if(dec.X!=='sin_eleccion' && dec.O!=='sin_eleccion'){
+await this._confirmarEmpateFinal(d);
+}else{
+// Nadie rechazó: el empate queda confirmado por timeout.
 await this._confirmarEmpateFinal(d);
 }
 },
