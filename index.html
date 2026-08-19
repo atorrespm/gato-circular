@@ -2346,9 +2346,9 @@ O: dec.O === true ? 'acepta' : dec.O === false ? 'rechaza' : 'sin_eleccion'
 async responderEmpate(aceptaEmpate){
 const snap=await get(_salaRef); const d=snap.val();
 if(!d||d.fase!=='tablero_completo') return;
-const decision = Object.assign({}, d.tc_decision||{});
-decision[_rol] = aceptaEmpate;
-await update(_salaRef,{tc_decision:decision});
+// V8: actualizar únicamente la propiedad de este jugador para evitar
+// que una respuesta simultánea sobrescriba la decisión del otro jugador.
+await update(_salaRef,{[`tc_decision/${_rol}`]:aceptaEmpate});
 
 // Volvemos a leer Firebase después de guardar. Esto elimina la condición
 // de carrera cuando ambos jugadores responden casi simultáneamente.
