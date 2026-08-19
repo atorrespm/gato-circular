@@ -1017,13 +1017,7 @@ _dispatchFase(d, miRol);
 });
 return;
 }
-// Puerta central de transición del empate: cualquier snapshot de Firebase
-// vuelve a evaluar si las dos decisiones ya permiten pasar a prioridad.
-if(d.fase==='tablero_completo' && d.tc_decision &&
-   d.tc_decision.X!==undefined && d.tc_decision.O!==undefined &&
-   !(d.prioridad_reclamo_activa)){
-  Firebase.revisarEstadoEmpate(d).catch(e=>console.warn('revisarEstadoEmpate:',e));
-}
+
 _dispatchFase(d, miRol);
 if(typeof _revisarNuevaPartida === 'function') _revisarNuevaPartida(d, miRol);
 }
@@ -1147,14 +1141,6 @@ function _faseEmpateFinal(d, miRol){
             // NO hay setTimeout. El tablero permanece intacto hasta Nueva Partida.
     const resSesion = Sesion.verificarFinSesion(d.victoriasX||0, d.victoriasO||0);
     if(resSesion) setTimeout(() => Sesion.mostrarFinSesion(resSesion, miRol), 3500);
-
-  // Lógica de entrada a la fase de empate final
-  if(d.resultado_reclamo && _resultadoReclamoVisto !== d.resultado_reclamo.ts){
-    _resultadoReclamoVisto = d.resultado_reclamo.ts;
-    EmpateFlow.mostrarModalResultado(d.resultado_reclamo, mostrarEmpate);
-  } else {
-    mostrarEmpate();
-  }
 }
 }
 
