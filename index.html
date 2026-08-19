@@ -1598,8 +1598,21 @@ const el = document.getElementById('tc-countdown');
 el.textContent = restante;
 el.classList.toggle('urgente', restante <= 3);
 if(restante <= 0) {
-clearInterval(_countdownInterval);
-if(_miRol === 'X') Firebase.resolverTimeoutEmpate();
+    clearInterval(_countdownInterval);
+    // FORZAR CIERRE VISUAL INMEDIATO ANTES DE CUALQUIER LÓGICA
+    ocultarModalTC(); 
+    // EJECUTAR TRANSICIÓN DIRECTAMENTE CON DATOS LOCALES (SIN AWAIT GET)
+    if(_miRol === 'X') {
+        const snapActual = window.Firebase ? window.Firebase._ultimoD : null;
+        if(snapActual && snapActual.fase === 'tablero_completo') {
+            const decNorm = window.Firebase._normalizarDecisiones(snapActual);
+            if(decNorm.X==='rechaza' || decNorm.O==='rechaza'){
+                window.Firebase._activarPrioridad(snapActual, 1, decNorm);
+            } else {
+                window.Firebase._confirmarEmpateFinal(snapActual);
+            }
+        }
+    }
 }
 }, 200);
 }
@@ -2351,13 +2364,18 @@ O: dec.O === true ? 'acepta' : dec.O === false ? 'rechaza' : 'sin_eleccion'
 };
 },
 async responderEmpate(aceptaEmpate){
-const snap=await get(_salaRef); const d=snap.val();
-if(!d||d.fase!=='tablero_completo') return;
-// Escritura por propiedad: nunca reemplazar el objeto completo tc_decision.
-await update(_salaRef,{[`tc_decision/${_rol}`]:aceptaEmpate});
-// La transición se evalúa desde el estado consolidado.
-const snapActual=await get(_salaRef); const actual=snapActual.val();
-if(actual) await this.revisarEstadoEmpate(actual);
+    const snap=await get(_salaRef); const d=snap.val();
+    if(!d||d.fase!=='tablero_completo') return;
+    
+    // FORZAR CIERRE VISUAL INMEDIATO DEL MODAL DE EMPATE EN AMBOS CLIENTES
+    if(window.EmpateFlow) window.EmpateFlow.ocultarModalTC();
+    
+    // Escritura por propiedad: nunca reemplazar el objeto completo tc_decision.
+    await update(_salaRef,{[`tc_decision/${_rol}`]:aceptaEmpate});
+    
+    // La transición se evalúa desde el estado consolidado.
+    const snapActual=await get(_salaRef); const actual=snapActual.val();
+    if(actual) await this.revisarEstadoEmpate(actual);
 },
 async revisarEstadoEmpate(d){
 if(!d||d.fase!=='tablero_completo') return;
@@ -2386,6 +2404,7 @@ await this._confirmarEmpateFinal(d);
 },
 // ── CORRECCIÓN 1: prioridad según quién rechazó; conserva decisiones ──
 async _activarPrioridad(d, intento, dec){
+EmpateFlow.ocultarModalTC(); // FORZAR CIERRE VISUAL INMEDIATO
 dec = dec || this._normalizarDecisiones(d);
 let prioritario;
 if(intento===1){
@@ -2409,6 +2428,7 @@ tc_decision_final: dec
 });
 },
 async _confirmarEmpateFinal(d){
+EmpateFlow.ocultarModalTC(); // FORZAR CIERRE VISUAL INMEDIATO
 const empates=(d.empates||0)+1;
 const jugadas=(d.partidasJugadas||0)+1;
 const total=d.totalPartidas||0;
