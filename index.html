@@ -2349,17 +2349,23 @@ if(!d||d.fase!=='tablero_completo') return;
 const decision = Object.assign({}, d.tc_decision||{});
 decision[_rol] = aceptaEmpate;
 await update(_salaRef,{tc_decision:decision});
-const otroRol = _rol==='X'?'O':'X';
-if(decision[otroRol] !== undefined) {
-// Ambos respondieron
-const dec = this._normalizarDecisiones({tc_decision:decision});
-if(dec.X==='rechaza' || dec.O==='rechaza') {
-// Alguien rechazó — activar prioridad de reclamo
-await this._activarPrioridad(d, 1, dec);
-} else {
-// Ambos aceptan — empate final
-await this._confirmarEmpateFinal(d);
-}
+
+// Volvemos a leer Firebase después de guardar. Esto elimina la condición
+// de carrera cuando ambos jugadores responden casi simultáneamente.
+const snapActual = await get(_salaRef);
+const actual = snapActual.exists() ? snapActual.val() : null;
+if(!actual || actual.fase!=='tablero_completo') return;
+
+const decisionesActuales = actual.tc_decision || {};
+if(decisionesActuales.X !== undefined && decisionesActuales.O !== undefined) {
+  const dec = this._normalizarDecisiones(actual);
+  if(dec.X==='rechaza' || dec.O==='rechaza') {
+    // Alguien rechazó — activar prioridad de reclamo
+    await this._activarPrioridad(actual, 1, dec);
+  } else {
+    // Ambos aceptan — empate final
+    await this._confirmarEmpateFinal(actual);
+  }
 }
 // Si el otro aun no responde, esperamos su respuesta o el timeout
 },
@@ -2550,10 +2556,19 @@ async abandonarPartida(){
       abandono:{abandonador:_rol,ganador,ts:Date.now(),penaliza_abandonador:true,salida_ganador:false},
       nueva_partida_solicitud:null,nueva_partida_max_alert:null
     });
+    // El jugador que abandona sale de su propia sala inmediatamente.
+    // No dependemos del listener remoto para desmontar su interfaz local.
+    this.salirLocalTrasAbandono();
 },
 salirLocalTrasAbandono(){
     if(_unsubSala){ _unsubSala(); _unsubSala=null; }
     _iniciado=false;
+    UI.cerrarModal();
+    if(window.EmpateFlow){
+      EmpateFlow.ocultarModalTC();
+      EmpateFlow.ocultarModalPrioridad();
+      EmpateFlow.ocultarModalResultado();
+    }
     UI.bloquearTablero(true);
     UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar','btn-abandonar'],true);
     UI.lobbyPaso('inicio');
