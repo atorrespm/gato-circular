@@ -80,6 +80,10 @@ M2 · TABLERO CSS — SVG, fichas, anillos, reclamo
 .token-txt.x{fill:var(--red-g)}.token-txt.o{fill:var(--blue-g)}
 .cell-lbl{font-family:'Rajdhani',sans-serif;fill:#555;pointer-events:none;dominant-baseline:middle;text-anchor:middle}
 #modo-reclamo-banner{display:none;background:linear-gradient(135deg,#2a2000,#3a3000);border:2px solid #ffdd00;border-radius:8px;padding:8px 16px;text-align:center;font-family:'Orbitron',sans-serif;font-size:12px;color:#ffdd00;letter-spacing:1px;margin-top:6px;width:100%;max-width:1080px;}
+#prioridad-crono-panel{display:none;background:linear-gradient(135deg,#120d00,#2a2000);border:2px solid var(--gold);border-radius:8px;padding:7px 16px;text-align:center;font-family:'Orbitron',sans-serif;font-size:12px;color:var(--gold);letter-spacing:1px;margin-top:6px;width:100%;max-width:1080px;}
+#prioridad-crono-panel.visible{display:block;}
+#prioridad-crono-tiempo{font-size:18px;font-weight:900;margin-left:8px;}
+#prioridad-crono-tiempo.urgente{color:#ff5555;}
 #contador-seleccion{font-size:18px;font-weight:900;margin-left:8px;}
 /* ═══════════════════════════════════════════════════════
 M3 · PANELES CSS — Laterales, botones, modal
@@ -667,6 +671,7 @@ font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;
 MODO RECLAMO: Selecciona las 4 fichas de tu línea ganadora
 <span id="contador-seleccion">0/4</span> — luego pulsa CONFIRMAR
 </div>
+<div id="prioridad-crono-panel">⏱️ TIEMPO PARA RECLAMAR: <span id="prioridad-crono-tiempo">30</span> s</div>
 <!-- M5 · CHAT HTML -->
 <div id="chat-container">
 <div id="chat-header" onclick="toggleChat()">
@@ -986,6 +991,8 @@ if(typeof Sesion !== 'undefined') Sesion.fromFirebase(d);
 if(typeof _revisarModoPropuesto === 'function') _revisarModoPropuesto(d);
 if(window.Firebase && Firebase._revisarConsensoPausa) Firebase._revisarConsensoPausa(d);
 if(window.Firebase && Firebase._revisarAceptacionSorteo) Firebase._revisarAceptacionSorteo(d);
+if(window.Firebase && Firebase.revisarAceptacionPrioridad) Firebase.revisarAceptacionPrioridad(d);
+if(window.Firebase && Firebase.revisarTimeoutPrioridad) Firebase.revisarTimeoutPrioridad(d);
 // Resetear la bandera de victoria mostrada de forma SINCRONIZADA:
 // apenas Firebase confirma que la partida ya no está terminada
 // (nueva partida), sin depender de quién haya pulsado el botón
@@ -1041,13 +1048,15 @@ EmpateFlow.ocultarModalTC();
 UI.bloquearTablero(true);
 const soyPrioritario = d.prioridad_jugador === miRol;
 const key = 'prio_'+(d.partidasJugadas||0)+'_'+d.prioridad_jugador+'_'+(d.prioridad_intento||1);
+EmpateFlow.actualizarCronometroPrioridad(d);
 
 // El estado visual de botones se recalcula siempre, pero el MODAL DE PRIORIDAD
 // se muestra solamente una vez por intento de prioridad.
+const prioridadAceptadaPorAmbos = d.prioridad_aceptado_X===true && d.prioridad_aceptado_O===true;
 if(soyPrioritario){
   UI.bloquearBtns(['btn-nueva','btn-sortear','btn-abandonar'],true);
-  UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
-  UI.setMsg('¡Tienes prioridad! Si tienes línea ganadora, pulsa RECLAMAR VICTORIA.');
+  UI.bloquearBtns(['btn-reclamar','btn-confirmar'],!prioridadAceptadaPorAmbos);
+  UI.setMsg(prioridadAceptadaPorAmbos ? '¡Tienes prioridad! Tienes 30 segundos para reclamar victoria.' : 'Acepta el modal de prioridad. Esperando que ambos jugadores lo acepten...');
 } else {
   UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar','btn-abandonar'],true);
   UI.setMsg('Esperando a que el jugador con prioridad decida...');
@@ -1064,6 +1073,10 @@ document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach
   }
 });
 marcadas.forEach(id => Tablero.marcarReclamo(id, d.prioridad_jugador, true));
+if(d.fichas_timeout_reclamo && d.fichas_timeout_reclamo.length){
+  const rolAnterior=d.prioridad_jugador==='X'?'O':'X';
+  d.fichas_timeout_reclamo.forEach(id=>Tablero.marcarReclamo(id,rolAnterior,true));
+}
 
 // El modal de prioridad es informativo y debe aparecer UNA sola vez al
 // entrar en cada intento. Una vez que el jugador ya comenzó a marcar fichas,
@@ -1072,6 +1085,7 @@ marcadas.forEach(id => Tablero.marcarReclamo(id, d.prioridad_jugador, true));
 // sincronizaciones de fichas pueden llegar inmediatamente después del clic.
 if(_prioridadMostrada === key) return;
 if(marcadas.length > 0 || Reclamo.isActivo()) return;
+if(d['prioridad_aceptado_'+miRol]===true) return;
 _prioridadMostrada = key;
 
 // Si existe resultado pendiente, primero se informa la validez y, al aceptar,
@@ -1090,6 +1104,7 @@ if(d.resultado_reclamo && _resultadoReclamoVisto !== d.resultado_reclamo.ts){
 // se muestra PRIMERO el modal de validez y después el banner de empate.
 let _empateFinalKey = null;
 function _faseEmpateFinal(d, miRol){
+    EmpateFlow.detenerCronometroPrioridad();
     EmpateFlow.ocultarModalTC();
     EmpateFlow.ocultarModalPrioridad();
     Cronometro.detener();
@@ -1099,6 +1114,10 @@ function _faseEmpateFinal(d, miRol){
     
     if(d.fichas_marcadas_reclamo && d.prioridad_jugador){
         Tablero.reaplicarReclamo(d.fichas_marcadas_reclamo, d.prioridad_jugador);
+    }
+    if(d.fichas_timeout_reclamo && d.fichas_timeout_reclamo.length){
+        const rolTimeout = d.prioridad_jugador ? (d.prioridad_jugador==='X'?'O':'X') : null;
+        if(rolTimeout) d.fichas_timeout_reclamo.forEach(id=>Tablero.marcarReclamo(id,rolTimeout,true));
     }
 
     const key = 'emp_' + (d.partidasJugadas || 0);
@@ -1223,6 +1242,13 @@ function _revisarNuevaPartida(d, miRol){
   const alert = d.nueva_partida_max_alert;
   if(alert){
     _ocultarConfirmacionNuevaPartida();
+    const adec=alert.decisiones||{};
+    if(adec.X===true && adec.O===true && _npFinalizacionEnCurso !== alert.ts){
+      _npFinalizacionEnCurso=alert.ts;
+      _ocultarMaxNoNuevaPartida();
+      Firebase.confirmarNuevaPartida();
+      return;
+    }
     _mostrarMaxNoNuevaPartida(d, miRol);
     return;
   }
@@ -1255,6 +1281,7 @@ function _revisarNuevaPartida(d, miRol){
 // ("Reclamo de Victoria Válido – Jugador X gana la partida"),
 // idéntico para ambos jugadores (RG-004 Sincronización Absoluta).
 function _faseTerminado(d, miRol){
+EmpateFlow.detenerCronometroPrioridad();
 Cronometro.detener();
 UI.bloquearTablero(true);
 UI.setMsg('Partida terminada. Pulsa Nueva Partida.');
@@ -1324,6 +1351,7 @@ if(!abandono && !d.nueva_partida_solicitud) {
 }
 }
 function _faseEspera(d){
+EmpateFlow.detenerCronometroPrioridad();
 UI.bloquearTablero(true);
 UI.setMsg('Pulsa SORTEAR PARTIDA para comenzar.');
 if(!d.sorteo_usado) UI.bloquearBtns(['btn-sortear'],false);
@@ -1512,7 +1540,32 @@ const EmpateFlow = (() => {
 let _countdownInterval = null;
 let _miRol = null;
 let _resultadoCb = null;
+let _prioridadInterval=null;
 function init(rol) { _miRol = rol; }
+function actualizarCronometroPrioridad(d){
+const panel=document.getElementById('prioridad-crono-panel');
+const el=document.getElementById('prioridad-crono-tiempo');
+if(!panel||!el) return;
+if(!d || d.fase!=='prioridad_reclamo' || !d.prioridad_inicio_ts){ detenerCronometroPrioridad(); return; }
+panel.classList.add('visible');
+const pintar=()=>{
+  const restante=Math.max(0,30-Math.floor((Date.now()-d.prioridad_inicio_ts)/1000));
+  el.textContent=restante;
+  el.classList.toggle('urgente',restante<=5);
+  if(restante<=0 && window.Firebase && Firebase.getMiRol && Firebase.getMiRol()===d.prioridad_jugador){
+    detenerCronometroPrioridad();
+    Firebase.timeoutPrioridad();
+  }
+};
+pintar();
+if(_prioridadInterval) clearInterval(_prioridadInterval);
+_prioridadInterval=setInterval(pintar,200);
+}
+function detenerCronometroPrioridad(){
+if(_prioridadInterval){ clearInterval(_prioridadInterval); _prioridadInterval=null; }
+const panel=document.getElementById('prioridad-crono-panel');
+if(panel) panel.classList.remove('visible');
+}
 // ── Fase: tablero_completo (countdown SI/NO) ──────────
 function mostrarModalTC(d) {
 const ov = document.getElementById('tc-overlay');
@@ -1588,7 +1641,14 @@ _resultadoCb = cb || null;
 const t = document.getElementById('resultado-reclamo-t');
 const b = document.getElementById('resultado-reclamo-b');
 const nombre = res.jugador==='X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)';
-if(res.valido){
+if(res.tipo==='timeout_prioridad'){
+if(t) t.textContent='⏱️ TIEMPO FINALIZADO';
+const siguiente = res.jugador==='X' ? 'Jugador 2 (O)' : 'Jugador 1 (X)';
+const ambosTimeout = res.ambosTimeout===true;
+if(b) b.textContent = ambosTimeout
+  ? nombre+' perdió su prioridad por agotar los 30 segundos. La partida termina en EMPATE.'
+  : nombre+' perdió su prioridad por agotar los 30 segundos. Le corresponde al '+siguiente+'.';
+} else if(res.valido){
 if(t) t.textContent = '🏆 RECLAMO DE VICTORIA VÁLIDO';
 if(b) b.textContent = nombre+' gana la partida.';
 } else {
@@ -1617,6 +1677,7 @@ if(window.Firebase) Firebase.responderEmpate(false);
 });
 document.getElementById('btn-prioridad-ok')?.addEventListener('click', () => {
 EmpateFlow.ocultarModalPrioridad();
+if(window.Firebase) Firebase.aceptarPrioridad();
 });
 // ── EVENTO BOTÓN RESULTADO DE RECLAMO (CORRECCIÓN 2) ────
 document.getElementById('btn-resultado-ok')?.addEventListener('click', () => {
@@ -2124,7 +2185,8 @@ turno_inicio_ts:null, crono_totalX:null, crono_totalO:null,
 pausa_activa:false,pausa_solicitada:null,pausa_reanudar:null,pausa_inicio_ts:null,
 fin_por_tiempo:false,
 tc_decision:null, tc_inicio:null, tc_decision_final:null, resultado_reclamo:null,
-prioridad_jugador:null, prioridad_intento:null,
+fichas_timeout_reclamo:null,
+prioridad_jugador:null, prioridad_intento:null, prioridad_inicio_ts:null, prioridad_timeout_ts:null, prioridad_aceptado_X:false, prioridad_aceptado_O:false, fichas_timeout_reclamo:null,
 nueva_partida_no_count:0, nueva_partida_max_alert:null, nueva_partida_solicitud:null,
 abandono:null
 });
@@ -2147,7 +2209,9 @@ async solicitarNuevaPartida(){
     if(!_salaRef) return;
     const snap=await get(_salaRef); const d=snap.val();
     if(!d || !(d.fase==='empate_final' || d.terminado===true)) return;
-    if(d.nueva_partida_solicitud || d.nueva_partida_max_alert) return;
+    if(d.nueva_partida_max_alert) return;
+    const solicitudActual=d.nueva_partida_solicitud;
+    if(solicitudActual && !(solicitudActual.decisiones && (solicitudActual.decisiones.X===false || solicitudActual.decisiones.O===false))) return;
     await update(_salaRef,{nueva_partida_solicitud:{ts:Date.now(),por:_rol,decisiones:{X:null,O:null}}});
 },
 async responderNuevaPartida(acepta){
@@ -2162,8 +2226,13 @@ async responderNuevaPartida(acepta){
       return;
     }
     const nuevoNo=(d.nueva_partida_no_count||0)+1;
-    const cambios={nueva_partida_solicitud:null,nueva_partida_no_count:nuevoNo};
+    const cambios={
+      nueva_partida_solicitud:Object.assign({},solicitud,{decisiones}),
+      nueva_partida_no_count:nuevoNo,
+      nueva_partida_cancelada_ts:Date.now()
+    };
     if(nuevoNo>=3){
+      cambios.nueva_partida_solicitud=null;
       cambios.nueva_partida_max_alert={
         ts:Date.now(),
         por:_rol,
@@ -2323,6 +2392,10 @@ await update(_salaRef,{
 fase:'prioridad_reclamo',
 prioridad_jugador: prioritario,
 prioridad_intento: intento,
+prioridad_inicio_ts: null,
+prioridad_timeout_ts: null,
+prioridad_aceptado_X: false,
+prioridad_aceptado_O: false,
 tc_decision_final: dec
 });
 },
@@ -2372,6 +2445,58 @@ cambios.fin_sesion = total>0 && cambios.partidasJugadas>=total;
 // UN SOLO UPDATE ATÓMICO (Evita el race condition)
 await update(_salaRef, cambios);
 },
+async aceptarPrioridad(){
+if(!_salaRef) return;
+const snap=await get(_salaRef); const d=snap.val();
+if(!d || d.fase!=='prioridad_reclamo') return;
+const campo=_rol==='X'?'prioridad_aceptado_X':'prioridad_aceptado_O';
+await update(_salaRef,{[campo]:true});
+},
+async iniciarCronometroPrioridad(){
+if(!_salaRef) return;
+const snap=await get(_salaRef); const d=snap.val();
+if(!d || d.fase!=='prioridad_reclamo' || !d.prioridad_aceptado_X || !d.prioridad_aceptado_O || d.prioridad_inicio_ts) return;
+await update(_salaRef,{prioridad_inicio_ts:Date.now()});
+},
+async timeoutPrioridad(){
+if(!_salaRef) return;
+const snap=await get(_salaRef); const d=snap.val();
+if(!d || d.fase!=='prioridad_reclamo' || d.prioridad_jugador!==_rol || !d.prioridad_inicio_ts || d.prioridad_timeout_ts) return;
+const LIMITE=30000;
+if(Date.now()-d.prioridad_inicio_ts < LIMITE) return;
+const rol=d.prioridad_jugador;
+const fichas=(d.fichas_marcadas_reclamo||[]).slice();
+const dec=d.tc_decision_final || this._normalizarDecisiones(d);
+const ambosRechazan=dec.X==='rechaza' && dec.O==='rechaza';
+const resultado={tipo:'timeout_prioridad',valido:false,jugador:rol,ts:Date.now(),segundos:30,fichas,ambosTimeout:!(ambosRechazan && (d.prioridad_intento||1)===1)};
+const cambios={resultado_reclamo:resultado, prioridad_timeout_ts:Date.now(), fichas_timeout_reclamo:fichas};
+if(ambosRechazan && (d.prioridad_intento||1)===1){
+  const siguiente=rol==='X'?'O':'X';
+  cambios.fase='prioridad_reclamo';
+  cambios.prioridad_jugador=siguiente;
+  cambios.prioridad_intento=2;
+  cambios.prioridad_inicio_ts=null;
+  cambios.prioridad_timeout_ts=null;
+  cambios.prioridad_aceptado_X=false;
+  cambios.prioridad_aceptado_O=false;
+  cambios.fichas_marcadas_reclamo=null;
+} else {
+  const reanudo=await this._reanudarSinPenalizar(d);
+  Object.assign(cambios,reanudo);
+  cambios.fase='empate_final';
+  cambios.empates=(d.empates||0)+1;
+  cambios.partidasJugadas=(d.partidasJugadas||0)+1;
+  const total=d.totalPartidas||0;
+  cambios.fin_sesion=total>0&&cambios.partidasJugadas>=total;
+  cambios.prioridad_inicio_ts=null;
+  cambios.prioridad_timeout_ts=null;
+  cambios.prioridad_aceptado_X=false;
+  cambios.prioridad_aceptado_O=false;
+  cambios.fichas_marcadas_reclamo=null;
+  cambios.nueva_partida_solicitud=null;
+}
+await update(_salaRef,cambios);
+},
 async limpiarTrasEmpate(){
 await update(_salaRef,{
 tablero:Estado.tableroVacio(), turno:null, fase:'esperando_sorteo',
@@ -2380,7 +2505,8 @@ ultimo_sorteo:null, sorteo_id:null, sorteo_usado:false,
 fichas_ganadoras_reclamadas:null, fichas_marcadas_reclamo:null,
 reclamante:null, reclamo_fichas:null,
 tc_decision:null, tc_inicio:null, tc_decision_final:null, resultado_reclamo:null,
-prioridad_jugador:null, prioridad_intento:null
+fichas_timeout_reclamo:null,
+prioridad_jugador:null, prioridad_intento:null, prioridad_inicio_ts:null, prioridad_timeout_ts:null
 });
 },
 async setSesionConfig(n){
@@ -2397,7 +2523,8 @@ reclamante:null,reclamo_fichas:null,
 victoriasX:0,victoriasO:0,empates:0,partidasJugadas:0,
 crono_modo:null,empate_detectado:false,fin_sesion:false,
 tc_decision:null, tc_inicio:null, tc_decision_final:null, resultado_reclamo:null,
-prioridad_jugador:null, prioridad_intento:null, nueva_partida_no_count:0, nueva_partida_max_alert:null, nueva_partida_solicitud:null, abandono:null
+fichas_timeout_reclamo:null,
+prioridad_jugador:null, prioridad_intento:null, prioridad_inicio_ts:null, prioridad_timeout_ts:null, prioridad_aceptado_X:false, prioridad_aceptado_O:false, nueva_partida_no_count:0, nueva_partida_max_alert:null, nueva_partida_solicitud:null, abandono:null
 });
 },
 async abandonarPartida(){
@@ -2470,6 +2597,14 @@ async aceptarSorteo(){
 if(!_salaRef) return;
 const campo = _rol==='X' ? 'sorteo_aceptado_X' : 'sorteo_aceptado_O';
 await update(_salaRef,{[campo]:true});
+},
+revisarAceptacionPrioridad(d){
+if(!_salaRef || !d || d.fase!=='prioridad_reclamo') return;
+if(_rol==='X' && d.prioridad_aceptado_X && d.prioridad_aceptado_O && !d.prioridad_inicio_ts) this.iniciarCronometroPrioridad();
+},
+revisarTimeoutPrioridad(d){
+if(!_salaRef || !d || d.fase!=='prioridad_reclamo' || d.prioridad_jugador!==_rol || !d.prioridad_inicio_ts || d.prioridad_timeout_ts) return;
+if(Date.now()-d.prioridad_inicio_ts>=30000) this.timeoutPrioridad();
 },
 async _revisarAceptacionSorteo(d){
 if(_rol !== 'X') return;
