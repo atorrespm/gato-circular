@@ -1072,26 +1072,22 @@ if(soyPrioritario){
 // Sincronización continua de las fichas marcadas durante ESTE intento.
 const marcadas = d.fichas_marcadas_reclamo || [];
 document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el => {
-  const g = el.closest('[data-id]'); if(!g) return;
-  const cid = g.dataset.id;
-  if(!marcadas.includes(cid)){
-    el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
-    if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
-  }
+    const g = el.closest('[data-id]'); if(!g) return;
+    const cid = g.dataset.id;
+    if(!marcadas.includes(cid)){
+        el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
+        if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
+    }
 });
 marcadas.forEach(id => Tablero.marcarReclamo(id, d.prioridad_jugador, true));
 if(d.fichas_timeout_reclamo && d.fichas_timeout_reclamo.length){
-  const rolAnterior=d.prioridad_jugador==='X'?'O':'X';
-  d.fichas_timeout_reclamo.forEach(id=>Tablero.marcarReclamo(id,rolAnterior,true));
+    const rolAnterior=d.prioridad_jugador==='X'?'O':'X';
+    d.fichas_timeout_reclamo.forEach(id=>Tablero.marcarReclamo(id,rolAnterior,true));
 }
-
-// El modal de prioridad es informativo y debe aparecer UNA sola vez al
-// entrar en cada intento. Una vez que el jugador ya comenzó a marcar fichas,
-// NUNCA debe volver a aparecer por nuevas actualizaciones de Firebase.
-// Esto además protege explícitamente el caso del Jugador 1, donde las
-// sincronizaciones de fichas pueden llegar inmediatamente después del clic.
+// CORRECCIÓN V9: Permitir mostrar el modal de prioridad tras rechazo de empate
+// incluso si existen marcas previas o estado activo. La clave _prioridadMostrada
+// ya garantiza que solo se muestre una vez por intento.
 if(_prioridadMostrada === key) return;
-if(marcadas.length > 0 || Reclamo.isActivo()) return;
 if(d['prioridad_aceptado_'+miRol]===true) return;
 _prioridadMostrada = key;
 
