@@ -1032,72 +1032,56 @@ else if(d.fase==='jugando')                  _faseJugando(d, miRol);
 }
 // ── TABLERO COMPLETO: countdown SI/NO ─────────────────
 function _faseTableroCompleto(d, miRol){
-    Cronometro.detener();
-    UI.bloquearTablero(true);
-    UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
-    UI.setMsg('Tablero completo. Confirma si aceptas el empate.');
-    
-    // Limpiar estados previos de prioridad para evitar conflictos
-    _prioridadMostrada = null; 
-    
-    EmpateFlow.init(miRol);
-    EmpateFlow.mostrarModalTC(d);
+Cronometro.detener();
+UI.bloquearTablero(true);
+UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar','btn-abandonar'],true);
+UI.setMsg('Tablero completo. Confirma si aceptas el empate.');
+EmpateFlow.init(miRol);
+EmpateFlow.mostrarModalTC(d);
 }
 // ── PRIORIDAD DE RECLAMO FINAL ────────────────────────
+// CORRECCIÓN 1: si existe un resultado de reclamo pendiente (línea
+// inválida del intento anterior), se muestra PRIMERO el modal de
+// validez y recién al cerrarlo el modal de prioridad (orden lógico).
 let _prioridadMostrada = null;
 function _fasePrioridad(d, miRol){
-    // 1. OCULTAR EXPLÍCITAMENTE el modal anterior para evitar superposición
-    EmpateFlow.ocultarModalTC();
+    // FORZAR CIERRE DE TODOS LOS MODALES ANTERIORES
+    EmpateFlow.ocultarModalTC();          // Cierra modal de empate con countdown
+    EmpateFlow.ocultarModalResultado();   // Cierra modal de línea inválida si estaba abierto
     
     UI.bloquearTablero(true);
     const soyPrioritario = d.prioridad_jugador === miRol;
-    
-    // Clave única para controlar la visualización del modal
-    const key = 'prio_'+(d.partidasJugadas||0)+'_'+d.prioridad_jugador+'_'+(d.prioridad_intento||1);
-    
-    // 2. Lógica de visualización del modal
-    // Si ya vimos este intento específico, no volvemos a mostrar el modal informativo
-    // pero SÍ actualizamos los botones y mensajes.
-    if(_prioridadMostrada !== key){
-        _prioridadMostrada = key;
-        
-        // Mostrar modal de prioridad
-        if(d.resultado_reclamo && _resultadoReclamoVisto !== d.resultado_reclamo.ts){
-            // Si hay un resultado de reclamo pendiente (ej. inválido previo), mostrarlo primero
-            _resultadoReclamoVisto = d.resultado_reclamo.ts;
-            EmpateFlow.mostrarModalResultado(d.resultado_reclamo, function(){
-                EmpateFlow.mostrarModalPrioridad(d);
-            });
-        } else {
-            EmpateFlow.mostrarModalPrioridad(d);
-        }
+
+// Usar prioridad_inicio_ts para garantizar unicidad absoluta por intento
+const key = 'prio_'+(d.prioridad_inicio_ts || Date.now())+'_'+d.prioridad_jugador;
+EmpateFlow.actualizarCronometroPrioridad(d);
+
+// El estado visual de botones se recalcula siempre, pero el MODAL DE PRIORIDAD
+// se muestra solamente una vez por intento de prioridad.
+const prioridadAceptadaPorAmbos = d.prioridad_aceptado_X===true && d.prioridad_aceptado_O===true;
+if(soyPrioritario){
+  UI.bloquearBtns(['btn-nueva','btn-sortear','btn-abandonar'],true);
+  UI.bloquearBtns(['btn-reclamar','btn-confirmar'],!prioridadAceptadaPorAmbos);
+  UI.setMsg(prioridadAceptadaPorAmbos ? '¡Tienes prioridad! Tienes 30 segundos para reclamar victoria.' : 'Acepta el modal de prioridad. Esperando que ambos jugadores lo acepten...');
+} else {
+  UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar','btn-abandonar'],true);
+  UI.setMsg('Esperando a que el jugador con prioridad decida...');
+}
+
+// Sincronización continua de las fichas marcadas durante ESTE intento.
+const marcadas = d.fichas_marcadas_reclamo || [];
+document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el => {
+    const g = el.closest('[data-id]'); if(!g) return;
+    const cid = g.dataset.id;
+    if(!marcadas.includes(cid)){
+        el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
+        if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
     }
-
-    // 3. Actualizar UI independientemente de si el modal se muestra o no
-    if(soyPrioritario){
-        UI.bloquearBtns(['btn-nueva','btn-sortear'],true);
-        UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
-        UI.setMsg('¡Tienes prioridad! Tienes 30 segundos para reclamar victoria.');
-    } else {
-        UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
-        UI.setMsg('Esperando a que el jugador con prioridad decida...');
-    }
-
-    // 4. Sincronización visual de fichas marcadas
-    const marcadas = d.fichas_marcadas_reclamo || [];
-    document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el => {
-        const g = el.closest('[data-id]'); if(!g) return;
-        const cid = g.dataset.id;
-        if(!marcadas.includes(cid)){
-            el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
-            if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
-        }
-    });
-    marcadas.forEach(id => Tablero.marcarReclamo(id, d.prioridad_jugador, true));
-
-    // 5. INICIAR CRONÓMETRO DE PRIORIDAD
-    // Es crucial llamar a esto cada vez que entramos en la fase para sincronizar el contador visual
-    EmpateFlow.actualizarCronometroPrioridad(d);
+});
+marcadas.forEach(id => Tablero.marcarReclamo(id, d.prioridad_jugador, true));
+if(d.fichas_timeout_reclamo && d.fichas_timeout_reclamo.length){
+    const rolAnterior=d.prioridad_jugador==='X'?'O':'X';
+    d.fichas_timeout_reclamo.forEach(id=>Tablero.marcarReclamo(id,rolAnterior,true));
 }
 // CORRECCIÓN V9: Permitir mostrar el modal de prioridad tras rechazo de empate
 // incluso si existen marcas previas o estado activo. La clave _prioridadMostrada
@@ -1118,48 +1102,51 @@ if(d.resultado_reclamo && _resultadoReclamoVisto !== d.resultado_reclamo.ts){
 }
 }
 // ── EMPATE FINAL ───────────────────────────────────────
+// CORRECCIÓN 2: si el empate viene precedido de un reclamo inválido,
+// se muestra PRIMERO el modal de validez y después el banner de empate.
 let _empateFinalKey = null;
 function _faseEmpateFinal(d, miRol){
-    EmpateFlow.detenerCronometroPrioridad(); // Detener cronómetro de prioridad si estaba activo
+    EmpateFlow.detenerCronometroPrioridad();
     EmpateFlow.ocultarModalTC();
-    EmpateFlow.ocultarModalPrioridad(); // Ocultar modal de prioridad por seguridad
-    
+    EmpateFlow.ocultarModalPrioridad();
     Cronometro.detener();
     UI.bloquearTablero(true);
-    UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'], true);
+    // Bloqueamos TODO excepto Nueva Partida (que mostraremos tras aceptar)
+    UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar','btn-abandonar'], true);
     
-    // ... (el resto del código de _faseEmpateFinal se mantiene igual) ...
-    
+    if(d.fichas_marcadas_reclamo && d.prioridad_jugador){
+        Tablero.reaplicarReclamo(d.fichas_marcadas_reclamo, d.prioridad_jugador);
+    }
+    if(d.fichas_timeout_reclamo && d.fichas_timeout_reclamo.length){
+        const rolTimeout = d.prioridad_jugador ? (d.prioridad_jugador==='X'?'O':'X') : null;
+        if(rolTimeout) d.fichas_timeout_reclamo.forEach(id=>Tablero.marcarReclamo(id,rolTimeout,true));
+    }
+
     const key = 'emp_' + (d.partidasJugadas || 0);
     if(window._empateFinalKey !== key){
         window._empateFinalKey = key;
         
-        // Crear o mostrar banner de empate
+                // CORRECCIÓN: Unificar flujo de aceptación de empate con confirmación bilateral
         let banner = document.getElementById('empate-banner');
         if(!banner){
-             // ... (código de creación del banner igual que antes) ...
-             // Asegúrate de tener el código original aquí para crear el banner si no existe
-             banner = document.createElement('div');
-             banner.id = 'empate-banner';
-             banner.style.cssText = 'display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:linear-gradient(135deg,#1a1500,#2a2500);border:3px solid var(--gold);border-radius:14px;padding:28px 40px;text-align:center;z-index:100;box-shadow:0 0 40px rgba(200,168,75,0.5);min-width:280px;';
-             banner.innerHTML = `<h2 style="font-family:'Orbitron',sans-serif;font-size:22px;color:var(--gold);margin-bottom:8px;">🤝 EMPATE</h2><p id="empate-msg" style="font-size:13px;color:#aaa;margin-bottom:14px;line-height:1.5;">El tablero está completo. La partida termina en EMPATE.</p><button id="btn-cerrar-empate" style="padding:10px 24px;background:var(--gold);color:#111;border:none;border-radius:6px;font-family:'Orbitron',sans-serif;font-weight:700;cursor:pointer;font-size:12px;">ACEPTAR</button>`;
-             document.body.appendChild(banner);
-             
-             // Evento para cerrar
-             document.getElementById('btn-cerrar-empate').addEventListener('click', () => {
-                 banner.style.display = 'none';
-                 UI.bloquearBtns(['btn-nueva','btn-sortear'],false);
-                 UI.setMsg('Partida terminada en empate. Pulsa Nueva Partida.');
-             });
+          banner = document.createElement('div');
+          banner.id = 'empate-banner';
+          banner.style.cssText = 'display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:linear-gradient(135deg,#1a1500,#2a2500);border:3px solid var(--gold);border-radius:14px;padding:28px 40px;text-align:center;z-index:100;box-shadow:0 0 40px rgba(200,168,75,0.5);min-width:280px;';
+          banner.innerHTML = `
+            <h2 style="font-family:'Orbitron',sans-serif;font-size:22px;color:var(--gold);margin-bottom:8px;">🤝 EMPATE</h2>
+            <p id="empate-msg" style="font-size:13px;color:#aaa;margin-bottom:14px;line-height:1.5;">El tablero está completo. Ningún jugador reclamó victoria.<br>La partida termina en empate.</p>
+            <button id="btn-cerrar-empate" style="padding:10px 24px;background:var(--gold);color:#111;border:none;border-radius:6px;font-family:'Orbitron',sans-serif;font-weight:700;cursor:pointer;font-size:12px;">ACEPTAR Y CONTINUAR</button>
+          `;
+          document.body.appendChild(banner);
         }
-        
         banner.style.display = 'block';
         const msg = document.getElementById('empate-msg');
         if(msg) msg.textContent = 'El tablero está completo. La partida termina en EMPATE.';
         
-        const resSesion = Sesion.verificarFinSesion(d.victoriasX||0, d.victoriasO||0);
-        if(resSesion) setTimeout(() => Sesion.mostrarFinSesion(resSesion, miRol), 3500);
-    }
+            // NO hay setTimeout. El tablero permanece intacto hasta Nueva Partida.
+    const resSesion = Sesion.verificarFinSesion(d.victoriasX||0, d.victoriasO||0);
+    if(resSesion) setTimeout(() => Sesion.mostrarFinSesion(resSesion, miRol), 3500);
+}
 }
 
 // ── CONFIRMACIÓN BILATERAL DE NUEVA PARTIDA ─────────────────────────
@@ -1652,6 +1639,9 @@ desc.textContent = txt;
 function ocultarModalPrioridad() {
 document.getElementById('prioridad-modal').classList.remove('visible');
 }
+function ocultarModalResultado() {
+    document.getElementById('resultado-reclamo-modal').classList.remove('visible');
+}
 // ── CORRECCIÓN 2: modal de resultado (validez) ────────
 // Se muestra a AMBOS jugadores. Al cerrarlo, ejecuta el
 // callback que encadena el siguiente modal (prioridad o
@@ -1686,7 +1676,7 @@ const cb = _resultadoCb; _resultadoCb = null;
 if(cb) cb();
 }
 return { init, mostrarModalTC, ocultarModalTC, mostrarModalPrioridad, ocultarModalPrioridad,
-mostrarModalResultado, ocultarModalResultado, cerrarModalResultado };
+ocultarModalResultado, mostrarModalResultado, ocultarModalResultado, cerrarModalResultado };
 })();
 // ── EVENTOS BOTONES SI/NO ────────────────────────────────
 document.getElementById('btn-tc-si')?.addEventListener('click', () => {
