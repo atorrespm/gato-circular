@@ -1006,20 +1006,19 @@ UI.actualizarPaneles(Estado);
 }
 // Estadísticas en tiempo real
 UI.setStats(d.victoriasX||0, d.victoriasO||0);
-// ── V11 · TRANSICIÓN ATÓMICA DEL EMPATE ─────────────────────
-// El Jugador 1 (X) actúa como coordinador determinista de la transición
-// tablero_completo -> prioridad_reclamo / empate_final.
-// Así la transición no depende de cuál de los dos clientes respondió
-// último ni de una carrera entre dos lecturas/escrituras asíncronas.
+// ── V12 FIX · COORDINACIÓN SIN BLOQUEO DE RENDER ────────────
+// El Jugador 1 (X) inicia la transición, pero NO bloquea el render
+// ni retorna prematuramente. La UI se actualizará cuando llegue
+// el NUEVO snapshot desde Firebase con la fase ya cambiada.
 if(d.fase==='tablero_completo' && miRol==='X' && window.Firebase && Firebase.revisarEstadoEmpate){
-  const tc=d.tc_decision||{};
-  if(tc.X!==undefined && tc.O!==undefined){
-    // V11: la transición debe completarse ANTES de despachar la fase actual.
-    // De lo contrario, este mismo snapshot antiguo vuelve a pintar el modal
-    // de empate y bloquea el acceso a prioridad_reclamo.
-    const transicionada = await Firebase.revisarEstadoEmpate(d);
-    if(transicionada) return;
-  }
+    const tc=d.tc_decision||{};
+    if(tc.X!==undefined && tc.O!==undefined && !Firebase._tcResolviendo){
+        // Disparamos la transición en segundo plano (fire-and-forget seguro)
+        // No hacemos await ni return. Dejamos que el onValue traiga el nuevo estado.
+        Firebase.revisarEstadoEmpate(d).catch(e => console.warn('Transición empate:', e));
+        // IMPORTANTE: No retornamos aquí. Continuamos con _dispatchFase
+        // para pintar el modal TC actual hasta que llegue la actualización.
+    }
 }
 // ── CORRECCIÓN 3: puerta centralizada del resultado de reclamo ──
 // El modal de validez (válido/inválido) debe verse en AMBOS clientes,
