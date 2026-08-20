@@ -1042,10 +1042,12 @@ else if(d.fase==='reclamo')                  _faseReclamo(d, miRol);
 else if(d.fase==='tablero_completo')         _faseTableroCompleto(d, miRol);
 else if(d.fase==='prioridad_reclamo')        _fasePrioridad(d, miRol);
 else if(d.fase==='empate_final')             _faseEmpateFinal(d, miRol);
+else if(d.fase==='empate_sin_respuesta')     _faseEmpateSinRespuesta(d, miRol);
 else if(d.fase==='jugando')                  _faseJugando(d, miRol);
 }
 // ── TABLERO COMPLETO: countdown SI/NO ─────────────────
 function _faseTableroCompleto(d, miRol){
+_ocultarModalEmpateSinRespuesta();
 Cronometro.detener();
 UI.bloquearTablero(true);
 UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
@@ -1117,11 +1119,89 @@ if(d.resultado_reclamo && _resultadoReclamoVisto !== d.resultado_reclamo.ts){
   EmpateFlow.mostrarModalPrioridad(d);
 }
 }
+// ── EMPATE SIN RESPUESTA ───────────────────────────────
+// V12: ninguno de los jugadores respondió SI/NO durante el
+// countdown. Se informa el empate definitivo y se evita cualquier
+// estado muerto: ambos pueden aceptar o, transcurridos 5 segundos,
+// el Jugador 1 reinicia automáticamente el tablero.
+let _sinRespuestaKey = null;
+let _sinRespuestaFinalizacionEnCurso = null;
+function _faseEmpateSinRespuesta(d, miRol){
+  EmpateFlow.detenerCronometroPrioridad();
+  EmpateFlow.ocultarModalTC();
+  EmpateFlow.ocultarModalPrioridad();
+  Cronometro.detener();
+  UI.bloquearTablero(true);
+  UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+  UI.bloquearBtns(['btn-abandonar'],false);
+  UI.setMsg('Ningún jugador seleccionó una opción. La partida termina en empate.');
+
+  const key='sinresp_'+(d.empate_sin_respuesta?.ts || d.partidasJugadas || 0);
+  _sinRespuestaKey=key;
+  const acept= d.empate_sin_respuesta?.aceptaciones || {};
+  if(miRol==='X' && acept.X===true && acept.O===true && _sinRespuestaFinalizacionEnCurso!==key){
+    _sinRespuestaFinalizacionEnCurso=key;
+    _ocultarModalEmpateSinRespuesta();
+    Firebase.finalizarEmpateSinRespuesta(false);
+    return;
+  }
+  _mostrarModalEmpateSinRespuesta(d);
+}
+
+function _mostrarModalEmpateSinRespuesta(d){
+  let overlay=document.getElementById('empate-sin-respuesta-overlay');
+  if(!overlay){
+    overlay=document.createElement('div');
+    overlay.id='empate-sin-respuesta-overlay';
+    overlay.style.cssText='display:flex;position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:330;align-items:center;justify-content:center;';
+    overlay.innerHTML=`<div style="background:linear-gradient(135deg,#1a1500,#2a2500);border:3px solid var(--gold);border-radius:14px;padding:28px 36px;text-align:center;min-width:320px;max-width:430px;box-shadow:0 0 50px rgba(200,168,75,.45);">
+      <h2 style="font-family:'Orbitron',sans-serif;font-size:17px;color:var(--gold);margin-bottom:12px;">🤝 EMPATE DEFINITIVO</h2>
+      <p style="font-size:13px;color:#aaa;line-height:1.6;margin-bottom:10px;">Ningún jugador seleccionó una opción.<br><strong style="color:var(--gold)">La partida termina en empate.</strong></p>
+      <div id="empate-sin-respuesta-countdown" style="font-family:'Orbitron',sans-serif;font-size:28px;font-weight:900;color:var(--gold);margin:8px 0 12px;">5</div>
+      <button id="btn-empate-sin-respuesta-ok" style="padding:10px 24px;background:var(--gold);color:#111;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">ACEPTAR</button>
+      <p id="empate-sin-respuesta-estado" style="font-size:10px;color:#666;margin-top:10px;"></p>
+    </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('btn-empate-sin-respuesta-ok').addEventListener('click',()=>{
+      if(window.Firebase) Firebase.aceptarEmpateSinRespuesta();
+    });
+  }
+  overlay.style.display='flex';
+  const info=d.empate_sin_respuesta||{};
+  const dec=info.aceptaciones||{};
+  const miRol=window.Firebase?.getMiRol ? Firebase.getMiRol() : null;
+  const rival=miRol==='X'?'O':'X';
+  const btn=document.getElementById('btn-empate-sin-respuesta-ok');
+  const estado=document.getElementById('empate-sin-respuesta-estado');
+  const countdown=document.getElementById('empate-sin-respuesta-countdown');
+  if(btn) btn.disabled=dec[miRol]===true;
+  if(estado) estado.textContent=dec[rival]===true ? 'Tu oponente ya aceptó. Esperando tu aceptación...' : 'Ambos jugadores deben aceptar, o el tablero se reiniciará automáticamente.';
+  const inicio=info.ts||Date.now();
+  if(window._empateSinRespuestaInterval) clearInterval(window._empateSinRespuestaInterval);
+  const pintar=()=>{
+    const restante=Math.max(0,5-Math.floor((Date.now()-inicio)/1000));
+    if(countdown) countdown.textContent=restante;
+    if(restante<=0){
+      clearInterval(window._empateSinRespuestaInterval);
+      if(window.Firebase && Firebase.getMiRol && Firebase.getMiRol()==='X') Firebase.finalizarEmpateSinRespuesta(true);
+    }
+  };
+  pintar();
+  window._empateSinRespuestaInterval=setInterval(pintar,200);
+}
+
+function _ocultarModalEmpateSinRespuesta(){
+  const ov=document.getElementById('empate-sin-respuesta-overlay');
+  if(ov) ov.style.display='none';
+  if(window._empateSinRespuestaInterval){clearInterval(window._empateSinRespuestaInterval);window._empateSinRespuestaInterval=null;}
+}
+
 // ── EMPATE FINAL ───────────────────────────────────────
 // CORRECCIÓN 2: si el empate viene precedido de un reclamo inválido,
 // se muestra PRIMERO el modal de validez y después el banner de empate.
 let _empateFinalKey = null;
 function _faseEmpateFinal(d, miRol){
+  _ocultarModalEmpateSinRespuesta();
   EmpateFlow.detenerCronometroPrioridad();
   EmpateFlow.ocultarModalTC();
   EmpateFlow.ocultarModalPrioridad();
@@ -1578,7 +1658,9 @@ const rivalDecision = d.tc_decision && d.tc_decision[rivalRol];
 document.getElementById('btn-tc-si').disabled = !!miDecision;
 document.getElementById('btn-tc-no').disabled = !!miDecision;
 if(rivalDecision) {
-rivalTxt.textContent = 'Tu oponente ya respondió. Esperando tu decisión...';
+rivalTxt.textContent = 'Tu oponente ya respondió. El sistema cerrará este modal cuando registres tu decisión.';
+} else if(miDecision) {
+rivalTxt.textContent = 'Tu decisión fue registrada. Esperando al oponente...';
 } else {
 rivalTxt.textContent = 'Esperando respuesta de ambos jugadores...';
 }
@@ -2375,16 +2457,22 @@ try {
 async resolverTimeoutEmpate(){
 const snap=await get(_salaRef); const d=snap.val();
 if(!_salaRef || _rol!=='X' || !d || d.fase!=='tablero_completo') return false;
-// El mismo coordinador que resuelve las dos decisiones resuelve también
-// el timeout del modal. Una decisión NO siempre conserva prioridad.
 if(this._tcResolviendo) return false;
 this._tcResolviendo=true;
 try {
   const dec=this._normalizarDecisiones(d);
   if(dec.X==='rechaza' || dec.O==='rechaza'){
     await this._activarPrioridad(d,1,dec);
+  } else if(dec.X==='sin_eleccion' && dec.O==='sin_eleccion'){
+    // V12: nadie respondió. No reutilizamos empate_final porque aquí
+    // necesitamos un modal bilateral específico con salida garantizada.
+    await update(_salaRef,{
+      fase:'empate_sin_respuesta',
+      empate_sin_respuesta:{ts:Date.now(),aceptaciones:{X:false,O:false}},
+      nueva_partida_solicitud:null
+    });
   } else {
-    // SÍ/SÍ o ninguna respuesta dentro del plazo => empate final.
+    // SÍ/SÍ, SÍ/Sin selección o Sin selección/SÍ => empate definitivo.
     await this._confirmarEmpateFinal(d);
   }
   return true;
@@ -2514,6 +2602,34 @@ if(ambosRechazan && (d.prioridad_intento||1)===1){
 }
 await update(_salaRef,cambios);
 },
+async aceptarEmpateSinRespuesta(){
+  if(!_salaRef) return;
+  const snap=await get(_salaRef); const d=snap.val();
+  if(!d || d.fase!=='empate_sin_respuesta') return;
+  await update(_salaRef,{['empate_sin_respuesta/aceptaciones/'+_rol]:true});
+  const snap2=await get(_salaRef); const d2=snap2.val();
+  if(_rol==='X' && d2 && d2.fase==='empate_sin_respuesta' && d2.empate_sin_respuesta?.aceptaciones?.X===true && d2.empate_sin_respuesta?.aceptaciones?.O===true){
+    await this.finalizarEmpateSinRespuesta(false);
+  }
+},
+async finalizarEmpateSinRespuesta(automatico=false){
+  if(!_salaRef || _rol!=='X') return;
+  const snap=await get(_salaRef); const d=snap.val();
+  if(!d || d.fase!=='empate_sin_respuesta') return;
+  const empates=(d.empates||0)+1;
+  const jugadas=(d.partidasJugadas||0)+1;
+  const total=d.totalPartidas||0;
+  const finSesion=total>0&&jugadas>=total;
+  await update(_salaRef,{
+    tablero:Estado.tableroVacio(), turno:null, fase:'esperando_sorteo', terminado:false, ganador:null,
+    jugadas:0, fichasX:16, fichasO:16, ultimo_sorteo:null, sorteo_id:null, sorteo_usado:false,
+    victoriasX:d.victoriasX||0, victoriasO:d.victoriasO||0, empates, partidasJugadas:jugadas, fin_sesion:finSesion,
+    fichas_ganadoras_reclamadas:null, fichas_marcadas_reclamo:null, reclamante:null, reclamo_fichas:null,
+    tc_decision:null, tc_inicio:null, tc_decision_final:null, resultado_reclamo:null, fichas_timeout_reclamo:null,
+    prioridad_jugador:null, prioridad_intento:null, prioridad_inicio_ts:null, prioridad_timeout_ts:null,
+    empate_sin_respuesta:null, nueva_partida_solicitud:null, nueva_partida_max_alert:null
+  });
+},
 async limpiarTrasEmpate(){
 await update(_salaRef,{
 tablero:Estado.tableroVacio(), turno:null, fase:'esperando_sorteo',
@@ -2523,7 +2639,7 @@ fichas_ganadoras_reclamadas:null, fichas_marcadas_reclamo:null,
 reclamante:null, reclamo_fichas:null,
 tc_decision:null, tc_inicio:null, tc_decision_final:null, resultado_reclamo:null,
 fichas_timeout_reclamo:null,
-prioridad_jugador:null, prioridad_intento:null, prioridad_inicio_ts:null, prioridad_timeout_ts:null
+prioridad_jugador:null, prioridad_intento:null, prioridad_inicio_ts:null, prioridad_timeout_ts:null, empate_sin_respuesta:null
 });
 },
 async setSesionConfig(n){
