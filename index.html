@@ -984,7 +984,7 @@ const Juego = (() => {
 const $ = id => document.getElementById(id);
 let _sorteoVisto=null, _victoriaVista=false, _reclamoKey=null, _turnoAnterior=null, _reclamoCanceladoVisto=null, _ultimoD=null;
 let _resultadoReclamoVisto=null, _abandonoVisto=null;   // CORRECCIÓN: control de orden de modales (validez antes que prioridad/empate)
-function aplicarEstado(d, miRol) {
+async function aplicarEstado(d, miRol) {
 if(!d) return;
 Estado.fromFirebase(d); _ultimoD = d;
 if(typeof Sesion !== 'undefined') Sesion.fromFirebase(d);
@@ -1006,7 +1006,7 @@ UI.actualizarPaneles(Estado);
 }
 // Estadísticas en tiempo real
 UI.setStats(d.victoriasX||0, d.victoriasO||0);
-// ── V10 · PUERTA CENTRAL DEL EMPATE ─────────────────────
+// ── V11 · TRANSICIÓN ATÓMICA DEL EMPATE ─────────────────────
 // El Jugador 1 (X) actúa como coordinador determinista de la transición
 // tablero_completo -> prioridad_reclamo / empate_final.
 // Así la transición no depende de cuál de los dos clientes respondió
@@ -1014,7 +1014,11 @@ UI.setStats(d.victoriasX||0, d.victoriasO||0);
 if(d.fase==='tablero_completo' && miRol==='X' && window.Firebase && Firebase.revisarEstadoEmpate){
   const tc=d.tc_decision||{};
   if(tc.X!==undefined && tc.O!==undefined){
-    Firebase.revisarEstadoEmpate(d);
+    // V11: la transición debe completarse ANTES de despachar la fase actual.
+    // De lo contrario, este mismo snapshot antiguo vuelve a pintar el modal
+    // de empate y bloquea el acceso a prioridad_reclamo.
+    const transicionada = await Firebase.revisarEstadoEmpate(d);
+    if(transicionada) return;
   }
 }
 // ── CORRECCIÓN 3: puerta centralizada del resultado de reclamo ──
@@ -1044,7 +1048,8 @@ else if(d.fase==='jugando')                  _faseJugando(d, miRol);
 function _faseTableroCompleto(d, miRol){
 Cronometro.detener();
 UI.bloquearTablero(true);
-UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar','btn-abandonar'],true);
+UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+UI.bloquearBtns(['btn-abandonar'],false);
 UI.setMsg('Tablero completo. Confirma si aceptas el empate.');
 EmpateFlow.init(miRol);
 EmpateFlow.mostrarModalTC(d);
@@ -1065,11 +1070,13 @@ EmpateFlow.actualizarCronometroPrioridad(d);
 // se muestra solamente una vez por intento de prioridad.
 const prioridadAceptadaPorAmbos = d.prioridad_aceptado_X===true && d.prioridad_aceptado_O===true;
 if(soyPrioritario){
-  UI.bloquearBtns(['btn-nueva','btn-sortear','btn-abandonar'],true);
+  UI.bloquearBtns(['btn-nueva','btn-sortear'],true);
+  UI.bloquearBtns(['btn-abandonar'],false);
   UI.bloquearBtns(['btn-reclamar','btn-confirmar'],!prioridadAceptadaPorAmbos);
   UI.setMsg(prioridadAceptadaPorAmbos ? '¡Tienes prioridad! Tienes 30 segundos para reclamar victoria.' : 'Acepta el modal de prioridad. Esperando que ambos jugadores lo acepten...');
 } else {
-  UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar','btn-abandonar'],true);
+  UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+  UI.bloquearBtns(['btn-abandonar'],false);
   UI.setMsg('Esperando a que el jugador con prioridad decida...');
 }
 
@@ -1122,7 +1129,8 @@ function _faseEmpateFinal(d, miRol){
   UI.bloquearTablero(true);
   // En empate final el tablero queda visible para estudio.
   // Solo Nueva Partida podrá habilitarse mediante _revisarNuevaPartida().
-  UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar','btn-abandonar'],true);
+  UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+  UI.bloquearBtns(['btn-abandonar'],false);
 
   if(d.fichas_marcadas_reclamo && d.prioridad_jugador){
     Tablero.reaplicarReclamo(d.fichas_marcadas_reclamo, d.prioridad_jugador);
@@ -1345,7 +1353,8 @@ EmpateFlow.detenerCronometroPrioridad();
 UI.bloquearTablero(true);
 UI.setMsg('Pulsa SORTEAR PARTIDA para comenzar.');
 if(!d.sorteo_usado) UI.bloquearBtns(['btn-sortear'],false);
-UI.bloquearBtns(['btn-reclamar','btn-confirmar','btn-abandonar'],true);
+UI.bloquearBtns(['btn-reclamar','btn-confirmar'],true);
+UI.bloquearBtns(['btn-abandonar'],false);
 // Marcar visualmente el modo activo (Clasico por defecto)
 if(typeof marcarModoActivo === 'function') marcarModoActivo(d.crono_modo || 'clasico');
 }
@@ -1353,9 +1362,11 @@ function _faseReclamo(d, miRol){
 UI.bloquearTablero(true);
 Cronometro.actualizar(d);
 if(d.reclamante===miRol){
+UI.bloquearBtns(['btn-abandonar'],false);
 UI.setMsg('RECLAMO ACTIVO: selecciona tus 4 fichas ganadoras.');
 } else {
-UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar','btn-abandonar'],true);
+UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+UI.bloquearBtns(['btn-abandonar'],false);
 UI.setMsg('Tu oponente está marcando su línea ganadora...');
 const key='rec_'+(d.reclamo_ts||'');
 if(_reclamoKey!==key){
@@ -2336,18 +2347,18 @@ O: dec.O === true ? 'acepta' : dec.O === false ? 'rechaza' : 'sin_eleccion'
 async responderEmpate(aceptaEmpate){
 const snap=await get(_salaRef); const d=snap.val();
 if(!d||d.fase!=='tablero_completo') return;
-// V10: cada cliente solo registra su decisión. La transición posterior
+// V11: cada cliente solo registra su decisión. La transición posterior
 // se realiza de forma centralizada por el Jugador 1 (X) al detectar que
 // ambas decisiones ya están presentes en un snapshot consolidado.
 await update(_salaRef,{['tc_decision/'+_rol]:aceptaEmpate});
 },
 async revisarEstadoEmpate(d){
-if(!_salaRef || _rol!=='X' || !d || d.fase!=='tablero_completo') return;
+if(!_salaRef || _rol!=='X' || !d || d.fase!=='tablero_completo') return false;
 const dec=d.tc_decision||{};
-if(dec.X===undefined || dec.O===undefined) return;
+if(dec.X===undefined || dec.O===undefined) return false;
 // Evitar que dos callbacks locales del mismo cliente intenten resolver
 // simultáneamente la misma transición.
-if(this._tcResolviendo) return;
+if(this._tcResolviendo) return false;
 this._tcResolviendo=true;
 try {
   const norm=this._normalizarDecisiones(d);
@@ -2356,16 +2367,17 @@ try {
   } else {
     await this._confirmarEmpateFinal(d);
   }
+  return true;
 } finally {
   this._tcResolviendo=false;
 }
 },
 async resolverTimeoutEmpate(){
 const snap=await get(_salaRef); const d=snap.val();
-if(!_salaRef || _rol!=='X' || !d || d.fase!=='tablero_completo') return;
+if(!_salaRef || _rol!=='X' || !d || d.fase!=='tablero_completo') return false;
 // El mismo coordinador que resuelve las dos decisiones resuelve también
 // el timeout del modal. Una decisión NO siempre conserva prioridad.
-if(this._tcResolviendo) return;
+if(this._tcResolviendo) return false;
 this._tcResolviendo=true;
 try {
   const dec=this._normalizarDecisiones(d);
@@ -2375,6 +2387,7 @@ try {
     // SÍ/SÍ o ninguna respuesta dentro del plazo => empate final.
     await this._confirmarEmpateFinal(d);
   }
+  return true;
 } finally {
   this._tcResolviendo=false;
 }
@@ -2533,6 +2546,8 @@ prioridad_jugador:null, prioridad_intento:null, prioridad_inicio_ts:null, priori
 },
 async abandonarPartida(){
     if(!_salaRef) return;
+    // V11: abandono válido desde cualquier fase de una sala activa.
+    // La UI exige confirmación SÍ/NO antes de llegar aquí.
     const snap=await get(_salaRef); const d=snap.val();
     if(!d) return;
     // Si el oponente ya abandonó, este clic solo registra la salida local del ganador.
@@ -2541,7 +2556,9 @@ async abandonarPartida(){
       await update(_salaRef,{'abandono/salida_ganador_ts':Date.now(),'abandono/salida_ganador':true});
       return;
     }
-    if(d.terminado || d.fase!=='jugando') return;
+    // La partida ya terminó por una causa distinta del abandono: no se puede
+    // convertir retrospectivamente ese resultado en un abandono.
+    if(d.terminado) return;
     const ganador=_rol==='X'?'O':'X';
     const vX=(d.victoriasX||0)+(ganador==='X'?1:0);
     const vO=(d.victoriasO||0)+(ganador==='O'?1:0);
@@ -2721,7 +2738,11 @@ $('btn-abandonar').onclick = async ()=>{
     }, true);
     return;
   }
-  if(snap.terminado || snap.fase!=='jugando') return;
+  // V11: ABANDONAR PARTIDA es una salida de emergencia disponible en
+  // cualquier estado de una sala activa. La confirmación SÍ/NO siempre
+  // precede al abandono. Si el oponente ya abandonó, se usa la ruta
+  // especial sin penalización anterior.
+  if(snap.terminado && !(snap.abandono && snap.abandono.ganador===Firebase.getMiRol())) return;
   _mostrarConfirmacionAbandono(async ()=>{ await Firebase.abandonarPartida(); });
 };
 $('btn-sortear').onclick = async ()=>{
