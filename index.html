@@ -451,7 +451,7 @@ font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;
 <aside>
 <div class="panel" id="logo-panel">
 <h1>GATO<br>CIRCULAR</h1>
-<p>UNA FILOSOFÍA DE VIDA</p>
+<p>CONQUISTA LOS ANILLOS</p>
 </div>
 <div class="panel">
 <div class="pname x">JUGADOR 1</div>
@@ -983,9 +983,14 @@ M12· JUEGO — Orquestador principal
 const Juego = (() => {
 const $ = id => document.getElementById(id);
 let _sorteoVisto=null, _victoriaVista=false, _reclamoKey=null, _turnoAnterior=null, _reclamoCanceladoVisto=null, _ultimoD=null;
-let _resultadoReclamoVisto=null, _abandonoVisto=null;   // CORRECCIÓN: control de orden de modales (validez antes que prioridad/empate)
+let _resultadoReclamoVisto=null, _abandonoVisto=null;
+// V13: invalida cualquier procesamiento asíncrono de un snapshot antiguo.
+// Evita que un snapshot anterior vuelva a despachar tablero_completo después
+// de que Firebase ya confirmó una transición a prioridad/empate final.
+let _estadoVersion=0;   // CORRECCIÓN: control de orden de modales (validez antes que prioridad/empate)
 async function aplicarEstado(d, miRol) {
 if(!d) return;
+const versionActual=++_estadoVersion;
 Estado.fromFirebase(d); _ultimoD = d;
 if(typeof Sesion !== 'undefined') Sesion.fromFirebase(d);
 if(typeof _revisarModoPropuesto === 'function') _revisarModoPropuesto(d);
@@ -1018,6 +1023,9 @@ if(d.fase==='tablero_completo' && miRol==='X' && window.Firebase && Firebase.rev
     // De lo contrario, este mismo snapshot antiguo vuelve a pintar el modal
     // de empate y bloquea el acceso a prioridad_reclamo.
     const transicionada = await Firebase.revisarEstadoEmpate(d);
+    // Si llegó un snapshot más nuevo mientras esperábamos el update,
+    // este procesamiento ya no tiene autoridad para tocar la UI.
+    if(versionActual !== _estadoVersion) return;
     if(transicionada) return;
   }
 }
@@ -1027,11 +1035,13 @@ if(d.fase==='tablero_completo' && miRol==='X' && window.Firebase && Firebase.rev
 if(!d.terminado && d.resultado_reclamo &&
 _resultadoReclamoVisto !== d.resultado_reclamo.ts){
 _resultadoReclamoVisto = d.resultado_reclamo.ts;
+if(versionActual !== _estadoVersion) return;
 EmpateFlow.mostrarModalResultado(d.resultado_reclamo, function(){
 _dispatchFase(d, miRol);
 });
 return;
 }
+if(versionActual !== _estadoVersion) return;
 _dispatchFase(d, miRol);
 if(typeof _revisarNuevaPartida === 'function') _revisarNuevaPartida(d, miRol);
 }
@@ -1673,24 +1683,15 @@ const restante = Math.max(0, 10 - transcurrido);
 const el = document.getElementById('tc-countdown');
 el.textContent = restante;
 el.classList.toggle('urgente', restante <= 3);
-
 if(restante <= 0) {
-    clearInterval(_countdownInterval);
-    // FORZAR CIERRE VISUAL INMEDIATO EN AMBOS CLIENTES ANTES DE LA TRANSICIÓN
-    ocultarModalTC(); 
-    
-    // EJECUTAR TRANSICIÓN DIRECTAMENTE CON DATOS LOCALES (SIN AWAIT GET)
-    if(_miRol === 'X') {
-        const snapActual = window.Firebase ? window.Firebase._ultimoD : null;
-        if(snapActual && snapActual.fase === 'tablero_completo') {
-            const decNorm = window.Firebase._normalizarDecisiones(snapActual);
-            if(decNorm.X==='rechaza' || decNorm.O==='rechaza'){
-                window.Firebase._activarPrioridad(snapActual, 1, decNorm);
-            } else {
-                window.Firebase._confirmarEmpateFinal(snapActual);
-            }
-        }
-    }
+clearInterval(_countdownInterval);
+if(_miRol === 'X') Firebase.resolverTimeoutEmpate();
+}
+}, 200);
+}
+function ocultarModalTC() {
+document.getElementById('tc-overlay').classList.remove('visible');
+clearInterval(_countdownInterval);
 }
 // ── Fase: prioridad_reclamo ────────────────────────────
 // CORRECCIÓN 1: transparencia total de las decisiones y
@@ -2449,7 +2450,7 @@ const dec=d.tc_decision||{};
 if(dec.X===undefined || dec.O===undefined) return false;
 // Evitar que dos callbacks locales del mismo cliente intenten resolver
 // simultáneamente la misma transición.
-if(this._tcResolviendo) return false;
+if(this._tcResolviendo) return true;
 this._tcResolviendo=true;
 try {
   const norm=this._normalizarDecisiones(d);
@@ -2466,7 +2467,7 @@ try {
 async resolverTimeoutEmpate(){
 const snap=await get(_salaRef); const d=snap.val();
 if(!_salaRef || _rol!=='X' || !d || d.fase!=='tablero_completo') return false;
-if(this._tcResolviendo) return false;
+if(this._tcResolviendo) return true;
 this._tcResolviendo=true;
 try {
   const dec=this._normalizarDecisiones(d);
@@ -2491,8 +2492,7 @@ try {
 },
 // ── CORRECCIÓN 1: prioridad según quién rechazó; conserva decisiones ──
 async _activarPrioridad(d, intento, dec){
-    EmpateFlow.ocultarModalTC(); // FORZAR CIERRE VISUAL INMEDIATO
-    dec = dec || this._normalizarDecisiones(d);
+dec = dec || this._normalizarDecisiones(d);
 let prioritario;
 if(intento===1){
 const rx = dec.X==='rechaza', ro = dec.O==='rechaza';
@@ -2515,8 +2515,7 @@ tc_decision_final: dec
 });
 },
 async _confirmarEmpateFinal(d){
-    EmpateFlow.ocultarModalTC(); // FORZAR CIERRE VISUAL INMEDIATO
-    const empates=(d.empates||0)+1;
+const empates=(d.empates||0)+1;
 const jugadas=(d.partidasJugadas||0)+1;
 const total=d.totalPartidas||0;
 const finSesion=total>0&&jugadas>=total;
