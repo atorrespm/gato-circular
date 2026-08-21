@@ -2069,7 +2069,7 @@ M13· FIREBASE — Sincronización + M15· MAIN · V14 — Eventos
 <script type="module">
 import { initializeApp }
 from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, set, get, onValue, update, transaction }
+import { getDatabase, ref, set, get, onValue, update, runTransaction }
 from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 // Exponer funciones Firebase para el módulo Chat
 window._fbDB = { ref, set, get, onValue, update };
@@ -2416,7 +2416,7 @@ if(_tcResolviendo) return false;
 _tcResolviendo=true;
 try {
   const LIMITE=10000;
-  const res=await transaction(_salaRef, current=>{
+  const res=await runTransaction(_salaRef, current=>{
     if(!current || current.fase!=='tablero_completo') return;
     const dec=current.tc_decision||{};
     const xPresent=dec.X!==undefined;
@@ -2468,7 +2468,7 @@ async aceptarEmpateSinRespuesta(){
   if(_rol==='X') await this._resolverSalidaSinRespuesta();
 },
 async _resolverSalidaSinRespuesta(){
-  const res=await transaction(_salaRef,current=>{
+  const res=await runTransaction(_salaRef,current=>{
     if(!current || current.fase!=='empate_sin_respuesta') return;
     const ack=current.empate_sin_respuesta_ack||{};
     const inicio=current.empate_sin_respuesta_inicio||0;
