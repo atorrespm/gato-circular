@@ -1006,19 +1006,20 @@ UI.actualizarPaneles(Estado);
 }
 // Estadísticas en tiempo real
 UI.setStats(d.victoriasX||0, d.victoriasO||0);
-// ── V12 FIX · COORDINACIÓN SIN BLOQUEO DE RENDER ────────────
-// El Jugador 1 (X) inicia la transición, pero NO bloquea el render
-// ni retorna prematuramente. La UI se actualizará cuando llegue
-// el NUEVO snapshot desde Firebase con la fase ya cambiada.
+// ── V11 · TRANSICIÓN ATÓMICA DEL EMPATE ─────────────────────
+// El Jugador 1 (X) actúa como coordinador determinista de la transición
+// tablero_completo -> prioridad_reclamo / empate_final.
+// Así la transición no depende de cuál de los dos clientes respondió
+// último ni de una carrera entre dos lecturas/escrituras asíncronas.
 if(d.fase==='tablero_completo' && miRol==='X' && window.Firebase && Firebase.revisarEstadoEmpate){
-    const tc=d.tc_decision||{};
-    if(tc.X!==undefined && tc.O!==undefined && !Firebase._tcResolviendo){
-        // Disparamos la transición en segundo plano (fire-and-forget seguro)
-        // No hacemos await ni return. Dejamos que el onValue traiga el nuevo estado.
-        Firebase.revisarEstadoEmpate(d).catch(e => console.warn('Transición empate:', e));
-        // IMPORTANTE: No retornamos aquí. Continuamos con _dispatchFase
-        // para pintar el modal TC actual hasta que llegue la actualización.
-    }
+  const tc=d.tc_decision||{};
+  if(tc.X!==undefined && tc.O!==undefined){
+    // V11: la transición debe completarse ANTES de despachar la fase actual.
+    // De lo contrario, este mismo snapshot antiguo vuelve a pintar el modal
+    // de empate y bloquea el acceso a prioridad_reclamo.
+    const transicionada = await Firebase.revisarEstadoEmpate(d);
+    if(transicionada) return;
+  }
 }
 // ── CORRECCIÓN 3: puerta centralizada del resultado de reclamo ──
 // El modal de validez (válido/inválido) debe verse en AMBOS clientes,
@@ -1672,15 +1673,24 @@ const restante = Math.max(0, 10 - transcurrido);
 const el = document.getElementById('tc-countdown');
 el.textContent = restante;
 el.classList.toggle('urgente', restante <= 3);
+
 if(restante <= 0) {
-clearInterval(_countdownInterval);
-if(_miRol === 'X') Firebase.resolverTimeoutEmpate();
-}
-}, 200);
-}
-function ocultarModalTC() {
-document.getElementById('tc-overlay').classList.remove('visible');
-clearInterval(_countdownInterval);
+    clearInterval(_countdownInterval);
+    // FORZAR CIERRE VISUAL INMEDIATO EN AMBOS CLIENTES ANTES DE LA TRANSICIÓN
+    ocultarModalTC(); 
+    
+    // EJECUTAR TRANSICIÓN DIRECTAMENTE CON DATOS LOCALES (SIN AWAIT GET)
+    if(_miRol === 'X') {
+        const snapActual = window.Firebase ? window.Firebase._ultimoD : null;
+        if(snapActual && snapActual.fase === 'tablero_completo') {
+            const decNorm = window.Firebase._normalizarDecisiones(snapActual);
+            if(decNorm.X==='rechaza' || decNorm.O==='rechaza'){
+                window.Firebase._activarPrioridad(snapActual, 1, decNorm);
+            } else {
+                window.Firebase._confirmarEmpateFinal(snapActual);
+            }
+        }
+    }
 }
 // ── Fase: prioridad_reclamo ────────────────────────────
 // CORRECCIÓN 1: transparencia total de las decisiones y
@@ -2481,7 +2491,8 @@ try {
 },
 // ── CORRECCIÓN 1: prioridad según quién rechazó; conserva decisiones ──
 async _activarPrioridad(d, intento, dec){
-dec = dec || this._normalizarDecisiones(d);
+    EmpateFlow.ocultarModalTC(); // FORZAR CIERRE VISUAL INMEDIATO
+    dec = dec || this._normalizarDecisiones(d);
 let prioritario;
 if(intento===1){
 const rx = dec.X==='rechaza', ro = dec.O==='rechaza';
@@ -2504,7 +2515,8 @@ tc_decision_final: dec
 });
 },
 async _confirmarEmpateFinal(d){
-const empates=(d.empates||0)+1;
+    EmpateFlow.ocultarModalTC(); // FORZAR CIERRE VISUAL INMEDIATO
+    const empates=(d.empates||0)+1;
 const jugadas=(d.partidasJugadas||0)+1;
 const total=d.totalPartidas||0;
 const finSesion=total>0&&jugadas>=total;
