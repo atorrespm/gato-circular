@@ -576,7 +576,7 @@ font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;
 <button class="btn" id="btn-confirmar">✔ CONFIRMAR</button>
 <button class="btn" id="btn-abandonar">🚪 ABANDONAR PARTIDA</button>
 </div>
-<!-- V15 · EMPATE SIN RESPUESTA -->
+<!-- V14 · EMPATE SIN RESPUESTA -->
 <div id="empate-sin-respuesta-overlay">
   <div id="empate-sin-respuesta-modal">
     <h2>🤝 EMPATE DEFINITIVO</h2>
@@ -1000,49 +1000,13 @@ return {init, activar, desactivar, seleccionar, reaplicar,
 getSel:()=>[..._sel], isActivo:()=>_activo};
 })();
 /* ═══════════════════════════════════════════════════════
-M12· JUEGO — Orquestador principal · V15
+M12· JUEGO — Orquestador principal · V14
 ═══════════════════════════════════════════════════════ */
 const Juego = (() => {
 const $ = id => document.getElementById(id);
 let _sorteoVisto=null, _victoriaVista=false, _reclamoKey=null, _turnoAnterior=null, _reclamoCanceladoVisto=null, _ultimoD=null;
 let _resultadoReclamoVisto=null, _abandonoVisto=null;   // CORRECCIÓN: control de orden de modales (validez antes que prioridad/empate)
-
-// V15 · COLA DE ESTADOS FIREBASE
-// Un listener onValue puede recibir varios snapshots mientras una transición
-// asíncrona (por ejemplo el resolutor central del empate) todavía está en curso.
-// Procesamos únicamente el snapshot más reciente y nunca permitimos que un
-// snapshot antiguo vuelva a pintar el tablero después de una transición nueva.
-let _estadoPendiente=null;
-let _estadoProcesando=false;
-let _estadoSecuencia=0;
-
-async function _procesarColaEstados(){
-  if(_estadoProcesando) return;
-  _estadoProcesando=true;
-  try {
-    while(_estadoPendiente){
-      const item=_estadoPendiente;
-      _estadoPendiente=null;
-      await aplicarEstado(item.d,item.miRol,item.secuencia);
-    }
-  } finally {
-    _estadoProcesando=false;
-    // Si llegó un snapshot justo durante el cierre de la cola, garantizar que
-    // se procese sin depender de otro evento posterior de Firebase.
-    if(_estadoPendiente) _procesarColaEstados();
-  }
-}
-
-function recibirEstado(d,miRol){
-  if(!d) return;
-  const secuencia=++_estadoSecuencia;
-  // Coalescer: si llegan varios snapshots antes de poder procesarlos, solo
-  // interesa el último estado confirmado por Firebase.
-  _estadoPendiente={d,miRol,secuencia};
-  _procesarColaEstados();
-}
-
-async function aplicarEstado(d, miRol, secuencia) {
+async function aplicarEstado(d, miRol) {
 if(!d) return;
 Estado.fromFirebase(d); _ultimoD = d;
 if(typeof Sesion !== 'undefined') Sesion.fromFirebase(d);
@@ -1055,24 +1019,18 @@ if(window.Firebase && Firebase.revisarTimeoutPrioridad) Firebase.revisarTimeoutP
 // apenas Firebase confirma que la partida ya no está terminada
 // (nueva partida), sin depender de quién haya pulsado el botón
 if(d.terminado === false) _victoriaVista = false;
-// V14 · RESOLUTOR CENTRAL DEL EMPATE: debe ejecutarse ANTES de cualquier render.
-// Si el snapshot todavía pertenece a tablero_completo pero ya es resoluble,
-// este callback no tiene permiso para volver a pintar el estado antiguo.
-if(d.fase==='tablero_completo' && miRol==='X' && window.Firebase && Firebase.revisarEstadoEmpate){
+// V16 · RESOLUTOR CENTRAL REAL DEL EMPATE.
+// Mientras el estado siga en tablero_completo y ya existan ambas decisiones,
+// NINGÚN cliente debe volver a pintar ese estado. Cualquier cliente puede
+// intentar la transacción; Firebase garantiza que solo una transición gane.
+if(d.fase==='tablero_completo' && window.Firebase && Firebase.revisarEstadoEmpate){
   const tc=d.tc_decision||{};
   const hayDosDecisiones=(tc.X!==undefined && tc.O!==undefined);
   if(hayDosDecisiones){
-    const resuelta=await Firebase.revisarEstadoEmpate(d,false);
-    // Si Firebase produjo un snapshot más nuevo mientras la transacción estaba
-    // pendiente, este snapshot ya quedó obsoleto y no debe volver a renderizar
-    // tablero_completo ni reabrir su modal. La cola procesará el estado nuevo.
-    if(secuencia !== _estadoSecuencia) return;
-    if(resuelta) return;
+    await Firebase.revisarEstadoEmpate(d,false);
+    return;
   }
 }
-// V15 · Nunca pintar un snapshot que haya quedado obsoleto durante una operación
-// asíncrona. Esta comprobación es la barrera contra el "retroceso visual".
-if(secuencia !== undefined && secuencia !== _estadoSecuencia) return;
 // Render (omitir durante reclamo activo del reclamante)
 if(Reclamo.isActivo()){
 UI.actualizarPaneles(Estado); Reclamo.reaplicar();
@@ -1553,7 +1511,7 @@ function reset(){
     _npFinalizacionEnCurso=null;
     window._empateYaMostrado=false;
 }
-return {aplicarEstado, recibirEstado, reset};
+return {aplicarEstado, reset};
 })();
 /* ═══════════════════════════════════════════════════════
 M14· CHAT JS — Chat en tiempo real
@@ -1671,7 +1629,7 @@ el.textContent = restante;
 el.classList.toggle('urgente', restante <= 3);
 if(restante <= 0) {
 clearInterval(_countdownInterval);
-if(_miRol === 'X') Firebase.resolverTimeoutEmpate();
+Firebase.resolverTimeoutEmpate();
 }
 }, 200);
 }
@@ -2106,7 +2064,7 @@ Firebase.reanudarPausa();
 });
 </script>
 <!-- ═══════════════════════════════════════════════════════
-M13· FIREBASE — Sincronización + M15· MAIN · V15 — Eventos
+M13· FIREBASE — Sincronización + M15· MAIN · V14 — Eventos
 (módulo ES6 separado para imports de Firebase SDK)
 ═══════════════════════════════════════════════════════ -->
 <script type="module">
@@ -2454,7 +2412,10 @@ if(!d||d.fase!=='tablero_completo') return;
 await update(_salaRef,{['tc_decision/'+_rol]:aceptaEmpate});
 },
 async revisarEstadoEmpate(d, porTimeout=false){
-if(!_salaRef || _rol!=='X' || !d || d.fase!=='tablero_completo') return false;
+// V16: la resolución no depende de que el cliente sea X/Jugador 1.
+// Cualquier cliente puede proponer la misma transición; runTransaction()
+// garantiza que solamente una de ellas pueda confirmar el cambio de fase.
+if(!_salaRef || !d || d.fase!=='tablero_completo') return false;
 if(_tcResolviendo) return false;
 _tcResolviendo=true;
 try {
@@ -2464,44 +2425,73 @@ try {
     const dec=current.tc_decision||{};
     const xPresent=dec.X!==undefined;
     const oPresent=dec.O!==undefined;
+
+    // Con respuestas: ambas deben existir.
     if(!porTimeout && (!xPresent || !oPresent)) return;
+    // Sin respuestas: solamente se resuelve cuando vence el countdown.
     if(porTimeout && Date.now()-(current.tc_inicio||0)<LIMITE) return;
+
     const norm={
       X: dec.X===true?'acepta':dec.X===false?'rechaza':'sin_eleccion',
       O: dec.O===true?'acepta':dec.O===false?'rechaza':'sin_eleccion'
     };
-    const base={tc_decision_final:norm,tc_resolucion_ts:Date.now()};
+    const ts=Date.now();
+    const base={tc_decision_final:norm,tc_resolucion_ts:ts};
+
+    // SIN / SIN: empate definitivo por falta de decisión.
     if(norm.X==='sin_eleccion' && norm.O==='sin_eleccion'){
-      base.fase='empate_sin_respuesta';
-      base.empate_sin_respuesta_inicio=Date.now();
-      base.empate_sin_respuesta_ack={X:null,O:null};
-      return Object.assign({},current,base);
-    }
-    if(norm.X==='rechaza' || norm.O==='rechaza'){
-      let prioritario;
-      if(norm.X==='rechaza' && norm.O==='rechaza') prioritario=current.ultimo_sorteo;
-      else if(norm.X==='rechaza') prioritario='X';
-      else prioritario='O';
       return Object.assign({},current,base,{
-        fase:'prioridad_reclamo',prioridad_jugador:prioritario,prioridad_intento:1,
-        prioridad_inicio_ts:null,prioridad_timeout_ts:null,
-        prioridad_aceptado_X:false,prioridad_aceptado_O:false,
-        fichas_marcadas_reclamo:null,fichas_timeout_reclamo:null
+        fase:'empate_sin_respuesta',
+        empate_sin_respuesta_inicio:ts,
+        empate_sin_respuesta_ack:{X:null,O:null}
       });
     }
+
+    // Cualquier NO abre la prioridad de reclamo.
+    if(norm.X==='rechaza' || norm.O==='rechaza'){
+      let prioritario;
+      if(norm.X==='rechaza' && norm.O==='rechaza'){
+        // Ambos rechazan: comienza quien obtuvo la prioridad inicial.
+        prioritario=current.ultimo_sorteo || 'X';
+      } else if(norm.X==='rechaza'){
+        prioritario='X';
+      } else {
+        prioritario='O';
+      }
+      return Object.assign({},current,base,{
+        fase:'prioridad_reclamo',
+        prioridad_jugador:prioritario,
+        prioridad_intento:1,
+        prioridad_inicio_ts:null,
+        prioridad_timeout_ts:null,
+        prioridad_aceptado_X:false,
+        prioridad_aceptado_O:false,
+        fichas_marcadas_reclamo:null,
+        fichas_timeout_reclamo:null
+      });
+    }
+
+    // SI / SI, SI / SIN y SIN / SI: empate definitivo.
     const empates=(current.empates||0)+1;
     const jugadas=(current.partidasJugadas||0)+1;
     const total=current.totalPartidas||0;
     return Object.assign({},current,base,{
-      fase:'empate_final',empates,partidasJugadas:jugadas,
-      fin_sesion:total>0&&jugadas>=total,nueva_partida_solicitud:null
+      fase:'empate_final',
+      empates,
+      partidasJugadas:jugadas,
+      fin_sesion:total>0&&jugadas>=total,
+      nueva_partida_solicitud:null
     });
   });
   return !!res.committed;
-} finally { _tcResolviendo=false; }
+} finally {
+  _tcResolviendo=false;
+}
 },
 async resolverTimeoutEmpate(){
-  return this.revisarEstadoEmpate(await (async()=>{const s=await get(_salaRef);return s.val();})(),true);
+  const s=await get(_salaRef);
+  const d=s.val();
+  return this.revisarEstadoEmpate(d,true);
 },
 async aceptarEmpateSinRespuesta(){
   if(!_salaRef) return;
@@ -2793,7 +2783,7 @@ Reclamo.init(_rol);
 Chat.init(db,_sala,_rol);
 }
 if(!_iniciado&&_rol==='X'&&d.j2==='online') update(_salaRef,{j1:'online'});
-if(_iniciado) Juego.recibirEstado(d,_rol);
+if(_iniciado) Juego.aplicarEstado(d,_rol);
 });
 }
 /* ── M15 · MAIN — Eventos de botones ───────────────── */
