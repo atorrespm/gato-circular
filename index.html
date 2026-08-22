@@ -576,7 +576,7 @@ font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;
 <button class="btn" id="btn-confirmar">✔ CONFIRMAR</button>
 <button class="btn" id="btn-abandonar">🚪 ABANDONAR PARTIDA</button>
 </div>
-<!-- V14 · EMPATE SIN RESPUESTA -->
+<!-- V15 · EMPATE SIN RESPUESTA -->
 <div id="empate-sin-respuesta-overlay">
   <div id="empate-sin-respuesta-modal">
     <h2>🤝 EMPATE DEFINITIVO</h2>
@@ -1000,13 +1000,49 @@ return {init, activar, desactivar, seleccionar, reaplicar,
 getSel:()=>[..._sel], isActivo:()=>_activo};
 })();
 /* ═══════════════════════════════════════════════════════
-M12· JUEGO — Orquestador principal · V14
+M12· JUEGO — Orquestador principal · V15
 ═══════════════════════════════════════════════════════ */
 const Juego = (() => {
 const $ = id => document.getElementById(id);
 let _sorteoVisto=null, _victoriaVista=false, _reclamoKey=null, _turnoAnterior=null, _reclamoCanceladoVisto=null, _ultimoD=null;
 let _resultadoReclamoVisto=null, _abandonoVisto=null;   // CORRECCIÓN: control de orden de modales (validez antes que prioridad/empate)
-async function aplicarEstado(d, miRol) {
+
+// V15 · COLA DE ESTADOS FIREBASE
+// Un listener onValue puede recibir varios snapshots mientras una transición
+// asíncrona (por ejemplo el resolutor central del empate) todavía está en curso.
+// Procesamos únicamente el snapshot más reciente y nunca permitimos que un
+// snapshot antiguo vuelva a pintar el tablero después de una transición nueva.
+let _estadoPendiente=null;
+let _estadoProcesando=false;
+let _estadoSecuencia=0;
+
+async function _procesarColaEstados(){
+  if(_estadoProcesando) return;
+  _estadoProcesando=true;
+  try {
+    while(_estadoPendiente){
+      const item=_estadoPendiente;
+      _estadoPendiente=null;
+      await aplicarEstado(item.d,item.miRol,item.secuencia);
+    }
+  } finally {
+    _estadoProcesando=false;
+    // Si llegó un snapshot justo durante el cierre de la cola, garantizar que
+    // se procese sin depender de otro evento posterior de Firebase.
+    if(_estadoPendiente) _procesarColaEstados();
+  }
+}
+
+function recibirEstado(d,miRol){
+  if(!d) return;
+  const secuencia=++_estadoSecuencia;
+  // Coalescer: si llegan varios snapshots antes de poder procesarlos, solo
+  // interesa el último estado confirmado por Firebase.
+  _estadoPendiente={d,miRol,secuencia};
+  _procesarColaEstados();
+}
+
+async function aplicarEstado(d, miRol, secuencia) {
 if(!d) return;
 Estado.fromFirebase(d); _ultimoD = d;
 if(typeof Sesion !== 'undefined') Sesion.fromFirebase(d);
@@ -1027,9 +1063,16 @@ if(d.fase==='tablero_completo' && miRol==='X' && window.Firebase && Firebase.rev
   const hayDosDecisiones=(tc.X!==undefined && tc.O!==undefined);
   if(hayDosDecisiones){
     const resuelta=await Firebase.revisarEstadoEmpate(d,false);
+    // Si Firebase produjo un snapshot más nuevo mientras la transacción estaba
+    // pendiente, este snapshot ya quedó obsoleto y no debe volver a renderizar
+    // tablero_completo ni reabrir su modal. La cola procesará el estado nuevo.
+    if(secuencia !== _estadoSecuencia) return;
     if(resuelta) return;
   }
 }
+// V15 · Nunca pintar un snapshot que haya quedado obsoleto durante una operación
+// asíncrona. Esta comprobación es la barrera contra el "retroceso visual".
+if(secuencia !== undefined && secuencia !== _estadoSecuencia) return;
 // Render (omitir durante reclamo activo del reclamante)
 if(Reclamo.isActivo()){
 UI.actualizarPaneles(Estado); Reclamo.reaplicar();
@@ -1510,7 +1553,7 @@ function reset(){
     _npFinalizacionEnCurso=null;
     window._empateYaMostrado=false;
 }
-return {aplicarEstado, reset};
+return {aplicarEstado, recibirEstado, reset};
 })();
 /* ═══════════════════════════════════════════════════════
 M14· CHAT JS — Chat en tiempo real
@@ -2063,7 +2106,7 @@ Firebase.reanudarPausa();
 });
 </script>
 <!-- ═══════════════════════════════════════════════════════
-M13· FIREBASE — Sincronización + M15· MAIN · V14 — Eventos
+M13· FIREBASE — Sincronización + M15· MAIN · V15 — Eventos
 (módulo ES6 separado para imports de Firebase SDK)
 ═══════════════════════════════════════════════════════ -->
 <script type="module">
@@ -2750,7 +2793,7 @@ Reclamo.init(_rol);
 Chat.init(db,_sala,_rol);
 }
 if(!_iniciado&&_rol==='X'&&d.j2==='online') update(_salaRef,{j1:'online'});
-if(_iniciado) Juego.aplicarEstado(d,_rol);
+if(_iniciado) Juego.recibirEstado(d,_rol);
 });
 }
 /* ── M15 · MAIN — Eventos de botones ───────────────── */
