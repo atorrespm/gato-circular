@@ -26,6 +26,7 @@ M10· UI            Interfaz de usuario
 M11· RECLAMO       Proceso de reclamo de victoria
 M12· JUEGO         Orquestador principal
 M13· FIREBASE      Sincronización en tiempo real
+V17 · estabilización de transiciones de empate y serialización de snapshots
 M14· CHAT          Chat en tiempo real
 M15· MAIN          Punto de entrada y eventos
 [FUTURO]
@@ -1000,14 +1001,40 @@ return {init, activar, desactivar, seleccionar, reaplicar,
 getSel:()=>[..._sel], isActivo:()=>_activo};
 })();
 /* ═══════════════════════════════════════════════════════
-M12· JUEGO — Orquestador principal · V14
+M12· JUEGO — Orquestador principal · V17
 ═══════════════════════════════════════════════════════ */
 const Juego = (() => {
 const $ = id => document.getElementById(id);
 let _sorteoVisto=null, _victoriaVista=false, _reclamoKey=null, _turnoAnterior=null, _reclamoCanceladoVisto=null, _ultimoD=null;
 let _resultadoReclamoVisto=null, _abandonoVisto=null;   // CORRECCIÓN: control de orden de modales (validez antes que prioridad/empate)
+// V17 · SERIALIZADOR DEL ESTADO: onValue puede entregar snapshots mientras
+// el snapshot anterior todavía está esperando una transacción. No permitimos
+// que dos aplicarEstado() pinten fases diferentes simultáneamente.
+let _estadoProcesando=false;
+let _estadoPendiente=null;
+function encolarEstado(d, miRol){
+  if(!d) return;
+  _estadoPendiente={d,miRol};
+  if(_estadoProcesando) return;
+  _estadoProcesando=true;
+  (async()=>{
+    try{
+      while(_estadoPendiente){
+        const item=_estadoPendiente;
+        _estadoPendiente=null;
+        try{ await aplicarEstado(item.d,item.miRol); }
+        catch(err){ console.error('[FLOW-V17] aplicarEstado no pudo completarse',err); }
+      }
+    } finally {
+      _estadoProcesando=false;
+      // Si llegó un snapshot exactamente al liberar el flag, procesarlo.
+      if(_estadoPendiente) encolarEstado(_estadoPendiente.d,_estadoPendiente.miRol);
+    }
+  })();
+}
 async function aplicarEstado(d, miRol) {
 if(!d) return;
+console.debug('[FLOW-V17] aplicarEstado', {fase:d.fase, tc:d.tc_decision||null, tcf:d.tc_decision_final||null, prioridad:d.prioridad_jugador||null, paX:!!d.prioridad_aceptado_X, paO:!!d.prioridad_aceptado_O, inicio:d.prioridad_inicio_ts||null, sinAck:d.empate_sin_respuesta_ack||null});
 Estado.fromFirebase(d); _ultimoD = d;
 if(typeof Sesion !== 'undefined') Sesion.fromFirebase(d);
 if(typeof _revisarModoPropuesto === 'function') _revisarModoPropuesto(d);
@@ -1019,7 +1046,7 @@ if(window.Firebase && Firebase.revisarTimeoutPrioridad) Firebase.revisarTimeoutP
 // apenas Firebase confirma que la partida ya no está terminada
 // (nueva partida), sin depender de quién haya pulsado el botón
 if(d.terminado === false) _victoriaVista = false;
-// V16 · RESOLUTOR CENTRAL REAL DEL EMPATE.
+// V17 · RESOLUTOR CENTRAL REAL DEL EMPATE.
 // Mientras el estado siga en tablero_completo y ya existan ambas decisiones,
 // NINGÚN cliente debe volver a pintar ese estado. Cualquier cliente puede
 // intentar la transacción; Firebase garantiza que solo una transición gane.
@@ -1515,7 +1542,7 @@ function reset(){
     _npFinalizacionEnCurso=null;
     window._empateYaMostrado=false;
 }
-return {aplicarEstado, reset};
+return {aplicarEstado, encolarEstado, reset};
 })();
 /* ═══════════════════════════════════════════════════════
 M14· CHAT JS — Chat en tiempo real
@@ -1593,7 +1620,7 @@ const pintar=()=>{
   const restante=Math.max(0,30-Math.floor((Date.now()-d.prioridad_inicio_ts)/1000));
   el.textContent=restante;
   el.classList.toggle('urgente',restante<=5);
-  if(restante<=0 && window.Firebase && Firebase.getMiRol && Firebase.getMiRol()===d.prioridad_jugador){
+  if(restante<=0 && window.Firebase){
     detenerCronometroPrioridad();
     Firebase.timeoutPrioridad();
   }
@@ -1680,7 +1707,7 @@ function mostrarModalSinRespuesta(d, miRol){
   const pintar=()=>{
     const restante=Math.max(0,5-Math.floor((Date.now()-inicio)/1000));
     el.textContent=restante;
-    if(restante<=0){ clearInterval(_countdownInterval); if(window.Firebase && Firebase.getMiRol() === 'X') Firebase._resolverSalidaSinRespuesta(); }
+    if(restante<=0){ clearInterval(_countdownInterval); if(window.Firebase) Firebase.resolverSalidaSinRespuesta(); }
   };
   clearInterval(_countdownInterval); pintar(); _countdownInterval=setInterval(pintar,200);
 }
@@ -2537,9 +2564,11 @@ async aceptarEmpateSinRespuesta(){
   const snap=await get(_salaRef); const d=snap.val();
   if(!d || d.fase!=='empate_sin_respuesta') return;
   await update(_salaRef,{['empate_sin_respuesta_ack/'+_rol]:true});
-  if(_rol==='X') await this._resolverSalidaSinRespuesta();
+  // V17: cualquiera de los dos clientes puede intentar cerrar el estado.
+  // La transacción decide atómicamente si ya corresponde salir.
+  await this.resolverSalidaSinRespuesta();
 },
-async _resolverSalidaSinRespuesta(){
+async resolverSalidaSinRespuesta(){
   const res=await runTransaction(_salaRef,current=>{
     if(!current || current.fase!=='empate_sin_respuesta') return;
     const ack=current.empate_sin_respuesta_ack||{};
@@ -2633,15 +2662,22 @@ const campo=_rol==='X'?'prioridad_aceptado_X':'prioridad_aceptado_O';
 await update(_salaRef,{[campo]:true});
 },
 async iniciarCronometroPrioridad(){
-if(!_salaRef) return;
-const snap=await get(_salaRef); const d=snap.val();
-if(!d || d.fase!=='prioridad_reclamo' || !d.prioridad_aceptado_X || !d.prioridad_aceptado_O || d.prioridad_inicio_ts) return;
-await update(_salaRef,{prioridad_inicio_ts:Date.now()});
+if(!_salaRef) return false;
+const res=await runTransaction(_salaRef,current=>{
+  if(!current || current.fase!=='prioridad_reclamo') return;
+  if(!current.prioridad_aceptado_X || !current.prioridad_aceptado_O) return;
+  if(current.prioridad_inicio_ts) return;
+  return Object.assign({},current,{prioridad_inicio_ts:Date.now(),prioridad_timeout_ts:null});
+});
+if(res.committed) console.debug('[FLOW-V17] cronómetro de prioridad iniciado atómicamente');
+return !!res.committed;
 },
 async timeoutPrioridad(){
 if(!_salaRef) return;
 const snap=await get(_salaRef); const d=snap.val();
-if(!d || d.fase!=='prioridad_reclamo' || d.prioridad_jugador!==_rol || !d.prioridad_inicio_ts || d.prioridad_timeout_ts) return;
+// V17: cualquier cliente puede intentar resolver el timeout. Firebase sigue
+// siendo la autoridad: volvemos a leer el estado antes de aplicar el cambio.
+if(!d || d.fase!=='prioridad_reclamo' || !d.prioridad_inicio_ts || d.prioridad_timeout_ts) return;
 const LIMITE=30000;
 if(Date.now()-d.prioridad_inicio_ts < LIMITE) return;
 const rol=d.prioridad_jugador;
@@ -2794,10 +2830,10 @@ await update(_salaRef,{[campo]:true});
 },
 revisarAceptacionPrioridad(d){
 if(!_salaRef || !d || d.fase!=='prioridad_reclamo') return;
-if(_rol==='X' && d.prioridad_aceptado_X && d.prioridad_aceptado_O && !d.prioridad_inicio_ts) this.iniciarCronometroPrioridad();
+if(d.prioridad_aceptado_X && d.prioridad_aceptado_O && !d.prioridad_inicio_ts) this.iniciarCronometroPrioridad();
 },
 revisarTimeoutPrioridad(d){
-if(!_salaRef || !d || d.fase!=='prioridad_reclamo' || d.prioridad_jugador!==_rol || !d.prioridad_inicio_ts || d.prioridad_timeout_ts) return;
+if(!_salaRef || !d || d.fase!=='prioridad_reclamo' || !d.prioridad_inicio_ts || d.prioridad_timeout_ts) return;
 if(Date.now()-d.prioridad_inicio_ts>=30000) this.timeoutPrioridad();
 },
 async _revisarAceptacionSorteo(d){
@@ -2822,7 +2858,7 @@ Reclamo.init(_rol);
 Chat.init(db,_sala,_rol);
 }
 if(!_iniciado&&_rol==='X'&&d.j2==='online') update(_salaRef,{j1:'online'});
-if(_iniciado) Juego.aplicarEstado(d,_rol);
+if(_iniciado) Juego.encolarEstado(d,_rol);
 });
 }
 /* ── M15 · MAIN — Eventos de botones ───────────────── */
