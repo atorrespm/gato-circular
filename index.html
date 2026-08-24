@@ -1726,7 +1726,8 @@ const cb = _resultadoCb; _resultadoCb = null;
 if(cb) cb();
 }
 return { init, mostrarModalTC, ocultarModalTC, mostrarModalPrioridad, ocultarModalPrioridad, mostrarModalSinRespuesta, ocultarModalSinRespuesta,
-mostrarModalResultado, ocultarModalResultado, cerrarModalResultado };
+mostrarModalResultado, ocultarModalResultado, cerrarModalResultado,
+actualizarCronometroPrioridad, detenerCronometroPrioridad };
 })();
 // ── EVENTOS BOTONES SI/NO ────────────────────────────────
 document.getElementById('btn-tc-si')?.addEventListener('click', () => {
