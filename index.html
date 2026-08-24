@@ -464,7 +464,7 @@ font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;
 <aside>
 <div class="panel" id="logo-panel">
 <h1>GATO<br>CIRCULAR</h1>
-<p>CONQUISTA LOS ANILLOS</p>
+<p>UNA FILOSOFÍA DE VIDA</p>
 </div>
 <div class="panel">
 <div class="pname x">JUGADOR 1</div>
@@ -1027,7 +1027,11 @@ if(d.fase==='tablero_completo' && window.Firebase && Firebase.revisarEstadoEmpat
   const tc=d.tc_decision||{};
   const hayDosDecisiones=(tc.X!==undefined && tc.O!==undefined);
   if(hayDosDecisiones){
-    await Firebase.revisarEstadoEmpate(d,false);
+    try {
+      await Firebase.revisarEstadoEmpate(d,false);
+    } catch(err){
+      console.error('[EMPATE-DEBUG] aplicarEstado: fallo al resolver empate',err);
+    }
     return;
   }
 }
@@ -2411,79 +2415,108 @@ if(!d||d.fase!=='tablero_completo') return;
 // ambas decisiones ya están presentes en un snapshot consolidado.
 await update(_salaRef,{['tc_decision/'+_rol]:aceptaEmpate});
 },
-async revisarEstadoEmpate(d, porTimeout=false){
+async revisarEstadoEmpate(d, porTimeout=false, _intento=1){
 // V16: la resolución no depende de que el cliente sea X/Jugador 1.
 // Cualquier cliente puede proponer la misma transición; runTransaction()
 // garantiza que solamente una de ellas pueda confirmar el cambio de fase.
-if(!_salaRef || !d || d.fase!=='tablero_completo') return false;
-if(_tcResolviendo) return false;
+if(!_salaRef || !d || d.fase!=='tablero_completo'){
+  console.debug('[EMPATE-DEBUG] revisarEstadoEmpate: abort previo — salaRef/d/fase no válidos',{hayRef:!!_salaRef,fase:d&&d.fase});
+  return false;
+}
+if(_tcResolviendo){
+  console.debug('[EMPATE-DEBUG] revisarEstadoEmpate: ya hay una resolución en curso en este cliente, se omite');
+  return false;
+}
 _tcResolviendo=true;
+let abortReason=null;
 try {
   const LIMITE=10000;
-  const res=await runTransaction(_salaRef, current=>{
-    if(!current || current.fase!=='tablero_completo') return;
-    const dec=current.tc_decision||{};
-    const xPresent=dec.X!==undefined;
-    const oPresent=dec.O!==undefined;
+  let res;
+  try {
+    res=await runTransaction(_salaRef, current=>{
+      if(!current || current.fase!=='tablero_completo'){ abortReason='fase_ya_cambio'; return; }
+      const dec=current.tc_decision||{};
+      const xPresent=dec.X!==undefined;
+      const oPresent=dec.O!==undefined;
 
-    // Con respuestas: ambas deben existir.
-    if(!porTimeout && (!xPresent || !oPresent)) return;
-    // Sin respuestas: solamente se resuelve cuando vence el countdown.
-    if(porTimeout && Date.now()-(current.tc_inicio||0)<LIMITE) return;
+      // Con respuestas: ambas deben existir.
+      if(!porTimeout && (!xPresent || !oPresent)){ abortReason='faltan_decisiones'; return; }
+      // Sin respuestas: solamente se resuelve cuando vence el countdown.
+      if(porTimeout && Date.now()-(current.tc_inicio||0)<LIMITE){ abortReason='countdown_no_vencido'; return; }
 
-    const norm={
-      X: dec.X===true?'acepta':dec.X===false?'rechaza':'sin_eleccion',
-      O: dec.O===true?'acepta':dec.O===false?'rechaza':'sin_eleccion'
-    };
-    const ts=Date.now();
-    const base={tc_decision_final:norm,tc_resolucion_ts:ts};
+      const norm={
+        X: dec.X===true?'acepta':dec.X===false?'rechaza':'sin_eleccion',
+        O: dec.O===true?'acepta':dec.O===false?'rechaza':'sin_eleccion'
+      };
+      const ts=Date.now();
+      const base={tc_decision_final:norm,tc_resolucion_ts:ts};
 
-    // SIN / SIN: empate definitivo por falta de decisión.
-    if(norm.X==='sin_eleccion' && norm.O==='sin_eleccion'){
-      return Object.assign({},current,base,{
-        fase:'empate_sin_respuesta',
-        empate_sin_respuesta_inicio:ts,
-        empate_sin_respuesta_ack:{X:null,O:null}
-      });
-    }
-
-    // Cualquier NO abre la prioridad de reclamo.
-    if(norm.X==='rechaza' || norm.O==='rechaza'){
-      let prioritario;
-      if(norm.X==='rechaza' && norm.O==='rechaza'){
-        // Ambos rechazan: comienza quien obtuvo la prioridad inicial.
-        prioritario=current.ultimo_sorteo || 'X';
-      } else if(norm.X==='rechaza'){
-        prioritario='X';
-      } else {
-        prioritario='O';
+      // SIN / SIN: empate definitivo por falta de decisión.
+      if(norm.X==='sin_eleccion' && norm.O==='sin_eleccion'){
+        return Object.assign({},current,base,{
+          fase:'empate_sin_respuesta',
+          empate_sin_respuesta_inicio:ts,
+          empate_sin_respuesta_ack:{X:null,O:null}
+        });
       }
-      return Object.assign({},current,base,{
-        fase:'prioridad_reclamo',
-        prioridad_jugador:prioritario,
-        prioridad_intento:1,
-        prioridad_inicio_ts:null,
-        prioridad_timeout_ts:null,
-        prioridad_aceptado_X:false,
-        prioridad_aceptado_O:false,
-        fichas_marcadas_reclamo:null,
-        fichas_timeout_reclamo:null
-      });
-    }
 
-    // SI / SI, SI / SIN y SIN / SI: empate definitivo.
-    const empates=(current.empates||0)+1;
-    const jugadas=(current.partidasJugadas||0)+1;
-    const total=current.totalPartidas||0;
-    return Object.assign({},current,base,{
-      fase:'empate_final',
-      empates,
-      partidasJugadas:jugadas,
-      fin_sesion:total>0&&jugadas>=total,
-      nueva_partida_solicitud:null
+      // Cualquier NO abre la prioridad de reclamo.
+      if(norm.X==='rechaza' || norm.O==='rechaza'){
+        let prioritario;
+        if(norm.X==='rechaza' && norm.O==='rechaza'){
+          // Ambos rechazan: comienza quien obtuvo la prioridad inicial.
+          prioritario=current.ultimo_sorteo || 'X';
+        } else if(norm.X==='rechaza'){
+          prioritario='X';
+        } else {
+          prioritario='O';
+        }
+        return Object.assign({},current,base,{
+          fase:'prioridad_reclamo',
+          prioridad_jugador:prioritario,
+          prioridad_intento:1,
+          prioridad_inicio_ts:null,
+          prioridad_timeout_ts:null,
+          prioridad_aceptado_X:false,
+          prioridad_aceptado_O:false,
+          fichas_marcadas_reclamo:null,
+          fichas_timeout_reclamo:null
+        });
+      }
+
+      // SI / SI, SI / SIN y SIN / SI: empate definitivo.
+      const empates=(current.empates||0)+1;
+      const jugadas=(current.partidasJugadas||0)+1;
+      const total=current.totalPartidas||0;
+      return Object.assign({},current,base,{
+        fase:'empate_final',
+        empates,
+        partidasJugadas:jugadas,
+        fin_sesion:total>0&&jugadas>=total,
+        nueva_partida_solicitud:null
+      });
     });
-  });
-  return !!res.committed;
+  } catch(err){
+    console.error('[EMPATE-DEBUG] revisarEstadoEmpate: runTransaction lanzó un error',err);
+    res={committed:false};
+  }
+  if(res.committed){
+    console.debug('[EMPATE-DEBUG] revisarEstadoEmpate: transición confirmada');
+    return true;
+  }
+  console.debug('[EMPATE-DEBUG] revisarEstadoEmpate: no comiteó (intento '+_intento+'), razón: '+(abortReason||'desconocida'));
+  // Si la fase todavía es tablero_completo y las condiciones para resolver
+  // siguen dándose, reintentamos con backoff en vez de quedar colgados
+  // esperando un snapshot nuevo que quizás nunca llegue.
+  if(_intento<5){
+    _tcResolviendo=false; // liberar antes de esperar, para no bloquear un reintento externo
+    await new Promise(r=>setTimeout(r, 300*_intento));
+    const snapRetry=await get(_salaRef);
+    const dRetry=snapRetry.val();
+    return this.revisarEstadoEmpate(dRetry, porTimeout, _intento+1);
+  }
+  console.error('[EMPATE-DEBUG] revisarEstadoEmpate: se agotaron los reintentos, la partida podría quedar colgada. Revisar reglas de Firebase / conectividad.');
+  return false;
 } finally {
   _tcResolviendo=false;
 }
@@ -2491,7 +2524,12 @@ try {
 async resolverTimeoutEmpate(){
   const s=await get(_salaRef);
   const d=s.val();
-  return this.revisarEstadoEmpate(d,true);
+  try {
+    return await this.revisarEstadoEmpate(d,true);
+  } catch(err){
+    console.error('[EMPATE-DEBUG] resolverTimeoutEmpate: error inesperado',err);
+    return false;
+  }
 },
 async aceptarEmpateSinRespuesta(){
   if(!_salaRef) return;
