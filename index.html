@@ -1416,6 +1416,12 @@ if(!abandono && !d.nueva_partida_solicitud) {
 }
 }
 function _faseEspera(d){
+// V18: al salir de empate_sin_respuesta el overlay de 5 segundos debe
+// desaparecer inmediatamente. Antes quedaba visible aunque Firebase ya
+// hubiese avanzado correctamente a esperando_sorteo.
+EmpateFlow.ocultarModalSinRespuesta();
+EmpateFlow.ocultarModalTC();
+EmpateFlow.ocultarModalPrioridad();
 EmpateFlow.detenerCronometroPrioridad();
 UI.bloquearTablero(true);
 UI.setMsg('Pulsa SORTEAR PARTIDA para comenzar.');
@@ -2560,13 +2566,25 @@ async resolverTimeoutEmpate(){
   }
 },
 async aceptarEmpateSinRespuesta(){
-  if(!_salaRef) return;
-  const snap=await get(_salaRef); const d=snap.val();
-  if(!d || d.fase!=='empate_sin_respuesta') return;
-  await update(_salaRef,{['empate_sin_respuesta_ack/'+_rol]:true});
-  // V17: cualquiera de los dos clientes puede intentar cerrar el estado.
-  // La transacción decide atómicamente si ya corresponde salir.
-  await this.resolverSalidaSinRespuesta();
+  if(!_salaRef) return false;
+  const rol=_rol;
+  const res=await runTransaction(_salaRef,current=>{
+    if(!current || current.fase!=='empate_sin_respuesta') return;
+    const ack=Object.assign({X:null,O:null},current.empate_sin_respuesta_ack||{});
+    ack[rol]=true;
+    if(ack.X===true && ack.O===true){
+      return Object.assign({},current,{fase:'esperando_sorteo',tablero:Estado.tableroVacio(),turno:null,
+        terminado:false,ganador:null,jugadas:0,fichasX:16,fichasO:16,ultimo_sorteo:null,sorteo_id:null,sorteo_usado:false,
+        tc_decision:null,tc_inicio:null,tc_decision_final:null,tc_resolucion_ts:null,
+        empate_sin_respuesta_inicio:null,empate_sin_respuesta_ack:null,
+        fichas_ganadoras_reclamadas:null,fichas_marcadas_reclamo:null,reclamante:null,reclamo_fichas:null,resultado_reclamo:null,
+        fichas_timeout_reclamo:null,prioridad_jugador:null,prioridad_intento:null,prioridad_inicio_ts:null,prioridad_timeout_ts:null,
+        prioridad_aceptado_X:false,prioridad_aceptado_O:false,nueva_partida_solicitud:null});
+    }
+    return Object.assign({},current,{empate_sin_respuesta_ack:ack});
+  });
+  console.debug('[FLOW-V18] aceptar empate sin respuesta',rol,res.committed);
+  return !!res.committed;
 },
 async resolverSalidaSinRespuesta(){
   const res=await runTransaction(_salaRef,current=>{
@@ -2639,6 +2657,14 @@ const prioritario = (d.prioridad_jugador==='X') ? 'O' : 'X';
 cambios.fase = 'prioridad_reclamo';
 cambios.prioridad_jugador = prioritario;
 cambios.prioridad_intento = 2;
+// V18: el segundo jugador recibe un cronómetro independiente de 30 s.
+// Nunca se hereda el tiempo ni las aceptaciones del intento 1.
+cambios.prioridad_inicio_ts = null;
+cambios.prioridad_timeout_ts = null;
+cambios.prioridad_aceptado_X = false;
+cambios.prioridad_aceptado_O = false;
+cambios.fichas_timeout_reclamo = null;
+cambios.fichas_marcadas_reclamo = null;
 cambios.tc_decision_final = dec;
 } else {
 // Empate final
