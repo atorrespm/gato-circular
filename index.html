@@ -1034,7 +1034,25 @@ function encolarEstado(d, miRol){
 }
 async function aplicarEstado(d, miRol) {
 if(!d) return;
-console.debug('[FLOW-V17] aplicarEstado', {fase:d.fase, tc:d.tc_decision||null, tcf:d.tc_decision_final||null, prioridad:d.prioridad_jugador||null, paX:!!d.prioridad_aceptado_X, paO:!!d.prioridad_aceptado_O, inicio:d.prioridad_inicio_ts||null, sinAck:d.empate_sin_respuesta_ack||null});
+console.debug('[FLOW-V22] aplicarEstado', {fase:d.fase, terminado:!!d.terminado, abandono:d.abandono||null, tc:d.tc_decision||null, prioridad:d.prioridad_jugador||null});
+// V22: el abandono del oponente puede ocurrir DESPUÉS de que ya se haya
+// renderizado la victoria normal. Se detecta aquí, antes de cualquier
+// render/dispatch, y no solamente dentro de _faseTerminado().
+if(d.terminado===true && d.abandono && d.abandono.abandonador !== miRol && d.abandono.ganador === miRol){
+  _abandonoOponenteAvisoVisto = d.abandono.ts || Date.now();
+  if(d.nueva_partida_solicitud){
+    try{ await update(_salaRef,{nueva_partida_solicitud:null,nueva_partida_max_alert:null}); }catch(e){ console.warn('[FLOW-V22] no pudo limpiar solicitud post-abandono',e); }
+  }
+  _ocultarConfirmacionNuevaPartida();
+  _ocultarMaxNoNuevaPartida();
+  UI.bloquearTablero(true);
+  UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+  UI.bloquearBtns(['btn-abandonar'],false);
+  const _btnAbV22=document.getElementById('btn-abandonar');
+  if(_btnAbV22){_btnAbV22.disabled=false;_btnAbV22.style.opacity='';_btnAbV22.style.pointerEvents='';}
+  _mostrarModalOponenteAbandono(_abandonoOponenteAvisoVisto, miRol);
+}
+
 Estado.fromFirebase(d); _ultimoD = d;
 if(typeof Sesion !== 'undefined') Sesion.fromFirebase(d);
 if(typeof _revisarModoPropuesto === 'function') _revisarModoPropuesto(d);
@@ -1304,6 +1322,16 @@ function _ocultarMaxNoNuevaPartida(){
   if(overlay) overlay.style.display='none';
 }
 function _revisarNuevaPartida(d, miRol){
+  // V22: abandono tiene precedencia absoluta sobre Nueva Partida.
+  if(d.abandono && d.abandono.ganador===miRol){
+    _ocultarConfirmacionNuevaPartida();
+    _ocultarMaxNoNuevaPartida();
+    UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+    UI.bloquearBtns(['btn-abandonar'],false);
+    const b=document.getElementById('btn-abandonar');
+    if(b){b.disabled=false;b.style.opacity='';b.style.pointerEvents='';}
+    return;
+  }
   const alert = d.nueva_partida_max_alert;
   if(alert){
     _ocultarConfirmacionNuevaPartida();
@@ -2358,6 +2386,17 @@ async solicitarNuevaPartida(){
     if(!_salaRef) return;
     const snap=await get(_salaRef); const d=snap.val();
     if(!d || !(d.fase==='empate_final' || d.terminado===true)) return;
+    // V22: si el oponente ya abandonó, nunca se crea una solicitud bilateral.
+    if(d.abandono){
+      if(d.abandono.ganador===_rol){
+        _ocultarConfirmacionNuevaPartida();
+        _ocultarMaxNoNuevaPartida();
+        UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+        UI.bloquearBtns(['btn-abandonar'],false);
+        _mostrarModalOponenteAbandono(d.abandono.ts||Date.now(), _rol);
+      }
+      return;
+    }
     if(d.nueva_partida_max_alert) return;
     const solicitudActual=d.nueva_partida_solicitud;
     if(solicitudActual && !(solicitudActual.decisiones && (solicitudActual.decisiones.X===false || solicitudActual.decisiones.O===false))) return;
