@@ -1039,7 +1039,8 @@ console.debug('[FLOW-V22] aplicarEstado', {fase:d.fase, terminado:!!d.terminado,
 // renderizado la victoria normal. Se detecta aquí, antes de cualquier
 // render/dispatch, y no solamente dentro de _faseTerminado().
 if(d.terminado===true && d.abandono && d.abandono.abandonador !== miRol && d.abandono.ganador === miRol){
-  _abandonoOponenteAvisoVisto = d.abandono.ts || Date.now();
+  // V23: no marcar el aviso como visto antes de mostrarlo. En V22 esto
+  // anulaba la condición interna de _faseTerminado() y el modal nunca aparecía.
   if(d.nueva_partida_solicitud){
     try{ await update(_salaRef,{nueva_partida_solicitud:null,nueva_partida_max_alert:null}); }catch(e){ console.warn('[FLOW-V22] no pudo limpiar solicitud post-abandono',e); }
   }
@@ -1063,7 +1064,7 @@ if(window.Firebase && Firebase.revisarTimeoutPrioridad) Firebase.revisarTimeoutP
 // Resetear la bandera de victoria mostrada de forma SINCRONIZADA:
 // apenas Firebase confirma que la partida ya no está terminada
 // (nueva partida), sin depender de quién haya pulsado el botón
-if(d.terminado === false) _victoriaVista = false;
+if(d.terminado === false){ _victoriaVista = false; const b=document.getElementById('btn-abandonar'); if(b) delete b.dataset.salidaTrasAbandono; }
 // V17 · RESOLUTOR CENTRAL REAL DEL EMPATE.
 // Mientras el estado siga en tablero_completo y ya existan ambas decisiones,
 // NINGÚN cliente debe volver a pintar ese estado. Cualquier cliente puede
@@ -1401,7 +1402,7 @@ function _mostrarModalOponenteAbandono(ts, miRol){
       UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
       UI.bloquearBtns(['btn-abandonar'],false);
       const b=document.getElementById('btn-abandonar');
-      if(b){b.disabled=false;b.style.opacity='';b.style.pointerEvents='';}
+      if(b){b.disabled=false;b.style.opacity='';b.style.pointerEvents='';b.dataset.salidaTrasAbandono='1';}
       UI.setMsg('Tu oponente abandonó. Eres el ganador. Puedes estudiar las jugadas o abandonar la partida.');
     });
     document.getElementById('btn-ab-salir')?.addEventListener('click',()=>{
@@ -1460,8 +1461,8 @@ if(abandono){
     const btnAb = document.getElementById('btn-abandonar');
     if(btnAb){ btnAb.disabled=false; btnAb.style.opacity=''; btnAb.style.pointerEvents=''; }
     if(abandono.abandonador !== miRol && _abandonoOponenteAvisoVisto !== abandono.ts){
-      _abandonoOponenteAvisoVisto = abandono.ts;
       _mostrarModalOponenteAbandono(abandono.ts, miRol);
+      _abandonoOponenteAvisoVisto = abandono.ts;
     }
     UI.setMsg('Tu oponente abandonó. Eres el ganador.');
   } else if(!esGanador){
@@ -3051,6 +3052,12 @@ function _mostrarConfirmacionAbandono(cb, yaGanoPorAbandono=false, partidaYaTerm
 }
 $('btn-abandonar').onclick = async ()=>{
   if(!Firebase.isIniciado()) return;
+  const btnAbNow=document.getElementById('btn-abandonar');
+  if(btnAbNow && btnAbNow.dataset.salidaTrasAbandono==='1'){
+    _ocultarModalOponenteAbandono();
+    Firebase.salirLocalTrasAbandono();
+    return;
+  }
   const snap=await Firebase.snapshotFase();
   if(!snap) return;
   if(snap.abandono && snap.abandono.ganador===Firebase.getMiRol()){
