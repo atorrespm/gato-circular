@@ -1395,7 +1395,12 @@ if(abandono){
     UI.setMsg('Has abandonado la partida. Tu oponente es el ganador.');
   }
 } else {
-  UI.bloquearBtns(['btn-abandonar'],true);
+  // V20: tras una victoria normal por reclamo/tiempo, el tablero queda visible
+  // para estudio y Nueva Partida sigue siendo la acción principal.
+  // Abandonar también permanece disponible como salida voluntaria local.
+  UI.bloquearBtns(['btn-abandonar'],false);
+  const btnAbFin = document.getElementById('btn-abandonar');
+  if(btnAbFin){ btnAbFin.disabled=false; btnAbFin.style.opacity=''; btnAbFin.style.pointerEvents=''; }
 }
 
 if(!_victoriaVista&&d.ganador){
@@ -2781,9 +2786,13 @@ async abandonarPartida(){
       await update(_salaRef,{'abandono/salida_ganador_ts':Date.now(),'abandono/salida_ganador':true});
       return;
     }
-    // La partida ya terminó por una causa distinta del abandono: no se puede
-    // convertir retrospectivamente ese resultado en un abandono.
-    if(d.terminado) return;
+    // V19: si la partida ya terminó por una victoria normal (reclamo válido
+    // o tiempo agotado), Abandonar no altera retrospectivamente el resultado.
+    // Funciona como salida voluntaria del jugador que conserva el tablero.
+    if(d.terminado){
+      this.salirLocalTrasAbandono();
+      return;
+    }
     const ganador=_rol==='X'?'O':'X';
     const vX=(d.victoriasX||0)+(ganador==='X'?1:0);
     const vO=(d.victoriasO||0)+(ganador==='O'?1:0);
@@ -2925,7 +2934,7 @@ $('btn-nueva').onclick = async ()=>{
     UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
 };
 let _abandonoConfirmCb = null;
-function _mostrarConfirmacionAbandono(cb, yaGanoPorAbandono=false){
+function _mostrarConfirmacionAbandono(cb, yaGanoPorAbandono=false, partidaYaTerminada=false){
   _abandonoConfirmCb = cb;
   let ov=document.getElementById('abandono-confirm-overlay');
   if(!ov){
@@ -2949,7 +2958,9 @@ function _mostrarConfirmacionAbandono(cb, yaGanoPorAbandono=false){
   if(msg){
     msg.textContent = yaGanoPorAbandono
       ? 'Si abandona la partida, se reiniciará el tablero. No será penalizado en su ranking.'
-      : 'Si abandona la partida, su oponente será declarado ganador.';
+      : partidaYaTerminada
+        ? 'La partida ya terminó. Si abandona, saldrá de esta partida sin modificar el resultado.'
+        : 'Si abandona la partida, su oponente será declarado ganador.';
   }
   ov.style.display='flex';
 }
@@ -2964,11 +2975,14 @@ $('btn-abandonar').onclick = async ()=>{
     }, true);
     return;
   }
-  // V11: ABANDONAR PARTIDA es una salida de emergencia disponible en
-  // cualquier estado de una sala activa. La confirmación SÍ/NO siempre
-  // precede al abandono. Si el oponente ya abandonó, se usa la ruta
-  // especial sin penalización anterior.
-  if(snap.terminado && !(snap.abandono && snap.abandono.ganador===Firebase.getMiRol())) return;
+  // V11/V20: ABANDONAR PARTIDA es una salida de emergencia disponible en
+  // cualquier estado de una sala. La confirmación SÍ/NO siempre precede
+  // al abandono. Si la partida terminó por victoria normal, también se
+  // permite salir sin modificar retrospectivamente el resultado.
+  if(snap.terminado){
+    _mostrarConfirmacionAbandono(async ()=>{ await Firebase.abandonarPartida(); }, false, true);
+    return;
+  }
   _mostrarConfirmacionAbandono(async ()=>{ await Firebase.abandonarPartida(); });
 };
 $('btn-sortear').onclick = async ()=>{
