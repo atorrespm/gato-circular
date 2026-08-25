@@ -2872,10 +2872,25 @@ async abandonarPartida(){
       await update(_salaRef,{'abandono/salida_ganador_ts':Date.now(),'abandono/salida_ganador':true});
       return;
     }
-    // V19: si la partida ya terminó por una victoria normal (reclamo válido
-    // o tiempo agotado), Abandonar no altera retrospectivamente el resultado.
-    // Funciona como salida voluntaria del jugador que conserva el tablero.
+    // V24: si la partida ya terminó por una victoria normal, el abandono
+    // posterior TAMBIÉN debe quedar registrado en Firebase para que el
+    // oponente reciba inmediatamente la notificación. Antes solo se hacía
+    // la salida local, por lo que el segundo jugador jamás podía saber que
+    // el primero había abandonado y quedaba atrapado esperando su decisión.
+    // El resultado original se conserva: d.ganador sigue siendo el ganador.
     if(d.terminado){
+      const ganadorFinal = d.ganador || (_rol==='X'?'O':'X');
+      await update(_salaRef,{
+        abandono:{
+          abandonador:_rol,
+          ganador:ganadorFinal,
+          ts:Date.now(),
+          penaliza_abandonador:false,
+          salida_ganador:false
+        },
+        nueva_partida_solicitud:null,
+        nueva_partida_max_alert:null
+      });
       this.salirLocalTrasAbandono();
       return;
     }
@@ -2990,7 +3005,7 @@ $('lbtn-crear').onclick  = ()=>Firebase.crearSala();
 $('lbtn-copiar').onclick = ()=>{ Firebase.copiarCodigo(); $('lbtn-copiar').textContent='✓ COPIADO!'; setTimeout(()=>$('lbtn-copiar').textContent='📋 COPIAR CÓDIGO',2000); };
 $('lbtn-volver').onclick  = ()=>UI.lobbyPaso('inicio');
 $('lbtn-volver2').onclick = ()=>UI.lobbyPaso('inicio');
-$('lbtn-unirse').onclick  = ()=>{ UI.lobbyPaso('unirse'); $('lobby-input').focus(); };
+$('lbtn-unirse').onclick  = ()=>{ const inp=$('lobby-input'); if(inp) inp.value=''; UI.lobbyPaso('unirse'); inp?.focus(); };
 $('lobby-input').oninput  = e=>{ e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,''); };
 $('lbtn-conectar').onclick = async ()=>{
 const cod=$('lobby-input').value.trim().toUpperCase();
