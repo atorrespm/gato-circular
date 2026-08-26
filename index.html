@@ -1039,19 +1039,27 @@ console.debug('[FLOW-V22] aplicarEstado', {fase:d.fase, terminado:!!d.terminado,
 // renderizado la victoria normal. Se detecta aquí, antes de cualquier
 // render/dispatch, y no solamente dentro de _faseTerminado().
 if(d.abandono && d.abandono.abandonador !== miRol){
-  // V23: no marcar el aviso como visto antes de mostrarlo. En V22 esto
-  // anulaba la condición interna de _faseTerminado() y el modal nunca aparecía.
+  // V26: el abandono del oponente es un ESTADO DE PRIORIDAD ABSOLUTA.
+  // Se procesa aquí y se retorna inmediatamente para impedir que
+  // _faseTerminado(), _revisarNuevaPartida() u otro resolver vuelva a
+  // pisar los botones o abra una espera bilateral imposible.
+  Estado.fromFirebase(d); _ultimoD = d;
+  if(typeof Sesion !== 'undefined') Sesion.fromFirebase(d);
   if(d.nueva_partida_solicitud){
-    try{ await update(_salaRef,{nueva_partida_solicitud:null,nueva_partida_max_alert:null}); }catch(e){ console.warn('[FLOW-V22] no pudo limpiar solicitud post-abandono',e); }
+    try{ await update(_salaRef,{nueva_partida_solicitud:null,nueva_partida_max_alert:null}); }catch(e){ console.warn('[FLOW-V26] no pudo limpiar solicitud post-abandono',e); }
   }
   _ocultarConfirmacionNuevaPartida();
   _ocultarMaxNoNuevaPartida();
   UI.bloquearTablero(true);
   UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
   UI.bloquearBtns(['btn-abandonar'],false);
-  const _btnAbV22=document.getElementById('btn-abandonar');
-  if(_btnAbV22){_btnAbV22.disabled=false;_btnAbV22.style.opacity='';_btnAbV22.style.pointerEvents='';}
-  _mostrarModalOponenteAbandono(_abandonoOponenteAvisoVisto, miRol);
+  const btnAbV26=document.getElementById('btn-abandonar');
+  if(btnAbV26){btnAbV26.disabled=false;btnAbV26.style.opacity='';btnAbV26.style.pointerEvents='';}
+  _mostrarModalOponenteAbandono(d.abandono.ts, miRol);
+  UI.setMsg(d.abandono.ganador===miRol
+    ? 'Tu oponente abandonó. Eres el ganador. Puedes estudiar las jugadas o abandonar la partida.'
+    : 'Tu oponente abandonó. El resultado original se conserva. Puedes estudiar las jugadas o abandonar la partida.');
+  return;
 }
 
 Estado.fromFirebase(d); _ultimoD = d;
@@ -1324,7 +1332,7 @@ function _ocultarMaxNoNuevaPartida(){
 }
 function _revisarNuevaPartida(d, miRol){
   // V22: abandono tiene precedencia absoluta sobre Nueva Partida.
-  if(d.abandono && d.abandono.ganador===miRol){
+  if(d.abandono && d.abandono.abandonador !== miRol){
     _ocultarConfirmacionNuevaPartida();
     _ocultarMaxNoNuevaPartida();
     UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
@@ -1361,14 +1369,14 @@ function _revisarNuevaPartida(d, miRol){
     // para que el jugador pueda salir de inmediato al lobby.
     UI.bloquearBtns(['btn-nueva'], false);
     UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar'], true);
-    if(d.abandono && d.abandono.ganador===miRol){
+    if(d.abandono && d.abandono.abandonador !== miRol){
       UI.bloquearBtns(['btn-abandonar'], false);
       const b=document.getElementById('btn-abandonar');
       if(b){b.disabled=false;b.style.opacity='';b.style.pointerEvents='';}
     } else {
       UI.bloquearBtns(['btn-abandonar'], true);
     }
-    UI.setMsg(d.abandono && d.abandono.ganador===miRol
+    UI.setMsg(d.abandono && d.abandono.abandonador !== miRol
       ? 'Tu oponente abandonó. La partida anterior permanece visible para estudio. Puedes abandonarla para volver al lobby.'
       : 'Nueva Partida rechazada. La partida anterior permanece visible para estudio.');
     return;
@@ -1404,7 +1412,8 @@ function _mostrarModalOponenteAbandono(ts, miRol){
       UI.bloquearBtns(['btn-abandonar'],false);
       const b=document.getElementById('btn-abandonar');
       if(b){b.disabled=false;b.style.opacity='';b.style.pointerEvents='';b.dataset.salidaTrasAbandono='1'; _salidaTrasAbandono=true;}
-      UI.setMsg(esGanador ? 'Tu oponente abandonó. Eres el ganador. Puedes estudiar las jugadas o abandonar la partida.' : 'Tu oponente abandonó. El resultado original se conserva. Puedes estudiar las jugadas o abandonar la partida.');
+      const soyGanador = !!(_ultimoD && _ultimoD.abandono && _ultimoD.abandono.ganador === miRol);
+      UI.setMsg(soyGanador ? 'Tu oponente abandonó. Eres el ganador. Puedes estudiar las jugadas o abandonar la partida.' : 'Tu oponente abandonó. El resultado original se conserva. Puedes estudiar las jugadas o abandonar la partida.');
     });
     document.getElementById('btn-ab-salir')?.addEventListener('click',()=>{
       ov.style.display='none';
@@ -1454,7 +1463,7 @@ if(abandono){
     return;
   }
   const esGanador = abandono.ganador === miRol;
-  // V25: cualquier jugador que quede solo debe ser notificado, sin importar
+  // V26: cualquier jugador que quede solo debe ser notificado, sin importar
   // quién ganó originalmente. El abandono del oponente tiene prioridad.
   UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
   UI.bloquearBtns(['btn-abandonar'], false);
@@ -2866,14 +2875,14 @@ async abandonarPartida(){
     // La UI exige confirmación SÍ/NO antes de llegar aquí.
     const snap=await get(_salaRef); const d=snap.val();
     if(!d) return;
-    // V25: si el oponente ya abandonó, el jugador restante solo necesita salir.
+    // V26: si el oponente ya abandonó, el jugador restante solo necesita salir.
     // No se modifica el resultado ni se registra un segundo abandono.
     if(d.abandono && d.abandono.abandonador !== _rol){
       await update(_salaRef,{'abandono/salida_oponente_ts':Date.now()});
       this.salirLocalTrasAbandono();
       return;
     }
-    // V24: si la partida ya terminó por una victoria normal, el abandono
+    // V26: si la partida ya terminó por una victoria normal, el abandono
     // posterior TAMBIÉN debe quedar registrado en Firebase para que el
     // oponente reciba inmediatamente la notificación. Antes solo se hacía
     // la salida local, por lo que el segundo jugador jamás podía saber que
@@ -3067,17 +3076,21 @@ function _mostrarConfirmacionAbandono(cb, yaGanoPorAbandono=false, partidaYaTerm
   ov.style.display='flex';
 }
 $('btn-abandonar').onclick = async ()=>{
-  if(!Firebase.isIniciado()) return;
+  // V26: después de que el oponente abandonó, este botón es una salida
+  // unilateral al lobby. No depende de un snapshot fresco ni de una sala
+  // que ya pueda estar en proceso de desmontaje.
   const btnAbNow=document.getElementById('btn-abandonar');
-  if(btnAbNow && btnAbNow.dataset.salidaTrasAbandono==='1'){
+  if(_salidaTrasAbandono || (btnAbNow && btnAbNow.dataset.salidaTrasAbandono==='1')){
     _ocultarModalOponenteAbandono();
+    _salidaTrasAbandono=true;
     Firebase.salirLocalTrasAbandono();
     return;
   }
+  if(!Firebase.isIniciado()) return;
   const snap=await Firebase.snapshotFase();
   if(!snap) return;
   if(_salidaTrasAbandono || (snap.abandono && snap.abandono.abandonador !== Firebase.getMiRol())){
-    // V25: tras el abandono del oponente, Abandonar es una salida directa al lobby.
+    // V26: tras el abandono del oponente, Abandonar es una salida directa al lobby.
     _ocultarModalOponenteAbandono();
     _salidaTrasAbandono=true;
     Firebase.salirLocalTrasAbandono();
