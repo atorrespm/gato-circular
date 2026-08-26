@@ -1635,10 +1635,10 @@ function reset(){
     _sorteoVisto=null; _victoriaVista=false; _reclamoKey=null;
     _prioridadMostrada=null; _empateFinalKey=null; _resultadoReclamoVisto=null;
     _npConfirmacionVista=null; _npMaxAlertVisto=null; _npFinalizacionEnCurso=null; _abandonoVisto=null; // Limpieza de estado de fin de partida
-    _npFinalizacionEnCurso=null;
+    _npFinalizacionEnCurso=null; _salidaTrasAbandono=false; _ultimoD=null;
     window._empateYaMostrado=false;
 }
-return {aplicarEstado, encolarEstado, reset};
+return {aplicarEstado, encolarEstado, reset, getUltimoEstado:()=>_ultimoD, isSalidaTrasAbandono:()=>_salidaTrasAbandono, marcarSalidaTrasAbandono:()=>{_salidaTrasAbandono=true;}};
 })();
 /* ═══════════════════════════════════════════════════════
 M14· CHAT JS — Chat en tiempo real
@@ -3087,9 +3087,9 @@ $('btn-abandonar').onclick = ()=>{
 
   // Si ya estamos en la salida posterior al abandono del oponente, salir
   // directamente al lobby. No existe una segunda confirmación.
-  if(_salidaTrasAbandono || (btnAbNow && btnAbNow.dataset.salidaTrasAbandono==='1')){
+  if(Juego.isSalidaTrasAbandono() || (btnAbNow && btnAbNow.dataset.salidaTrasAbandono==='1')){
     _ocultarModalOponenteAbandono();
-    _salidaTrasAbandono=true;
+    Juego.marcarSalidaTrasAbandono();
     Firebase.salirLocalTrasAbandono();
     return;
   }
@@ -3098,10 +3098,10 @@ $('btn-abandonar').onclick = ()=>{
 
   // Si el último estado conocido ya contiene el abandono del oponente,
   // tampoco hacemos una lectura asíncrona antes de responder al clic.
-  const snap=_ultimoD;
+  const snap=Juego.getUltimoEstado();
   if(snap && snap.abandono && snap.abandono.abandonador !== Firebase.getMiRol()){
     _ocultarModalOponenteAbandono();
-    _salidaTrasAbandono=true;
+    Juego.marcarSalidaTrasAbandono();
     Firebase.salirLocalTrasAbandono();
     return;
   }
