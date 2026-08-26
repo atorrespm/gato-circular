@@ -1072,7 +1072,14 @@ if(window.Firebase && Firebase.revisarTimeoutPrioridad) Firebase.revisarTimeoutP
 // Resetear la bandera de victoria mostrada de forma SINCRONIZADA:
 // apenas Firebase confirma que la partida ya no está terminada
 // (nueva partida), sin depender de quién haya pulsado el botón
-if(d.terminado === false){ _victoriaVista = false; _salidaTrasAbandono=false; const b=document.getElementById('btn-abandonar'); if(b) delete b.dataset.salidaTrasAbandono; }
+if(d.terminado === false){
+  _victoriaVista = false; _salidaTrasAbandono=false;
+  const b=document.getElementById('btn-abandonar');
+  if(b){ delete b.dataset.salidaTrasAbandono; }
+  // V29: al comenzar una nueva partida se restaura el manejador general
+  // instalado al final del documento.
+  if(typeof instalarHandlerAbandonarGeneral==='function') instalarHandlerAbandonarGeneral();
+}
 // V17 · RESOLUTOR CENTRAL REAL DEL EMPATE.
 // Mientras el estado siga en tablero_completo y ya existan ambas decisiones,
 // NINGÚN cliente debe volver a pintar ese estado. Cualquier cliente puede
@@ -1411,7 +1418,24 @@ function _mostrarModalOponenteAbandono(ts, miRol){
       UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
       UI.bloquearBtns(['btn-abandonar'],false);
       const b=document.getElementById('btn-abandonar');
-      if(b){b.disabled=false;b.style.opacity='';b.style.pointerEvents='';b.dataset.salidaTrasAbandono='1'; _salidaTrasAbandono=true;}
+      if(b){
+        b.disabled=false;
+        b.style.opacity='';
+        b.style.pointerEvents='auto';
+        b.dataset.salidaTrasAbandono='1';
+        _salidaTrasAbandono=true;
+        // V29: micro-reparación. Al volver al tablero después de que el
+        // oponente abandonó, este botón queda convertido explícitamente en
+        // una salida directa. No depende del estado remoto ni de otra ruta.
+        b.onclick=()=>{
+          try{
+            _ocultarModalOponenteAbandono();
+            _salidaTrasAbandono=true;
+            if(window.Juego && Juego.marcarSalidaTrasAbandono) Juego.marcarSalidaTrasAbandono();
+            if(window.Firebase && Firebase.salirLocalTrasAbandono) Firebase.salirLocalTrasAbandono();
+          }catch(e){ console.error('[V29] salida directa tras abandono:',e); }
+        };
+      }
       const soyGanador = !!(_ultimoD && _ultimoD.abandono && _ultimoD.abandono.ganador === miRol);
       UI.setMsg(soyGanador ? 'Tu oponente abandonó. Eres el ganador. Puedes estudiar las jugadas o abandonar la partida.' : 'Tu oponente abandonó. El resultado original se conserva. Puedes estudiar las jugadas o abandonar la partida.');
     });
@@ -3075,6 +3099,7 @@ function _mostrarConfirmacionAbandono(cb, yaGanoPorAbandono=false, partidaYaTerm
   }
   ov.style.display='flex';
 }
+function instalarHandlerAbandonarGeneral(){
 $('btn-abandonar').onclick = ()=>{
   // V27: esta ruta NO espera primero un get() de Firebase. El botón debe
   // responder inmediatamente. Usamos el último snapshot que ya llegó por
@@ -3115,6 +3140,8 @@ $('btn-abandonar').onclick = ()=>{
     partidaYaTerminada
   );
 };
+}
+instalarHandlerAbandonarGeneral();
 $('btn-sortear').onclick = async ()=>{
 if(!Firebase.isIniciado()) return;
 const r=await Firebase.sortear();
