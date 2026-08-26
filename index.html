@@ -1424,7 +1424,7 @@ function _mostrarModalOponenteAbandono(ts, miRol){
         b.style.pointerEvents='auto';
         b.dataset.salidaTrasAbandono='1';
         _salidaTrasAbandono=true;
-        // V29: micro-reparación. Al volver al tablero después de que el
+        // V30: salida final. Al volver al tablero después de que el
         // oponente abandonó, este botón queda convertido explícitamente en
         // una salida directa. No depende del estado remoto ni de otra ruta.
         b.onclick=()=>{
@@ -1433,7 +1433,7 @@ function _mostrarModalOponenteAbandono(ts, miRol){
             _salidaTrasAbandono=true;
             if(window.Juego && Juego.marcarSalidaTrasAbandono) Juego.marcarSalidaTrasAbandono();
             if(window.Firebase && Firebase.salirLocalTrasAbandono) Firebase.salirLocalTrasAbandono();
-          }catch(e){ console.error('[V29] salida directa tras abandono:',e); }
+          }catch(e){ console.error('[V30] salida directa tras abandono:',e); }
         };
       }
       const soyGanador = !!(_ultimoD && _ultimoD.abandono && _ultimoD.abandono.ganador === miRol);
@@ -2236,7 +2236,7 @@ appId:             "1:1029841004696:web:f784ab513dd301d58a48ed",
 databaseURL:       "https://gato-circular-default-rtdb.firebaseio.com"
 }));
 /* ── M13 · FIREBASE ─────────────────────────────────── */
-let _salaRef=null, _sala=null, _rol=null, _iniciado=false, _enviandoJugada=false, _unsubSala=null, _tcResolviendo=false;
+let _salaRef=null, _sala=null, _rol=null, _iniciado=false, _enviandoJugada=false, _unsubSala=null, _tcResolviendo=false, _recargandoTrasAbandono=false;
 const $=id=>document.getElementById(id);
 function _codigo(){
 const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -2945,6 +2945,8 @@ async abandonarPartida(){
     this.salirLocalTrasAbandono();
 },
 salirLocalTrasAbandono(){
+    if(_recargandoTrasAbandono) return;
+    _recargandoTrasAbandono=true;
     if(_unsubSala){ _unsubSala(); _unsubSala=null; }
     _iniciado=false;
     UI.cerrarModal();
@@ -2958,6 +2960,16 @@ salirLocalTrasAbandono(){
     UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar','btn-abandonar'],true);
     UI.lobbyPaso('inicio');
     UI.lobbyVisible(true);
+    // V30: reinicio completo de la aplicación después de CUALQUIER salida
+    // por abandono. El abandono ya fue escrito en Firebase antes de llegar
+    // aquí cuando corresponde; ahora se descarta todo el estado JS en memoria
+    // (listeners, cierres, banderas y handlers) y se vuelve al lobby limpio.
+    // El pequeño retardo permite que el estado visual de salida se pinte antes
+    // del reload y evita carreras con el cierre del listener local.
+    setTimeout(()=>{
+      try { window.location.reload(); }
+      catch(e){ console.error('[V30] no se pudo recargar la página:', e); }
+    },120);
 },
 async totalAgotado(rol){
 // El jugador que agotó su tiempo pierde
