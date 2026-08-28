@@ -1371,21 +1371,17 @@ function _revisarNuevaPartida(d, miRol){
   const dec = solicitud.decisiones || {};
   if(dec.X === false || dec.O === false){
     _ocultarConfirmacionNuevaPartida();
-    // V21: si el oponente ya abandonó, Nueva Partida no puede quedar
-    // esperando una segunda aceptación. Abandonar permanece disponible
-    // para que el jugador pueda salir de inmediato al lobby.
+    // V31: Abandonar es siempre una salida disponible. Después de un NO
+    // a Nueva Partida, el tablero puede quedar visible para estudio, pero
+    // ningún jugador debe perder la posibilidad de salir al lobby.
     UI.bloquearBtns(['btn-nueva'], false);
     UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar'], true);
-    if(d.abandono && d.abandono.abandonador !== miRol){
-      UI.bloquearBtns(['btn-abandonar'], false);
-      const b=document.getElementById('btn-abandonar');
-      if(b){b.disabled=false;b.style.opacity='';b.style.pointerEvents='auto';}
-    } else {
-      UI.bloquearBtns(['btn-abandonar'], true);
-    }
+    UI.bloquearBtns(['btn-abandonar'], false);
+    const b=document.getElementById('btn-abandonar');
+    if(b){b.disabled=false;b.style.opacity='';b.style.pointerEvents='auto';}
     UI.setMsg(d.abandono && d.abandono.abandonador !== miRol
       ? 'Tu oponente abandonó. La partida anterior permanece visible para estudio. Puedes abandonarla para volver al lobby.'
-      : 'Nueva Partida rechazada. La partida anterior permanece visible para estudio.');
+      : 'Nueva Partida rechazada. La partida anterior permanece visible para estudio. Puedes abandonar la partida para volver al lobby.');
     return;
   }
   _mostrarConfirmacionNuevaPartida(miRol, solicitud);
@@ -2171,16 +2167,10 @@ const snap = await Firebase.snapshotFase();
 if(!snap) return;
 if(snap.sorteo_usado && !snap.terminado) return; // no cambiar en pleno juego
 if(snap.crono_modo === btn.dataset.modo) return; // ya es el modo actual
-if(!snap.sorteo_usado){
-// Aún no se ha jugado ninguna partida — aplicar directo sin confirmación
-document.querySelectorAll('.crono-modo-btn').forEach(b => b.classList.remove('seleccionado','activo'));
-btn.classList.add('seleccionado','activo');
-_modoSeleccionado = btn.dataset.modo;
-await Firebase.setModo(_modoSeleccionado);
-} else {
-// Ya se jugó al menos una partida — requiere confirmación mutua
+// V31: todo cambio de modalidad requiere confirmación bilateral,
+// incluso la primera selección antes del primer sorteo. Esto evita
+// cambios accidentales y mantiene sincronizados ambos tableros.
 await Firebase.proponerModo(btn.dataset.modo);
-}
 });
 });
 // ── MODAL CONFIRMACIÓN DE CAMBIO DE MODO ─────────────────
@@ -2489,17 +2479,28 @@ async proponerModo(modo){
 if(!_salaRef) return;
 const snap=await get(_salaRef); const d=snap.val();
 if(d.crono_modo === modo) return; // ya es el modo actual, nada que confirmar
-await update(_salaRef,{modo_propuesto:{modo, por:_rol, ts:Date.now()}});
+await update(_salaRef,{modo_propuesto:{modo, por:_rol, ts:Date.now(), decisiones:{X:null,O:null}}});
 },
 async responderModo(acepta){
 if(!_salaRef) return;
 const snap=await get(_salaRef); const d=snap.val();
 if(!d.modo_propuesto) return;
-if(acepta){
-await update(_salaRef,{crono_modo:d.modo_propuesto.modo, modo_propuesto:null});
-} else {
-await update(_salaRef,{modo_propuesto:null});
+const propuesta=d.modo_propuesto;
+const decisiones=Object.assign({X:null,O:null}, propuesta.decisiones||{});
+decisiones[_rol]=!!acepta;
+if(!acepta){
+  // Un solo NO cancela la propuesta y conserva el modo actual.
+  await update(_salaRef,{modo_propuesto:null});
+  return;
 }
+if(decisiones.X===true && decisiones.O===true){
+  // Ambos aceptaron: recién ahora cambia el modo para los dos.
+  await update(_salaRef,{crono_modo:propuesta.modo, modo_propuesto:null});
+  return;
+}
+// Un jugador ya aceptó; mantenemos la propuesta visible para que el otro
+// pueda decidir. El modo activo todavía NO cambia.
+await update(_salaRef,{modo_propuesto:Object.assign({},propuesta,{decisiones})});
 },
 async solicitarPausa(rol){
 if(!_salaRef) return;
