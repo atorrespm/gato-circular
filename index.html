@@ -1,7 +1,7 @@
 <!--
 =======================================================================
 © Junio 2026 - Santiago - Chile
-V32 · DESCONEXIÓN/RECONEXIÓN
+V32.1 · DESCONEXIÓN/RECONEXIÓN · FIX PRESENCIA
 Desarrollador: Pedro Alejandro Torres Guerrero
 Juego de Estrategia Mental: GATO CIRCULAR
 Todos los derechos reservados.
@@ -2289,7 +2289,7 @@ _guardarSesion();
 $('lobby-codigo').textContent=_sala;
 UI.lobbyPaso('crear');
 _escuchar();
-_registrarPresencia();
+Firebase._registrarPresencia();
 },
 async unirseASala(cod){
 const refSala=ref(db,'salas/'+cod); const snap=await get(refSala);
@@ -2303,14 +2303,14 @@ if(ses && ses.sala===cod && ses.sessionId){
 if(rolRecon){
   _sala=cod; _rol=rolRecon; _sessionId=ses.sessionId; _salaRef=refSala;
   await update(_salaRef,{['conexion/'+_rol]:{online:true,ts:serverTimestamp()}});
-  _escuchar(); _registrarPresencia();
+  _escuchar(); Firebase._registrarPresencia();
   return {ok:true,reconectada:true,rol:_rol};
 }
 if(d.j2!=='espera') return {ok:false,msg:'Sala ya está llena.'};
 _sala=cod; _rol='O'; _sessionId=_nuevoSessionId(); _salaRef=refSala;
 await update(_salaRef,{j2:'online',j1:'online',sesionO:_sessionId,['conexion/O']:{online:true,ts:serverTimestamp()}});
 _guardarSesion();
-_escuchar(); _registrarPresencia();
+_escuchar(); Firebase._registrarPresencia();
 return {ok:true};
 },
 async retomarSesion(){
@@ -2322,14 +2322,14 @@ const d=snap.val();
 if(d.sesionX!==ses.sessionId && d.sesionO!==ses.sessionId){_borrarSesion();return {ok:false,msg:'Esta sesión ya no corresponde a esa partida.'};}
 _sala=ses.sala; _rol=d.sesionX===ses.sessionId?'X':'O'; _sessionId=ses.sessionId; _salaRef=ref(db,'salas/'+_sala);
 await update(_salaRef,{['conexion/'+_rol]:{online:true,ts:serverTimestamp()}});
-_guardarSesion(); _escuchar(); _registrarPresencia();
+_guardarSesion(); _escuchar(); Firebase._registrarPresencia();
 return {ok:true,reconectada:true,rol:_rol};
 },
 _registrarPresencia(){
 if(!_salaRef||!_rol) return;
 if(_unsubConexion) _unsubConexion();
 const conexionRef=ref(db,'salas/'+_sala+'/conexion/'+_rol);
-try{ onDisconnect(conexionRef).set({online:false,ts:serverTimestamp()}); }catch(e){ console.warn('[V32] no pudo registrar onDisconnect',e); }
+try{ onDisconnect(conexionRef).set({online:false,ts:serverTimestamp()}); }catch(e){ console.warn('[V32.1] no pudo registrar onDisconnect',e); }
 update(conexionRef,{online:true,ts:serverTimestamp()}).catch(()=>{});
 _unsubConexion=onValue(ref(db,'.info/connected'),snap=>{
   if(snap.val()===true){
