@@ -1,6 +1,7 @@
 <!--
 =======================================================================
 © Junio 2026 - Santiago - Chile
+V32 · DESCONEXIÓN/RECONEXIÓN
 Desarrollador: Pedro Alejandro Torres Guerrero
 Juego de Estrategia Mental: GATO CIRCULAR
 Todos los derechos reservados.
@@ -441,6 +442,8 @@ font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;
 <div id="lp-inicio">
 <button class="lbtn" id="lbtn-crear">+ CREAR PARTIDA</button>
 <button class="lbtn" id="lbtn-unirse">↗ UNIRSE A PARTIDA</button>
+<button class="lbtn" id="lbtn-retomar" style="display:none;background:linear-gradient(135deg,#315500,#669900);color:#fff;">↻ RETOMAR PARTIDA PENDIENTE</button>
+<div id="lst-retomar" class="lstatus" style="display:none"></div>
 </div>
 <div id="lp-crear" style="display:none">
 <p style="font-size:12px;color:#aaa">Comparte este código con tu amigo:</p>
@@ -1514,13 +1517,14 @@ if(d.fichas_ganadoras_reclamadas) Tablero.resaltarGanadores(d.fichas_ganadoras_r
 const resSesion = Sesion.verificarFinSesion(d.victoriasX||0, d.victoriasO||0);
 if(resSesion) setTimeout(() => Sesion.mostrarFinSesion(resSesion, miRol), 2500);
 const porTiempo = d.fin_por_tiempo ? '\n Ganó por tiempo agotado del oponente.' : '';
+const porDesconexion = d.fin_por_desconexion ? '\n Ganó por desconexión del oponente.' : '';
 const nombreGanador = d.ganador === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)';
-const titulo=d.fin_por_tiempo?'⏱️ TIEMPO AGOTADO':'🏆 RECLAMO DE VICTORIA VÁLIDO';
+const titulo=d.fin_por_desconexion?'📡 DESCONEXIÓN DEL OPONENTE':(d.fin_por_tiempo?'⏱️ TIEMPO AGOTADO':'🏆 RECLAMO DE VICTORIA VÁLIDO');
 if(!abandono && !d.nueva_partida_solicitud) {
   setTimeout(()=>{
     // No reaparecer encima del modal bilateral si mientras tanto alguien
     // solicitó una Nueva Partida.
-    if(!_npConfirmacionVista && !_npFinalizacionEnCurso) UI.modal(titulo, nombreGanador+' gana la partida.'+porTiempo);
+    if(!_npConfirmacionVista && !_npFinalizacionEnCurso) UI.modal(titulo, nombreGanador+' gana la partida.'+porTiempo+porDesconexion);
   },400);
 }
 }
@@ -2212,7 +2216,7 @@ M13· FIREBASE — Sincronización + M15· MAIN · V14 — Eventos
 <script type="module">
 import { initializeApp }
 from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, set, get, onValue, update, runTransaction }
+import { getDatabase, ref, set, get, onValue, update, runTransaction, onDisconnect, serverTimestamp }
 from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 // Exponer funciones Firebase para el módulo Chat
 window._fbDB = { ref, set, get, onValue, update };
@@ -2227,6 +2231,39 @@ databaseURL:       "https://gato-circular-default-rtdb.firebaseio.com"
 }));
 /* ── M13 · FIREBASE ─────────────────────────────────── */
 let _salaRef=null, _sala=null, _rol=null, _iniciado=false, _enviandoJugada=false, _unsubSala=null, _tcResolviendo=false, _recargandoTrasAbandono=false;
+const GC_SESSION_KEY='gc_sesion_v32';
+let _sessionId=null, _unsubConexion=null, _desconexionTimer=null, _desconexionVisto=null, _desconexionDetectTimer=null;
+function _nuevoSessionId(){ return 'gc_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,10); }
+function _guardarSesion(){ if(_sala&&_rol&&_sessionId) localStorage.setItem(GC_SESSION_KEY,JSON.stringify({sala:_sala,rol:_rol,sessionId:_sessionId,ts:Date.now()})); }
+function _leerSesion(){ try{return JSON.parse(localStorage.getItem(GC_SESSION_KEY)||'null')}catch(e){return null} }
+function _borrarSesion(){ try{localStorage.removeItem(GC_SESSION_KEY)}catch(e){} }
+function _modoPermiteGracia(modo){ return modo==='clasico'||modo==='basico'; }
+function _bloquearPorDesconexion(bloquear){ UI.bloquearTablero(bloquear); UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],bloquear); UI.bloquearBtns(['btn-abandonar'],false); const b=document.getElementById('btn-abandonar'); if(b){b.disabled=false;b.style.opacity='';b.style.pointerEvents='auto';} }
+function _mostrarModalDesconexion(pendiente, miRol){
+  let ov=document.getElementById('desconexion-overlay');
+  if(!ov){
+    ov=document.createElement('div'); ov.id='desconexion-overlay';
+    ov.style.cssText='display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:390;align-items:center;justify-content:center;';
+    ov.innerHTML=`<div style="background:linear-gradient(135deg,#141414,#242424);border:3px solid #d8b34a;border-radius:14px;padding:28px 34px;text-align:center;min-width:330px;max-width:460px;box-shadow:0 0 55px rgba(216,179,74,.28);">
+<h2 style="font-family:'Orbitron',sans-serif;font-size:18px;color:#e0bd55;margin-bottom:12px;">⚠️ OPONENTE DESCONECTADO</h2>
+<p id="desconexion-msg" style="font-size:13px;color:#ddd;line-height:1.7;margin-bottom:18px;"></p>
+<div id="desconexion-tiempo" style="font-family:'Orbitron',sans-serif;font-size:30px;font-weight:900;color:#e0bd55;margin:8px 0 18px;">60</div>
+<button id="btn-desconexion-ok" style="padding:10px 24px;background:#333;color:#fff;border:1px solid #666;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;">ENTENDIDO</button>
+</div>`;
+    document.body.appendChild(ov);
+    document.getElementById('btn-desconexion-ok')?.addEventListener('click',()=>{ov.style.display='none';});
+  }
+  const msg=document.getElementById('desconexion-msg'), ti=document.getElementById('desconexion-tiempo');
+  if(msg) msg.textContent='Tu oponente se ha desconectado. La partida queda temporalmente en espera mientras el sistema permite una reconexión.';
+  if(ti) ti.textContent='60';
+  ov.style.display='flex';
+  clearInterval(_desconexionTimer);
+  const inicio=Number(pendiente.inicio_ts)||Date.now();
+  const pintar=()=>{ const r=Math.max(0,60-Math.floor((Date.now()-inicio)/1000)); if(ti) ti.textContent=r; if(r<=0){clearInterval(_desconexionTimer); Firebase.resolverDesconexionTimeout();} };
+  pintar(); _desconexionTimer=setInterval(pintar,250);
+}
+function _ocultarModalDesconexion(){ const ov=document.getElementById('desconexion-overlay'); if(ov) ov.style.display='none'; clearInterval(_desconexionTimer); _desconexionTimer=null; }
+
 const $=id=>document.getElementById(id);
 function _codigo(){
 const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -2234,30 +2271,72 @@ return Array.from({length:4},()=>c[Math.floor(Math.random()*c.length)]).join('')
 }
 window.Firebase = {
 async crearSala(){
-_sala=_codigo(); _rol='X';
+_sala=_codigo(); _rol='X'; _sessionId=_nuevoSessionId();
 _salaRef=ref(db,'salas/'+_sala);
 await set(_salaRef,{
 tablero:Estado.tableroVacio(),turno:null,fase:'esperando_sorteo',
 terminado:false,ganador:null,jugadas:0,fichasX:16,fichasO:16,
 j1:'online',j2:'espera',ts:Date.now(),
+sesionX:_sessionId,sesionO:null,conexion:{X:{online:true,ts:serverTimestamp()},O:{online:false,ts:serverTimestamp()}},
+desconexionesX:0,desconexionesO:0,
 ultimo_sorteo:null,sorteo_id:null,sorteo_usado:false,victoriasX:0,victoriasO:0,
-crono_modo:'clasico', turno_inicio_ts:null, crono_totalX:null, crono_totalO:null,
+crono_modo:'clasico', turno_inicio_ts:null, crono_totalX:null, crono_totalO:null,fin_por_desconexion:false,
 nueva_partida_no_count:0, nueva_partida_max_alert:null, nueva_partida_solicitud:null,
-abandono:null,
+abandono:null,desconexion_pendiente:null,
 pausa_activa:false, pausa_inicio_ts:null
 });
+_guardarSesion();
 $('lobby-codigo').textContent=_sala;
 UI.lobbyPaso('crear');
 _escuchar();
+_registrarPresencia();
 },
 async unirseASala(cod){
-const snap=await get(ref(db,'salas/'+cod));
+const refSala=ref(db,'salas/'+cod); const snap=await get(refSala);
 if(!snap.exists()) return {ok:false,msg:'Sala no encontrada.'};
-if(snap.val().j2!=='espera') return {ok:false,msg:'Sala ya está llena.'};
-_sala=cod; _rol='O'; _salaRef=ref(db,'salas/'+cod);
-await update(_salaRef,{j2:'online',j1:'online'});
-_escuchar();
+const d=snap.val(); const ses=_leerSesion();
+let rolRecon=null;
+if(ses && ses.sala===cod && ses.sessionId){
+  if(d.sesionX===ses.sessionId) rolRecon='X';
+  else if(d.sesionO===ses.sessionId) rolRecon='O';
+}
+if(rolRecon){
+  _sala=cod; _rol=rolRecon; _sessionId=ses.sessionId; _salaRef=refSala;
+  await update(_salaRef,{['conexion/'+_rol]:{online:true,ts:serverTimestamp()}});
+  _escuchar(); _registrarPresencia();
+  return {ok:true,reconectada:true,rol:_rol};
+}
+if(d.j2!=='espera') return {ok:false,msg:'Sala ya está llena.'};
+_sala=cod; _rol='O'; _sessionId=_nuevoSessionId(); _salaRef=refSala;
+await update(_salaRef,{j2:'online',j1:'online',sesionO:_sessionId,['conexion/O']:{online:true,ts:serverTimestamp()}});
+_guardarSesion();
+_escuchar(); _registrarPresencia();
 return {ok:true};
+},
+async retomarSesion(){
+const ses=_leerSesion();
+if(!ses||!ses.sala||!ses.sessionId) return {ok:false,msg:'No hay una partida pendiente para retomar.'};
+const snap=await get(ref(db,'salas/'+ses.sala));
+if(!snap.exists()){_borrarSesion();return {ok:false,msg:'La sala ya no existe.'};}
+const d=snap.val();
+if(d.sesionX!==ses.sessionId && d.sesionO!==ses.sessionId){_borrarSesion();return {ok:false,msg:'Esta sesión ya no corresponde a esa partida.'};}
+_sala=ses.sala; _rol=d.sesionX===ses.sessionId?'X':'O'; _sessionId=ses.sessionId; _salaRef=ref(db,'salas/'+_sala);
+await update(_salaRef,{['conexion/'+_rol]:{online:true,ts:serverTimestamp()}});
+_guardarSesion(); _escuchar(); _registrarPresencia();
+return {ok:true,reconectada:true,rol:_rol};
+},
+_registrarPresencia(){
+if(!_salaRef||!_rol) return;
+if(_unsubConexion) _unsubConexion();
+const conexionRef=ref(db,'salas/'+_sala+'/conexion/'+_rol);
+try{ onDisconnect(conexionRef).set({online:false,ts:serverTimestamp()}); }catch(e){ console.warn('[V32] no pudo registrar onDisconnect',e); }
+update(conexionRef,{online:true,ts:serverTimestamp()}).catch(()=>{});
+_unsubConexion=onValue(ref(db,'.info/connected'),snap=>{
+  if(snap.val()===true){
+    try{ onDisconnect(conexionRef).set({online:false,ts:serverTimestamp()}); }catch(e){}
+    update(conexionRef,{online:true,ts:serverTimestamp()}).catch(()=>{});
+  }
+});
 },
 copiarCodigo(){ navigator.clipboard.writeText(_sala); },
 getMiRol(){ return _rol; },
@@ -2384,13 +2463,13 @@ victoriasX:d.victoriasX||0,victoriasO:d.victoriasO||0,
 crono_modo:d.crono_modo||'clasico',crono_turno_forzado:null,
 turno_inicio_ts:null, crono_totalX:null, crono_totalO:null,
 pausa_activa:false,pausa_solicitada:null,pausa_reanudar:null,pausa_inicio_ts:null,
-fin_por_tiempo:false,
+fin_por_tiempo:false,fin_por_desconexion:false,
 tc_decision:null, tc_inicio:null, tc_decision_final:null, tc_resolucion_ts:null, resultado_reclamo:null,
 fichas_timeout_reclamo:null,
 empate_sin_respuesta_inicio:null, empate_sin_respuesta_ack:null,
 prioridad_jugador:null, prioridad_intento:null, prioridad_inicio_ts:null, prioridad_timeout_ts:null, prioridad_aceptado_X:false, prioridad_aceptado_O:false, fichas_timeout_reclamo:null,
 nueva_partida_no_count:0, nueva_partida_max_alert:null, nueva_partida_solicitud:null,
-abandono:null
+abandono:null,desconexionesX:d.desconexionesX||0,desconexionesO:d.desconexionesO||0,desconexion_pendiente:null
 });
 },
 // ── NUEVA FUNCIÓN: Confirmación bilateral de Nueva Partida post-empate ─
@@ -2950,6 +3029,8 @@ salirLocalTrasAbandono(){
     _recargandoTrasAbandono=true;
     if(_unsubSala){ _unsubSala(); _unsubSala=null; }
     _iniciado=false;
+    _borrarSesion();
+    if(_unsubConexion){ _unsubConexion(); _unsubConexion=null; }
     UI.cerrarModal();
     if(window.EmpateFlow){
       EmpateFlow.ocultarModalTC();
@@ -2961,7 +3042,7 @@ salirLocalTrasAbandono(){
     UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar','btn-abandonar'],true);
     UI.lobbyPaso('inicio');
     UI.lobbyVisible(true);
-    // V30: reinicio completo de la aplicación después de CUALQUIER salida
+    // V32: reinicio completo de la aplicación después de CUALQUIER salida
     // por abandono. El abandono ya fue escrito en Firebase antes de llegar
     // aquí cuando corresponde; ahora se descarta todo el estado JS en memoria
     // (listeners, cierres, banderas y handlers) y se vuelve al lobby limpio.
@@ -2969,8 +3050,71 @@ salirLocalTrasAbandono(){
     // del reload y evita carreras con el cierre del listener local.
     setTimeout(()=>{
       try { window.location.reload(); }
-      catch(e){ console.error('[V30] no se pudo recargar la página:', e); }
+      catch(e){ console.error('[V32] no se pudo recargar la página:', e); }
     },120);
+},
+programarDesconexionDetectada(rol){
+if(_desconexionDetectTimer) clearTimeout(_desconexionDetectTimer);
+_desconexionDetectTimer=setTimeout(async()=>{
+  _desconexionDetectTimer=null;
+  if(!_salaRef||!_iniciado) return;
+  try{
+    const snap=await get(_salaRef); const d=snap.val();
+    if(!d||d.terminado||d.abandono||d.desconexion_pendiente) return;
+    const con=d.conexion&&d.conexion[rol];
+    if(con&&con.online===false) await this.registrarDesconexionDetectada(rol);
+  }catch(e){ console.warn('[V32] error verificando desconexion:',e); }
+},2500);
+},
+async registrarDesconexionDetectada(rol){
+if(!_salaRef||!rol) return;
+const res=await runTransaction(_salaRef,current=>{
+  if(!current||current.terminado||current.abandono||!current.sesionX||!current.sesionO) return;
+  const con=current.conexion||{};
+  const estado=con[rol];
+  if(estado && estado.online===true) return;
+  const pendientes=current.desconexion_pendiente;
+  if(pendientes && pendientes.rol===rol) return;
+  const campo=rol==='X'?'desconexionesX':'desconexionesO';
+  const n=Number(current[campo]||0)+1;
+  const modo=current.crono_modo||'clasico';
+  const ganador=rol==='X'?'O':'X';
+  if(n>=2 || !_modoPermiteGracia(modo)){
+    const vX=Number(current.victoriasX||0)+(ganador==='X'?1:0);
+    const vO=Number(current.victoriasO||0)+(ganador==='O'?1:0);
+    return Object.assign({},current,{terminado:true,ganador,fase:'terminado',fin_por_desconexion:true,desconexion_pendiente:null,[campo]:n,victoriasX:vX,victoriasO:vO});
+  }
+  return Object.assign({},current,{[campo]:n,desconexion_pendiente:{rol,inicio_ts:Date.now(),numero:n,modo}});
+});
+return res.committed;
+},
+async resolverDesconexionTimeout(){
+if(!_salaRef) return;
+await runTransaction(_salaRef,current=>{
+  const p=current&&current.desconexion_pendiente; if(!p||current.terminado||current.abandono) return;
+  const con=current.conexion&&current.conexion[p.rol];
+  if(con&&con.online===true){
+    let cambios={desconexion_pendiente:null};
+    if(p.modo==='basico'&&current.turno_inicio_ts){ cambios.turno_inicio_ts=Number(current.turno_inicio_ts)+(Date.now()-Number(p.inicio_ts||Date.now())); }
+    return Object.assign({},current,cambios);
+  }
+  if(Date.now()-Number(p.inicio_ts||Date.now())<60000) return;
+  const ganador=p.rol==='X'?'O':'X';
+  const vX=Number(current.victoriasX||0)+(ganador==='X'?1:0);
+  const vO=Number(current.victoriasO||0)+(ganador==='O'?1:0);
+  return Object.assign({},current,{terminado:true,ganador,fase:'terminado',fin_por_desconexion:true,desconexion_pendiente:null,victoriasX:vX,victoriasO:vO});
+});
+},
+async confirmarReconexion(){
+if(!_salaRef||!_rol) return;
+await runTransaction(_salaRef,current=>{
+  const p=current&&current.desconexion_pendiente; if(!p||p.rol!==_rol||current.terminado||current.abandono) return;
+  const con=current.conexion&&current.conexion[_rol]; if(!con||con.online!==true) return;
+  const dur=Math.max(0,Date.now()-Number(p.inicio_ts||Date.now()));
+  const cambios={desconexion_pendiente:null,ultima_reconexion:{rol:_rol,ts:Date.now(),duracion_ms:dur}};
+  if(p.modo==='basico'&&current.turno_inicio_ts) cambios.turno_inicio_ts=Number(current.turno_inicio_ts)+dur;
+  return Object.assign({},current,cambios);
+});
 },
 async totalAgotado(rol){
 // El jugador que agotó su tiempo pierde
@@ -3041,7 +3185,29 @@ Reclamo.init(_rol);
 Chat.init(db,_sala,_rol);
 }
 if(!_iniciado&&_rol==='X'&&d.j2==='online') update(_salaRef,{j1:'online'});
-if(_iniciado) Juego.encolarEstado(d,_rol);
+if(_iniciado){
+  if(d.desconexion_pendiente){
+    const p=d.desconexion_pendiente;
+    if(p.rol===_rol){
+      _ocultarModalDesconexion();
+      _bloquearPorDesconexion(true);
+      Firebase.confirmarReconexion().catch(()=>{});
+    } else {
+      _bloquearPorDesconexion(true);
+      if(_desconexionVisto!==p.inicio_ts){ _desconexionVisto=p.inicio_ts; _mostrarModalDesconexion(p,_rol); }
+    }
+  } else {
+    _ocultarModalDesconexion();
+    _desconexionVisto=null;
+  }
+  // La presencia remota es la fuente para detectar desconexiones reales.
+  const rival=_rol==='X'?'O':'X';
+  const rivalCon=d.conexion&&d.conexion[rival];
+  if(!d.desconexion_pendiente && rivalCon && rivalCon.online===false && d.fase!=='terminado' && !d.abandono){
+    Firebase.programarDesconexionDetectada(rival);
+  }
+  Juego.encolarEstado(d,_rol);
+}
 });
 }
 /* ── M15 · MAIN — Eventos de botones ───────────────── */
@@ -3054,12 +3220,25 @@ $('lbtn-volver').onclick  = ()=>UI.lobbyPaso('inicio');
 $('lbtn-volver2').onclick = ()=>UI.lobbyPaso('inicio');
 $('lbtn-unirse').onclick  = ()=>{ const inp=$('lobby-input'); if(inp) inp.value=''; UI.lobbyPaso('unirse'); inp?.focus(); };
 $('lobby-input').oninput  = e=>{ e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,''); };
+const _sesionPendienteInicial=_leerSesion();
+if(_sesionPendienteInicial && _sesionPendienteInicial.sala && _sesionPendienteInicial.sessionId){
+  const rb=$('lbtn-retomar'), rs=$('lst-retomar'); if(rb){rb.style.display='block';}
+  if(rs){rs.style.display='block';rs.textContent='Hay una partida pendiente asociada a este navegador.';}
+}
+$('lbtn-retomar').onclick = async ()=>{
+  const rb=$('lbtn-retomar'), rs=$('lst-retomar'); if(rb) rb.disabled=true; if(rs) rs.textContent='Buscando la partida pendiente...';
+  const r=await Firebase.retomarSesion();
+  if(r.ok){ UI.lobbyVisible(false); if(rs) rs.textContent='Partida retomada.'; }
+  else { if(rs) rs.textContent=r.msg; if(rb) rb.style.display='none'; }
+  if(rb) rb.disabled=false;
+};
 $('lbtn-conectar').onclick = async ()=>{
 const cod=$('lobby-input').value.trim().toUpperCase();
 if(cod.length!==4){ $('lst-unirse').textContent='Código de 4 caracteres.'; return; }
 $('lst-unirse').textContent='Conectando...';
 const r=await Firebase.unirseASala(cod);
 if(!r.ok) $('lst-unirse').textContent=r.msg;
+else { const rb=$('lbtn-retomar'), rs=$('lst-retomar'); if(rb) rb.style.display='none'; if(rs) rs.style.display='none'; }
 };
 $('btn-nueva').onclick = async ()=>{
     if(!Firebase.isIniciado()) return;
