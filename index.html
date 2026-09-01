@@ -1,7 +1,7 @@
 <!--
 =======================================================================
 © Junio 2026 - Santiago - Chile
-V32.1 · DESCONEXIÓN/RECONEXIÓN · FIX PRESENCIA
+V32.2 · DESCONEXIÓN/RECONEXIÓN · FIX PRESENCIA
 Desarrollador: Pedro Alejandro Torres Guerrero
 Juego de Estrategia Mental: GATO CIRCULAR
 Todos los derechos reservados.
@@ -1459,11 +1459,12 @@ function _faseTerminado(d, miRol){
 EmpateFlow.detenerCronometroPrioridad();
 Cronometro.detener();
 UI.bloquearTablero(true);
-UI.setMsg('Partida terminada. Pulsa Nueva Partida.');
-document.getElementById('btn-nueva').style.opacity='';
-document.getElementById('btn-nueva').style.pointerEvents='';
-UI.bloquearBtns(['btn-sortear'],true);
-UI.bloquearBtns(['btn-reclamar','btn-confirmar'],true);
+const terminoPorDesconexion=!!d.fin_por_desconexion;
+UI.setMsg(terminoPorDesconexion?'Partida terminada por desconexión. Esta partida no puede reiniciarse.':'Partida terminada. Pulsa Nueva Partida.');
+UI.bloquearBtns(['btn-nueva'],terminoPorDesconexion);
+const btnNuevaFin=document.getElementById('btn-nueva');
+if(btnNuevaFin){btnNuevaFin.style.opacity=terminoPorDesconexion?'0.45':'';btnNuevaFin.style.pointerEvents=terminoPorDesconexion?'none':'';}
+UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar'],true);
 
 // Tras un abandono, el ganador conserva el tablero y recibe una notificación.
 const abandono = d.abandono;
@@ -1513,7 +1514,10 @@ if(abandono){
 
 if(!_victoriaVista&&d.ganador){
 _victoriaVista=true;
-if(d.fichas_ganadoras_reclamadas) Tablero.resaltarGanadores(d.fichas_ganadoras_reclamadas,d.ganador);
+if(Array.isArray(d.fichas_ganadoras_reclamadas) && d.fichas_ganadoras_reclamadas.length){
+  Tablero.resaltarGanadores(d.fichas_ganadoras_reclamadas,d.ganador);
+  setTimeout(()=>{if(Array.isArray(d.fichas_ganadoras_reclamadas))Tablero.resaltarGanadores(d.fichas_ganadoras_reclamadas,d.ganador);},0);
+}
 const resSesion = Sesion.verificarFinSesion(d.victoriasX||0, d.victoriasO||0);
 if(resSesion) setTimeout(() => Sesion.mostrarFinSesion(resSesion, miRol), 2500);
 const porTiempo = d.fin_por_tiempo ? '\n Ganó por tiempo agotado del oponente.' : '';
@@ -1602,7 +1606,8 @@ if(d.sorteo_id && _sorteoVisto !== d.sorteo_id){
 esNuevoSorteo = true;
 _sorteoVisto = d.sorteo_id;
 UI.bloquearBtns(['btn-sortear','btn-nueva'],true);
-if(d.sorteo_quien !== miRol)
+const yaAcepto = d['sorteo_aceptado_'+miRol] === true;
+if(!yaAcepto)
 UI.modal('¡SORTEO!','Comienza el '+(d.ultimo_sorteo==='X'?'Jugador 1 (X)':'Jugador 2 (O)'),'ACEPTAR',()=>Firebase.aceptarSorteo());
 }
 // Reflejar visualmente el modo cronómetro elegido (para ambos jugadores)
@@ -1622,8 +1627,16 @@ async (rolAgotado) => { await Firebase.totalAgotado(rolAgotado); }
 // sin intervalos locales independientes que puedan desincronizarse
 Cronometro.actualizar(d);
 // Manejar pausa — bloquea el tablero para AMBOS jugadores
-if(d.pausa_activa) {
+const pauseBtn=$('btn-pausa-crono');if(pauseBtn)pauseBtn.disabled=!!(d.pausa_activa||d.pausa_propuesta);
 const banner=$('crono-pausa-banner');
+if(d.pausa_propuesta){
+  UI.bloquearTablero(true);
+  UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+  UI.bloquearBtns(['btn-abandonar'],false);
+  UI.setMsg('Solicitud de pausa en espera de confirmación.');
+  return;
+}
+if(d.pausa_activa){
 if(banner) banner.style.display='block';
 const msg=$('crono-pausa-msg');
 if(msg) msg.textContent='Ambos jugadores aceptaron la pausa. Pulsa REANUDAR para continuar.';
@@ -2073,11 +2086,15 @@ const inicioTurno = d.turno_inicio_ts || ahora;
 let transcurrido = (pausado ? (d.pausa_inicio_ts || ahora) : ahora) - inicioTurno;
 transcurrido = Math.max(0, transcurrido) / 1000;
 const jugadaRestante = Math.max(0, cfg.jugada - transcurrido);
-const totalXBase = d.crono_totalX ?? cfg.total;
-const totalOBase = d.crono_totalO ?? cfg.total;
-const turnoActivo = d.turno;
-const totalXActual = turnoActivo === 'X' ? Math.max(0, totalXBase - transcurrido) : totalXBase;
-const totalOActual = turnoActivo === 'O' ? Math.max(0, totalOBase - transcurrido) : totalOBase;
+const totalXBase=d.crono_totalX??cfg.total;
+const totalOBase=d.crono_totalO??cfg.total;
+const turnoActivo=d.turno;
+const pendiente=d.desconexion_pendiente;
+const ahoraTotal=pausado?(d.pausa_inicio_ts||ahora):ahora;
+const totalXTrans=d.crono_total_inicio_X?Math.max(0,(ahoraTotal-d.crono_total_inicio_X)/1000):0;
+const totalOTrans=d.crono_total_inicio_O?Math.max(0,(ahoraTotal-d.crono_total_inicio_O)/1000):0;
+const totalXActual=(pendiente&&pendiente.rol==='X')?totalXBase:Math.max(0,totalXBase-totalXTrans);
+const totalOActual=(pendiente&&pendiente.rol==='O')?totalOBase:Math.max(0,totalOBase-totalOTrans);
 return { jugadaRestante, totalXActual, totalOActual, turnoActivo, pausado };
 }
 function _tick() {
@@ -2160,16 +2177,16 @@ b.classList.toggle('activo', esElActivo);
 b.classList.toggle('seleccionado', esElActivo);
 });
 }
-// Los botones de modo quedan SIEMPRE clicables — permite proponer
-// un cambio de modalidad en cualquier momento. El cambio real requiere
-// confirmación mutua (Sí/No) mediante modal, salvo la selección inicial
-// antes del primer sorteo, que se aplica directamente.
+// Los botones de modo quedan clicables hasta la primera ficha.
+// El cambio real siempre requiere confirmación mutua (Sí/No).
+// Después de la primera ficha, la modalidad queda fijada para esa partida.
 document.querySelectorAll('.crono-modo-btn').forEach(btn => {
 btn.addEventListener('click', async () => {
 if(!Firebase.isIniciado()) return; // requiere sala conectada
 const snap = await Firebase.snapshotFase();
 if(!snap) return;
-if(snap.sorteo_usado && !snap.terminado) return; // no cambiar en pleno juego
+if(snap.terminado) return; // no cambiar una partida ya terminada
+if((snap.jugadas||0)>0) return; // después de la primera ficha el modo queda fijado
 if(snap.crono_modo === btn.dataset.modo) return; // ya es el modo actual
 // V31: todo cambio de modalidad requiere confirmación bilateral,
 // incluso la primera selección antes del primer sorteo. Esto evita
@@ -2202,11 +2219,11 @@ document.getElementById('btn-modo-no')?.addEventListener('click', () => Firebase
 // ── BOTÓN PAUSA ──────────────────────────────────────────
 document.getElementById('btn-pausa-crono')?.addEventListener('click', () => {
 if(!Firebase.isIniciado()) return;
-Firebase.solicitarPausa(Firebase.getMiRol());
+if(window._mostrarModalBilateral) window._mostrarModalBilateral('Solicitar pausa','¿Deseas solicitar una pausa?',()=>Firebase.solicitarPausa(Firebase.getMiRol()),()=>{});
 });
 document.getElementById('btn-reanudar-crono')?.addEventListener('click', () => {
 if(!Firebase.isIniciado()) return;
-Firebase.reanudarPausa();
+if(window._mostrarModalBilateral) window._mostrarModalBilateral('Solicitar reanudación','¿Deseas solicitar la reanudación de la partida?',()=>Firebase.solicitarReanudar(),()=>{});
 });
 </script>
 <!-- ═══════════════════════════════════════════════════════
@@ -2232,7 +2249,7 @@ databaseURL:       "https://gato-circular-default-rtdb.firebaseio.com"
 /* ── M13 · FIREBASE ─────────────────────────────────── */
 let _salaRef=null, _sala=null, _rol=null, _iniciado=false, _enviandoJugada=false, _unsubSala=null, _tcResolviendo=false, _recargandoTrasAbandono=false;
 const GC_SESSION_KEY='gc_sesion_v32';
-let _sessionId=null, _unsubConexion=null, _desconexionTimer=null, _desconexionVisto=null, _desconexionDetectTimer=null;
+let _sessionId=null, _unsubConexion=null, _desconexionTimer=null, _desconexionVisto=null, _desconexionDetectTimer=null, _desconexionTurnoTimer=null, _reconexionVisto=null, _pausaPropuestaVisto=null, _reanudarPropuestaVisto=null;
 function _nuevoSessionId(){ return 'gc_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,10); }
 function _guardarSesion(){ if(_sala&&_rol&&_sessionId) localStorage.setItem(GC_SESSION_KEY,JSON.stringify({sala:_sala,rol:_rol,sessionId:_sessionId,ts:Date.now()})); }
 function _leerSesion(){ try{return JSON.parse(localStorage.getItem(GC_SESSION_KEY)||'null')}catch(e){return null} }
@@ -2263,6 +2280,38 @@ function _mostrarModalDesconexion(pendiente, miRol){
   pintar(); _desconexionTimer=setInterval(pintar,250);
 }
 function _ocultarModalDesconexion(){ const ov=document.getElementById('desconexion-overlay'); if(ov) ov.style.display='none'; clearInterval(_desconexionTimer); _desconexionTimer=null; }
+function _mostrarModalReconexion(reconexion,miRol){
+  if(!reconexion || reconexion.rol===miRol) return;
+  let ov=document.getElementById('reconexion-overlay');
+  if(!ov){
+    ov=document.createElement('div'); ov.id='reconexion-overlay';
+    ov.style.cssText='display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:395;align-items:center;justify-content:center;';
+    ov.innerHTML=`<div style="background:linear-gradient(135deg,#101810,#202820);border:3px solid #35d06f;border-radius:14px;padding:28px 34px;text-align:center;min-width:330px;max-width:460px;box-shadow:0 0 55px rgba(53,208,111,.25);"><h2 style="font-family:'Orbitron',sans-serif;font-size:18px;color:#55e884;margin-bottom:12px;">📡 OPONENTE RECONectado</h2><p id="reconexion-msg" style="font-size:13px;color:#ddd;line-height:1.7;margin-bottom:18px;"></p><button id="btn-reconexion-ok" style="padding:10px 24px;background:#185b32;color:#fff;border:1px solid #35d06f;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;">ENTENDIDO</button></div>`;
+    document.body.appendChild(ov);
+    document.getElementById('btn-reconexion-ok')?.addEventListener('click',()=>{ov.style.display='none';});
+  }
+  const quien=reconexion.rol==='X'?'Jugador 1 (X)':'Jugador 2 (O)';
+  const msg=document.getElementById('reconexion-msg');
+  if(msg) msg.textContent=quien+' se ha reconectado. La partida continúa desde el estado anterior.';
+  ov.style.display='flex';
+}
+function _ocultarModalReconexion(){const ov=document.getElementById('reconexion-overlay');if(ov)ov.style.display='none';}
+function _mostrarModalBilateral(titulo,msg,siCb,noCb){
+  let ov=document.getElementById('bilateral-overlay');
+  if(!ov){
+    ov=document.createElement('div'); ov.id='bilateral-overlay';
+    ov.style.cssText='display:none;position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:410;align-items:center;justify-content:center;';
+    ov.innerHTML=`<div style="background:linear-gradient(135deg,#171717,#292929);border:3px solid #d8b34a;border-radius:14px;padding:28px 34px;text-align:center;min-width:330px;max-width:460px;"><h2 id="bilateral-title" style="font-family:'Orbitron',sans-serif;font-size:18px;color:#e0bd55;margin-bottom:12px;"></h2><p id="bilateral-msg" style="font-size:13px;color:#ddd;line-height:1.7;margin-bottom:18px;"></p><div style="display:flex;gap:12px;justify-content:center;"><button id="btn-bilateral-si" style="padding:10px 24px;background:#185b32;color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">SÍ</button><button id="btn-bilateral-no" style="padding:10px 24px;background:#7a0000;color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;">NO</button></div></div>`;
+    document.body.appendChild(ov);
+  }
+  document.getElementById('bilateral-title').textContent='⚠️ '+titulo;
+  document.getElementById('bilateral-msg').textContent=msg;
+  const yes=document.getElementById('btn-bilateral-si'),no=document.getElementById('btn-bilateral-no');
+  yes.onclick=async()=>{ov.style.display='none';if(siCb)await siCb();};
+  no.onclick=async()=>{ov.style.display='none';if(noCb)await noCb();};
+  ov.style.display='flex';
+}
+window._mostrarModalBilateral=_mostrarModalBilateral;
 
 const $=id=>document.getElementById(id);
 function _codigo(){
@@ -2282,8 +2331,9 @@ desconexionesX:0,desconexionesO:0,
 ultimo_sorteo:null,sorteo_id:null,sorteo_usado:false,victoriasX:0,victoriasO:0,
 crono_modo:'clasico', turno_inicio_ts:null, crono_totalX:null, crono_totalO:null,fin_por_desconexion:false,
 nueva_partida_no_count:0, nueva_partida_max_alert:null, nueva_partida_solicitud:null,
-abandono:null,desconexion_pendiente:null,
-pausa_activa:false, pausa_inicio_ts:null
+abandono:null,desconexion_pendiente:null,ultima_reconexion:null,
+pausa_activa:false, pausa_inicio_ts:null,pausa_propuesta:null,reanudar_propuesta:null,
+crono_total_inicio_X:null,crono_total_inicio_O:null
 });
 _guardarSesion();
 $('lobby-codigo').textContent=_sala;
@@ -2329,7 +2379,7 @@ _registrarPresencia(){
 if(!_salaRef||!_rol) return;
 if(_unsubConexion) _unsubConexion();
 const conexionRef=ref(db,'salas/'+_sala+'/conexion/'+_rol);
-try{ onDisconnect(conexionRef).set({online:false,ts:serverTimestamp()}); }catch(e){ console.warn('[V32.1] no pudo registrar onDisconnect',e); }
+try{ onDisconnect(conexionRef).set({online:false,ts:serverTimestamp()}); }catch(e){ console.warn('[V32.2] no pudo registrar onDisconnect',e); }
 update(conexionRef,{online:true,ts:serverTimestamp()}).catch(()=>{});
 _unsubConexion=onValue(ref(db,'.info/connected'),snap=>{
   if(snap.val()===true){
@@ -2358,21 +2408,11 @@ t[id]=_rol; UI.bloquearTablero(true);
 // Descontar el tiempo realmente transcurrido en este turno del total
 // del jugador que acaba de mover (cronómetro compartido por timestamp)
 const cfgModo = Cronometro.MODOS[d.crono_modo||'clasico'];
-let nuevoTotalX = d.crono_totalX, nuevoTotalO = d.crono_totalO;
-if(cfgModo && cfgModo.total > 0 && d.turno_inicio_ts){
-const elapsed = Math.max(0,(Date.now()-d.turno_inicio_ts)/1000);
-if(_rol==='X') nuevoTotalX = Math.max(0,(d.crono_totalX??cfgModo.total)-elapsed);
-else            nuevoTotalO = Math.max(0,(d.crono_totalO??cfgModo.total)-elapsed);
-}
-// update() en la misma referencia de sala (evita reconstruir el path)
-await update(_salaRef,{
-tablero:t,turno:_rol==='X'?'O':'X',fase:'jugando',
-jugadas:(d.jugadas||0)+1,
-fichasX:_rol==='X'?(d.fichasX??16)-1:(d.fichasX??16),
-fichasO:_rol==='O'?(d.fichasO??16)-1:(d.fichasO??16),
-crono_totalX:nuevoTotalX, crono_totalO:nuevoTotalO,
-turno_inicio_ts:Date.now()
-});
+const ahoraJugada=Date.now();
+let nuevoTotalX=d.crono_totalX,nuevoTotalO=d.crono_totalO;
+if(cfgModo&&cfgModo.total>0&&d.turno_inicio_ts){const elapsed=Math.max(0,(ahoraJugada-d.turno_inicio_ts)/1000);if(_rol==='X')nuevoTotalX=Math.max(0,(d.crono_totalX??cfgModo.total)-elapsed);else nuevoTotalO=Math.max(0,(d.crono_totalO??cfgModo.total)-elapsed);}
+const siguienteRol=_rol==='X'?'O':'X';
+await update(_salaRef,{tablero:t,turno:siguienteRol,fase:'jugando',jugadas:(d.jugadas||0)+1,fichasX:_rol==='X'?(d.fichasX??16)-1:(d.fichasX??16),fichasO:_rol==='O'?(d.fichasO??16)-1:(d.fichasO??16),crono_totalX:nuevoTotalX,crono_totalO:nuevoTotalO,crono_total_inicio_X:siguienteRol==='X'?ahoraJugada:null,crono_total_inicio_O:siguienteRol==='O'?ahoraJugada:null,turno_inicio_ts:ahoraJugada});
 } finally {
 _enviandoJugada = false;
 }
@@ -2398,12 +2438,9 @@ fichas_ganadoras_reclamadas:fichas,fichas_marcadas_reclamo:null,
 reclamante:null,victoriasX:vX,victoriasO:vO});
 },
 async _reanudarSinPenalizar(d){
-let nuevoInicio = d.turno_inicio_ts;
-if(d.pausa_activa && d.pausa_inicio_ts && d.turno_inicio_ts){
-const pausaDuracion = Date.now() - d.pausa_inicio_ts;
-nuevoInicio = d.turno_inicio_ts + pausaDuracion;
-}
-return { turno_inicio_ts: nuevoInicio, pausa_activa:false, pausa_inicio_ts:null };
+let nuevoInicio=d.turno_inicio_ts;let totalInicioX=d.crono_total_inicio_X??null,totalInicioO=d.crono_total_inicio_O??null;
+if(d.pausa_activa&&d.pausa_inicio_ts&&d.turno_inicio_ts){const pausaDuracion=Date.now()-d.pausa_inicio_ts;nuevoInicio=d.turno_inicio_ts+pausaDuracion;if(totalInicioX)totalInicioX+=pausaDuracion;if(totalInicioO)totalInicioO+=pausaDuracion;}
+return {turno_inicio_ts:nuevoInicio,pausa_activa:false,pausa_inicio_ts:null,crono_total_inicio_X:totalInicioX,crono_total_inicio_O:totalInicioO};
 },
 // Penalizacion en tiempo por reclamo de victoria falso
 PENALIZACION: { clasico:0, basico:15, experto:10, blitz:5 },
@@ -2461,15 +2498,15 @@ fichas_ganadoras_reclamadas:null,fichas_marcadas_reclamo:null,
 reclamante:null,reclamo_fichas:null,
 victoriasX:d.victoriasX||0,victoriasO:d.victoriasO||0,
 crono_modo:d.crono_modo||'clasico',crono_turno_forzado:null,
-turno_inicio_ts:null, crono_totalX:null, crono_totalO:null,
-pausa_activa:false,pausa_solicitada:null,pausa_reanudar:null,pausa_inicio_ts:null,
+turno_inicio_ts:null, crono_totalX:null, crono_totalO:null,crono_total_inicio_X:null,crono_total_inicio_O:null,
+pausa_activa:false,pausa_solicitada:null,pausa_reanudar:null,pausa_inicio_ts:null,pausa_propuesta:null,reanudar_propuesta:null,
 fin_por_tiempo:false,fin_por_desconexion:false,
 tc_decision:null, tc_inicio:null, tc_decision_final:null, tc_resolucion_ts:null, resultado_reclamo:null,
 fichas_timeout_reclamo:null,
 empate_sin_respuesta_inicio:null, empate_sin_respuesta_ack:null,
 prioridad_jugador:null, prioridad_intento:null, prioridad_inicio_ts:null, prioridad_timeout_ts:null, prioridad_aceptado_X:false, prioridad_aceptado_O:false, fichas_timeout_reclamo:null,
 nueva_partida_no_count:0, nueva_partida_max_alert:null, nueva_partida_solicitud:null,
-abandono:null,desconexionesX:d.desconexionesX||0,desconexionesO:d.desconexionesO||0,desconexion_pendiente:null
+abandono:null,desconexionesX:d.desconexionesX||0,desconexionesO:d.desconexionesO||0,desconexion_pendiente:null,ultima_reconexion:null,pausa_propuesta:null,reanudar_propuesta:null,crono_total_inicio_X:null,crono_total_inicio_O:null
 });
 },
 // ── NUEVA FUNCIÓN: Confirmación bilateral de Nueva Partida post-empate ─
@@ -2557,7 +2594,8 @@ if(_salaRef) await update(_salaRef,{crono_modo: modo});
 async proponerModo(modo){
 if(!_salaRef) return;
 const snap=await get(_salaRef); const d=snap.val();
-if(d.crono_modo === modo) return; // ya es el modo actual, nada que confirmar
+if(d.terminado || (d.jugadas||0)>0) return; // el modo queda fijado al jugar la primera ficha
+if(d.crono_modo === modo) return;
 await update(_salaRef,{modo_propuesto:{modo, por:_rol, ts:Date.now(), decisiones:{X:null,O:null}}});
 },
 async responderModo(acepta){
@@ -2573,8 +2611,20 @@ if(!acepta){
   return;
 }
 if(decisiones.X===true && decisiones.O===true){
-  // Ambos aceptaron: recién ahora cambia el modo para los dos.
-  await update(_salaRef,{crono_modo:propuesta.modo, modo_propuesto:null});
+  if(d.terminado || (d.jugadas||0)>0){ await update(_salaRef,{modo_propuesto:null}); return; }
+  const nuevoModo=propuesta.modo;
+  const cfg=Cronometro.MODOS[nuevoModo] || {total:0};
+  const cambios={crono_modo:nuevoModo,crono_totalX:cfg.total||0,crono_totalO:cfg.total||0,crono_total_inicio_X:null,crono_total_inicio_O:null,modo_propuesto:null};
+  // Si el sorteo ya ocurrió pero todavía no se jugó ninguna ficha, el modo
+  // cambia también en el motor local y el reloj vuelve a esperar el estado de aceptación del sorteo.
+  if(d.sorteo_usado && d.turno && d.sorteo_aceptado_X && d.sorteo_aceptado_O){
+    const ahoraCambio=Date.now();
+    cambios.turno_inicio_ts=ahoraCambio;
+    cambios.crono_total_inicio_X=d.turno==='X'?ahoraCambio:null;
+    cambios.crono_total_inicio_O=d.turno==='O'?ahoraCambio:null;
+  }
+  await update(_salaRef,cambios);
+  try{ Cronometro.init(nuevoModo,_rol,async r=>Firebase.turnoAgotado(r),async r=>Firebase.totalAgotado(r)); }catch(e){ console.error('[V32.2] error reiniciando cronometro tras cambio de modo',e); }
   return;
 }
 // Un jugador ya aceptó; mantenemos la propuesta visible para que el otro
@@ -2582,50 +2632,43 @@ if(decisiones.X===true && decisiones.O===true){
 await update(_salaRef,{modo_propuesto:Object.assign({},propuesta,{decisiones})});
 },
 async solicitarPausa(rol){
-if(!_salaRef) return;
-const campo = rol==='X' ? 'pausa_pedida_X' : 'pausa_pedida_O';
-await update(_salaRef,{[campo]: true});
-UI.setMsg('Pausa solicitada. Esperando confirmación del oponente...');
+if(!_salaRef||!_iniciado)return;
+const snap=await get(_salaRef),d=snap.val();
+if(!d||d.terminado||d.fase!=='jugando'||d.pausa_activa)return;
+await update(_salaRef,{pausa_propuesta:{por:rol,ts:Date.now(),decisiones:{X:rol==='X',O:rol==='O'}}});
+UI.setMsg('Solicitud de pausa enviada. Esperando al otro jugador...');
 },
-async reanudarPausa(){
-if(!_salaRef) return;
-const campo = _rol==='X' ? 'reanudar_pedido_X' : 'reanudar_pedido_O';
-await update(_salaRef,{[campo]: true});
-UI.setMsg('Reanudación solicitada. Esperando al oponente...');
+async responderPausa(acepta){
+if(!_salaRef)return;
+const snap=await get(_salaRef),d=snap.val(),p=d&&d.pausa_propuesta;if(!p||d.pausa_activa)return;
+const decisiones=Object.assign({X:null,O:null},p.decisiones||{});decisiones[_rol]=!!acepta;
+if(!acepta){await update(_salaRef,{pausa_propuesta:null});return;}
+if(decisiones.X===true&&decisiones.O===true){await update(_salaRef,{pausa_propuesta:null,pausa_activa:true,pausa_inicio_ts:Date.now()});return;}
+await update(_salaRef,{pausa_propuesta:Object.assign({},p,{decisiones})});
 },
-async _revisarConsensoPausa(d){
-if(_rol !== 'X') return;
-if(!d.pausa_activa && d.pausa_pedida_X && d.pausa_pedida_O){
-await update(_salaRef,{
-pausa_activa:true, pausa_inicio_ts:Date.now(),
-pausa_pedida_X:false, pausa_pedida_O:false
-});
-}
-if(d.pausa_activa && d.reanudar_pedido_X && d.reanudar_pedido_O){
-const reanudo = await this._reanudarSinPenalizar(d);
-await update(_salaRef,Object.assign({
-reanudar_pedido_X:false, reanudar_pedido_O:false
-}, reanudo));
-}
+async solicitarReanudar(){
+if(!_salaRef||!_iniciado)return;
+const snap=await get(_salaRef),d=snap.val();if(!d||!d.pausa_activa)return;
+await update(_salaRef,{reanudar_propuesta:{por:_rol,ts:Date.now(),decisiones:{X:_rol==='X',O:_rol==='O'}}});
+UI.setMsg('Solicitud de reanudación enviada. Esperando al otro jugador...');
 },
+async responderReanudar(acepta){
+if(!_salaRef)return;
+const snap=await get(_salaRef),d=snap.val(),p=d&&d.reanudar_propuesta;if(!p||!d.pausa_activa)return;
+const decisiones=Object.assign({X:null,O:null},p.decisiones||{});decisiones[_rol]=!!acepta;
+if(!acepta){await update(_salaRef,{reanudar_propuesta:null});return;}
+if(decisiones.X===true&&decisiones.O===true){const reanudo=await this._reanudarSinPenalizar(d);await update(_salaRef,Object.assign({reanudar_propuesta:null},reanudo));return;}
+await update(_salaRef,{reanudar_propuesta:Object.assign({},p,{decisiones})});
+},
+async _revisarConsensoPausa(d){if(!d)return;},
 async turnoAgotado(rol){
 // Forzar cambio de turno por tiempo de jugada agotado
 const snap=await get(_salaRef); const d=snap.val();
 if(!d||d.terminado||d.fase!=='jugando'||d.turno!==rol) return;
-const cfgModo = Cronometro.MODOS[d.crono_modo||'clasico'];
-let nuevoTotalX = d.crono_totalX, nuevoTotalO = d.crono_totalO;
-if(cfgModo && cfgModo.total > 0){
-// Se descuenta el tiempo completo de la jugada (se agotó por completo)
-if(rol==='X') nuevoTotalX = Math.max(0,(d.crono_totalX??cfgModo.total)-cfgModo.jugada);
-else           nuevoTotalO = Math.max(0,(d.crono_totalO??cfgModo.total)-cfgModo.jugada);
-}
-await update(_salaRef,{
-turno: rol==='X'?'O':'X',
-jugadas: (d.jugadas||0)+1,
-crono_totalX:nuevoTotalX, crono_totalO:nuevoTotalO,
-crono_turno_forzado: Date.now(),
-turno_inicio_ts: Date.now()
-});
+const cfgModo=Cronometro.MODOS[d.crono_modo||'clasico'];
+const ahoraTimeout=Date.now();let nuevoTotalX=d.crono_totalX,nuevoTotalO=d.crono_totalO;
+if(cfgModo&&cfgModo.total>0){const p=d.desconexion_pendiente;if(p&&p.rol===rol&&Number.isFinite(Number(p.turno_elapsed_ms))){const restanteSegmento=Math.max(0,cfgModo.jugada-Number(p.turno_elapsed_ms)/1000);if(rol==='X')nuevoTotalX=Math.max(0,(d.crono_totalX??cfgModo.total)-restanteSegmento);else nuevoTotalO=Math.max(0,(d.crono_totalO??cfgModo.total)-restanteSegmento);}else if(rol==='X'){const e=d.crono_total_inicio_X?Math.max(0,(ahoraTimeout-d.crono_total_inicio_X)/1000):cfgModo.jugada;nuevoTotalX=Math.max(0,(d.crono_totalX??cfgModo.total)-e);}else{const e=d.crono_total_inicio_O?Math.max(0,(ahoraTimeout-d.crono_total_inicio_O)/1000):cfgModo.jugada;nuevoTotalO=Math.max(0,(d.crono_totalO??cfgModo.total)-e);}}
+const siguiente=rol==='X'?'O':'X';await update(_salaRef,{turno:siguiente,jugadas:(d.jugadas||0)+1,crono_totalX:nuevoTotalX,crono_totalO:nuevoTotalO,crono_total_inicio_X:siguiente==='X'?ahoraTimeout:null,crono_total_inicio_O:siguiente==='O'?ahoraTimeout:null,crono_turno_forzado:ahoraTimeout,turno_inicio_ts:ahoraTimeout});
 },
 async declararEmpate(){
 // Tablero lleno detectado — abrir modal countdown SI/NO (no confirma empate aun)
@@ -2783,7 +2826,7 @@ async aceptarEmpateSinRespuesta(){
         empate_sin_respuesta_inicio:null,empate_sin_respuesta_ack:null,
         fichas_ganadoras_reclamadas:null,fichas_marcadas_reclamo:null,reclamante:null,reclamo_fichas:null,resultado_reclamo:null,
         fichas_timeout_reclamo:null,prioridad_jugador:null,prioridad_intento:null,prioridad_inicio_ts:null,prioridad_timeout_ts:null,
-        prioridad_aceptado_X:false,prioridad_aceptado_O:false,nueva_partida_solicitud:null});
+        prioridad_aceptado_X:false,prioridad_aceptado_O:false,nueva_partida_solicitud:null,pausa_propuesta:null,reanudar_propuesta:null,crono_total_inicio_X:null,crono_total_inicio_O:null});
     }
     return Object.assign({},current,{empate_sin_respuesta_ack:ack});
   });
@@ -2802,7 +2845,7 @@ async resolverSalidaSinRespuesta(){
       empate_sin_respuesta_inicio:null,empate_sin_respuesta_ack:null,
       fichas_ganadoras_reclamadas:null,fichas_marcadas_reclamo:null,reclamante:null,reclamo_fichas:null,resultado_reclamo:null,
       prioridad_jugador:null,prioridad_intento:null,prioridad_inicio_ts:null,prioridad_timeout_ts:null,
-      prioridad_aceptado_X:false,prioridad_aceptado_O:false,nueva_partida_solicitud:null});
+      prioridad_aceptado_X:false,prioridad_aceptado_O:false,nueva_partida_solicitud:null,pausa_propuesta:null,reanudar_propuesta:null,crono_total_inicio_X:null,crono_total_inicio_O:null});
   });
   return !!res.committed;
 },
@@ -2952,7 +2995,8 @@ fichas_ganadoras_reclamadas:null, fichas_marcadas_reclamo:null,
 reclamante:null, reclamo_fichas:null,
 tc_decision:null, tc_inicio:null, tc_decision_final:null, resultado_reclamo:null,
 fichas_timeout_reclamo:null,
-prioridad_jugador:null, prioridad_intento:null, prioridad_inicio_ts:null, prioridad_timeout_ts:null
+prioridad_jugador:null, prioridad_intento:null, prioridad_inicio_ts:null, prioridad_timeout_ts:null,
+crono_total_inicio_X:null,crono_total_inicio_O:null,pausa_propuesta:null,reanudar_propuesta:null
 });
 },
 async setSesionConfig(n){
@@ -2967,7 +3011,7 @@ ultimo_sorteo:null,sorteo_id:null,sorteo_usado:false,
 fichas_ganadoras_reclamadas:null,fichas_marcadas_reclamo:null,
 reclamante:null,reclamo_fichas:null,
 victoriasX:0,victoriasO:0,empates:0,partidasJugadas:0,
-crono_modo:null,empate_detectado:false,fin_sesion:false,
+crono_modo:null,crono_total_inicio_X:null,crono_total_inicio_O:null,empate_detectado:false,fin_sesion:false,
 tc_decision:null, tc_inicio:null, tc_decision_final:null, resultado_reclamo:null,
 fichas_timeout_reclamo:null,
 prioridad_jugador:null, prioridad_intento:null, prioridad_inicio_ts:null, prioridad_timeout_ts:null, prioridad_aceptado_X:false, prioridad_aceptado_O:false, nueva_partida_no_count:0, nueva_partida_max_alert:null, nueva_partida_solicitud:null, abandono:null
@@ -3079,14 +3123,42 @@ const res=await runTransaction(_salaRef,current=>{
   const n=Number(current[campo]||0)+1;
   const modo=current.crono_modo||'clasico';
   const ganador=rol==='X'?'O':'X';
+  const cambiosBase={};
+  if(modo==='basico'&&current.turno===rol&&current.turno_inicio_ts){
+    const elapsedMs=Math.max(0,Date.now()-Number(current.turno_inicio_ts));
+    const cfg=Cronometro.MODOS[modo];
+    const baseTotal=rol==='X'?(current.crono_totalX??cfg.total):(current.crono_totalO??cfg.total);
+    const totalCongelado=Math.max(0,baseTotal-elapsedMs/1000);
+    if(rol==='X'){cambiosBase.crono_totalX=totalCongelado;cambiosBase.crono_total_inicio_X=null;}else{cambiosBase.crono_totalO=totalCongelado;cambiosBase.crono_total_inicio_O=null;}
+    cambiosBase.desconexion_turno_elapsed_ms=elapsedMs;
+  }
   if(n>=2 || !_modoPermiteGracia(modo)){
     const vX=Number(current.victoriasX||0)+(ganador==='X'?1:0);
     const vO=Number(current.victoriasO||0)+(ganador==='O'?1:0);
     return Object.assign({},current,{terminado:true,ganador,fase:'terminado',fin_por_desconexion:true,desconexion_pendiente:null,[campo]:n,victoriasX:vX,victoriasO:vO});
   }
-  return Object.assign({},current,{[campo]:n,desconexion_pendiente:{rol,inicio_ts:Date.now(),numero:n,modo}});
+  return Object.assign({},current,cambiosBase,{[campo]:n,desconexion_pendiente:{rol,inicio_ts:Date.now(),numero:n,modo,turno_elapsed_ms:Number(cambiosBase.desconexion_turno_elapsed_ms||0)}});
 });
 return res.committed;
+},
+async resolverTurnoDesconectado(){
+if(!_salaRef)return;
+await runTransaction(_salaRef,current=>{
+const p=current&&current.desconexion_pendiente;if(!p||current.terminado||current.abandono||current.fase!=='jugando'||current.turno!==p.rol)return;
+const cfg=Cronometro.MODOS[current.crono_modo||'clasico'];if(!cfg||!cfg.jugada)return;
+if(Date.now()-Number(current.turno_inicio_ts||Date.now())<cfg.jugada*1000)return;
+const rol=p.rol,siguiente=rol==='X'?'O':'X',ahora=Date.now();
+const restanteSegmento=Math.max(0,cfg.jugada-Number(p.turno_elapsed_ms||0)/1000);let tx=current.crono_totalX,to=current.crono_totalO;
+if(rol==='X')tx=Math.max(0,(current.crono_totalX??cfg.total)-restanteSegmento);else to=Math.max(0,(current.crono_totalO??cfg.total)-restanteSegmento);
+return Object.assign({},current,{turno:siguiente,jugadas:(current.jugadas||0)+1,crono_totalX:tx,crono_totalO:to,crono_total_inicio_X:siguiente==='X'?ahora:null,crono_total_inicio_O:siguiente==='O'?ahora:null,crono_turno_forzado:ahora,turno_inicio_ts:ahora});
+});
+},
+async programarTurnoDesconectado(d){
+if(_desconexionTurnoTimer)clearTimeout(_desconexionTurnoTimer);
+if(!d||!d.desconexion_pendiente||d.fase!=='jugando'||d.turno!==d.desconexion_pendiente.rol)return;
+const cfg=Cronometro.MODOS[d.crono_modo||'clasico'];if(!cfg||!cfg.jugada)return;
+const restante=Math.max(0,cfg.jugada*1000-(Date.now()-Number(d.turno_inicio_ts||Date.now())));
+_desconexionTurnoTimer=setTimeout(()=>{_desconexionTurnoTimer=null;Firebase.resolverTurnoDesconectado().catch(()=>{});},restante+50);
 },
 async resolverDesconexionTimeout(){
 if(!_salaRef) return;
@@ -3106,14 +3178,14 @@ await runTransaction(_salaRef,current=>{
 });
 },
 async confirmarReconexion(){
-if(!_salaRef||!_rol) return;
+if(!_salaRef||!_rol)return;
 await runTransaction(_salaRef,current=>{
-  const p=current&&current.desconexion_pendiente; if(!p||p.rol!==_rol||current.terminado||current.abandono) return;
-  const con=current.conexion&&current.conexion[_rol]; if(!con||con.online!==true) return;
-  const dur=Math.max(0,Date.now()-Number(p.inicio_ts||Date.now()));
-  const cambios={desconexion_pendiente:null,ultima_reconexion:{rol:_rol,ts:Date.now(),duracion_ms:dur}};
-  if(p.modo==='basico'&&current.turno_inicio_ts) cambios.turno_inicio_ts=Number(current.turno_inicio_ts)+dur;
-  return Object.assign({},current,cambios);
+const p=current&&current.desconexion_pendiente;if(!p||p.rol!==_rol||current.terminado||current.abandono)return;
+const con=current.conexion&&current.conexion[_rol];if(!con||con.online!==true)return;
+const dur=Math.max(0,Date.now()-Number(p.inicio_ts||Date.now()));
+const cambios={desconexion_pendiente:null,ultima_reconexion:{rol:_rol,ts:Date.now(),duracion_ms:dur}};
+if(p.modo==='basico'&&current.turno===_rol){if(_rol==='X')cambios.crono_total_inicio_X=Date.now();else cambios.crono_total_inicio_O=Date.now();}
+return Object.assign({},current,cambios);
 });
 },
 async totalAgotado(rol){
@@ -3146,6 +3218,8 @@ crono_modo: modo,
 turno_inicio_ts: null,
 crono_totalX: cfgModo.total||0,
 crono_totalO: cfgModo.total||0,
+crono_total_inicio_X:null,
+crono_total_inicio_O:null,
 sorteo_aceptado_X:false, sorteo_aceptado_O:false
 });
 return {ok:true,primero};
@@ -3166,7 +3240,8 @@ if(Date.now()-d.prioridad_inicio_ts>=30000) this.timeoutPrioridad();
 async _revisarAceptacionSorteo(d){
 if(_rol !== 'X') return;
 if(d.sorteo_usado && !d.turno_inicio_ts && d.sorteo_aceptado_X && d.sorteo_aceptado_O){
-await update(_salaRef,{turno_inicio_ts: Date.now()});
+const ahora=Date.now();
+await update(_salaRef,{turno_inicio_ts:ahora,crono_total_inicio_X:d.turno==='X'?ahora:null,crono_total_inicio_O:d.turno==='O'?ahora:null});
 }
 }
 };
@@ -3188,24 +3263,27 @@ if(!_iniciado&&_rol==='X'&&d.j2==='online') update(_salaRef,{j1:'online'});
 if(_iniciado){
   if(d.desconexion_pendiente){
     const p=d.desconexion_pendiente;
+    Firebase.programarTurnoDesconectado(d).catch(()=>{});
     if(p.rol===_rol){
-      _ocultarModalDesconexion();
+      _ocultarModalDesconexion();_ocultarModalReconexion();_bloquearPorDesconexion(true);Firebase.confirmarReconexion().catch(()=>{});
+    }else{
       _bloquearPorDesconexion(true);
-      Firebase.confirmarReconexion().catch(()=>{});
-    } else {
-      _bloquearPorDesconexion(true);
-      if(_desconexionVisto!==p.inicio_ts){ _desconexionVisto=p.inicio_ts; _mostrarModalDesconexion(p,_rol); }
+      if(_desconexionVisto!==p.inicio_ts){_desconexionVisto=p.inicio_ts;_mostrarModalDesconexion(p,_rol);}
     }
-  } else {
-    _ocultarModalDesconexion();
-    _desconexionVisto=null;
+  }else{
+    if(_desconexionTurnoTimer){clearTimeout(_desconexionTurnoTimer);_desconexionTurnoTimer=null;}
+    _ocultarModalDesconexion();_desconexionVisto=null;
+    const rec=d.ultima_reconexion;
+    if(rec&&rec.rol!==_rol&&rec.ts&&_reconexionVisto!==rec.ts){_reconexionVisto=rec.ts;_ocultarModalDesconexion();_mostrarModalReconexion(rec,_rol);}
   }
-  // La presencia remota es la fuente para detectar desconexiones reales.
-  const rival=_rol==='X'?'O':'X';
-  const rivalCon=d.conexion&&d.conexion[rival];
-  if(!d.desconexion_pendiente && rivalCon && rivalCon.online===false && d.fase!=='terminado' && !d.abandono){
-    Firebase.programarDesconexionDetectada(rival);
-  }
+  if(d.pausa_propuesta&&!d.pausa_activa){
+    const pp=d.pausa_propuesta,key='pausa_'+pp.ts;
+    if(_pausaPropuestaVisto!==key){_pausaPropuestaVisto=key;if(pp.por!==_rol&&pp.decisiones&&pp.decisiones[_rol]!==true){const quien=pp.por==='X'?'Jugador 1 (X)':'Jugador 2 (O)';_mostrarModalBilateral('Solicitud de pausa',quien+' solicita pausar la partida. ¿Aceptas?',()=>Firebase.responderPausa(true),()=>Firebase.responderPausa(false));}}
+  }else if(!d.pausa_propuesta)_pausaPropuestaVisto=null;
+  if(d.reanudar_propuesta&&d.pausa_activa){
+    const rp=d.reanudar_propuesta,key='reanudar_'+rp.ts;
+    if(_reanudarPropuestaVisto!==key){_reanudarPropuestaVisto=key;if(rp.por!==_rol&&rp.decisiones&&rp.decisiones[_rol]!==true){const quien=rp.por==='X'?'Jugador 1 (X)':'Jugador 2 (O)';_mostrarModalBilateral('Solicitud de reanudación',quien+' solicita reanudar la partida. ¿Aceptas?',()=>Firebase.responderReanudar(true),()=>Firebase.responderReanudar(false));}}
+  }else if(!d.reanudar_propuesta)_reanudarPropuestaVisto=null;
   Juego.encolarEstado(d,_rol);
 }
 });
