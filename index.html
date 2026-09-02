@@ -127,6 +127,11 @@ M3 · PANELES CSS — Laterales, botones, modal
 #btn-reclamar{background:linear-gradient(135deg,#005500,#009933);color:#fff}
 #btn-confirmar{background:linear-gradient(135deg,#003070,#0055bb);color:#fff}
 #btn-abandonar{background:linear-gradient(135deg,#4a0000,#7a0000);color:#fff}
+#inicio-partida-wrap{display:none;flex-direction:column;align-items:center;justify-content:center;gap:5px;width:100%;margin:6px 0 2px;}
+#btn-iniciar-partida{background:linear-gradient(135deg,#78cbd0,#a6e1e3);color:#102020;border:1px solid #a6e1e3;box-shadow:0 0 12px rgba(120,203,208,.25);min-width:130px;justify-content:center;}
+#btn-iniciar-partida:hover{filter:brightness(1.08);box-shadow:0 0 18px rgba(120,203,208,.4);}
+#btn-iniciar-partida:disabled{cursor:not-allowed;}
+#inicio-partida-status{font-family:'Rajdhani',sans-serif;font-size:10px;color:#777;text-align:center;min-height:14px;}
 #overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:99}
 #modal{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:linear-gradient(135deg,#1a1a1a,#252525);border:2px solid var(--gold);border-radius:12px;padding:28px 36px;text-align:center;z-index:100;box-shadow:0 0 40px rgba(0,0,0,.9);min-width:280px}
 #modal h2{font-family:'Orbitron',sans-serif;font-size:20px;margin-bottom:7px}
@@ -572,6 +577,11 @@ font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;
 </div>
 </aside>
 </div>
+<!-- V32.3 · INICIO BILATERAL DE PARTIDA -->
+<div id="inicio-partida-wrap">
+<button class="btn" id="btn-iniciar-partida">▶ INICIAR PARTIDA</button>
+<div id="inicio-partida-status"></div>
+</div>
 <!-- BOTONES -->
 <div id="barra">
 <button class="btn" id="btn-nueva">↺ NUEVA PARTIDA</button>
@@ -1008,7 +1018,7 @@ M12· JUEGO — Orquestador principal · V17
 ═══════════════════════════════════════════════════════ */
 const Juego = (() => {
 const $ = id => document.getElementById(id);
-let _sorteoVisto=null, _victoriaVista=false, _reclamoKey=null, _turnoAnterior=null, _reclamoCanceladoVisto=null, _ultimoD=null;
+let _sorteoVisto=null, _victoriaVista=false, _reclamoKey=null, _turnoAnterior=null, _reclamoCanceladoVisto=null, _ultimoD=null, _partidaInicioVisto=null;
 let _resultadoReclamoVisto=null, _abandonoVisto=null;   // CORRECCIÓN: control de orden de modales (validez antes que prioridad/empate)
 // V17 · SERIALIZADOR DEL ESTADO: onValue puede entregar snapshots mientras
 // el snapshot anterior todavía está esperando una transacción. No permitimos
@@ -1125,6 +1135,7 @@ if(typeof _revisarNuevaPartida === 'function') _revisarNuevaPartida(d, miRol);
 function _dispatchFase(d, miRol){
 if(d.terminado)                              _faseTerminado(d, miRol);
 else if(d.fase==='esperando_sorteo'||!d.turno) _faseEspera(d);
+else if(d.fase==='preparada')                _fasePreparada(d, miRol);
 else if(d.fase==='reclamo')                  _faseReclamo(d, miRol);
 else if(d.fase==='tablero_completo')         _faseTableroCompleto(d, miRol);
 else if(d.fase==='prioridad_reclamo')        _fasePrioridad(d, miRol);
@@ -1464,7 +1475,7 @@ UI.setMsg(terminoPorDesconexion?'Partida terminada por desconexión. Esta partid
 UI.bloquearBtns(['btn-nueva'],terminoPorDesconexion);
 const btnNuevaFin=document.getElementById('btn-nueva');
 if(btnNuevaFin){btnNuevaFin.style.opacity=terminoPorDesconexion?'0.45':'';btnNuevaFin.style.pointerEvents=terminoPorDesconexion?'none':'';}
-UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar'],true);
+UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar'],true);const inicioWrapFin=document.getElementById('inicio-partida-wrap');if(inicioWrapFin)inicioWrapFin.style.display='none';if(typeof bloquearSelectorModo==='function')bloquearSelectorModo(true);
 
 // Tras un abandono, el ganador conserva el tablero y recibe una notificación.
 const abandono = d.abandono;
@@ -1546,8 +1557,20 @@ UI.setMsg('Pulsa SORTEAR PARTIDA para comenzar.');
 if(!d.sorteo_usado) UI.bloquearBtns(['btn-sortear'],false);
 UI.bloquearBtns(['btn-reclamar','btn-confirmar'],true);
 UI.bloquearBtns(['btn-abandonar'],false);
+const inicioWrap=$('inicio-partida-wrap');if(inicioWrap)inicioWrap.style.display='none';if(typeof bloquearSelectorModo==='function')bloquearSelectorModo(false);
 // Marcar visualmente el modo activo (Clasico por defecto)
 if(typeof marcarModoActivo === 'function') marcarModoActivo(d.crono_modo || 'clasico');
+}
+function _fasePreparada(d, miRol){
+  Cronometro.detener(); UI.bloquearTablero(true);
+  UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true); UI.bloquearBtns(['btn-abandonar'],false);
+  const wrap=document.getElementById('inicio-partida-wrap'),btn=document.getElementById('btn-iniciar-partida'),status=document.getElementById('inicio-partida-status'); if(wrap)wrap.style.display='flex';
+  const ambosSorteo=d.sorteo_aceptado_X===true&&d.sorteo_aceptado_O===true,hayPropuesta=!!d.inicio_propuesto;
+  if(btn){btn.disabled=!ambosSorteo||hayPropuesta;btn.style.opacity=btn.disabled?'0.45':'';btn.style.pointerEvents=btn.disabled?'none':'auto';}
+  if(status)status.textContent=!ambosSorteo?'Esperando que ambos acepten el resultado del sorteo.':hayPropuesta?'Solicitud de inicio en espera de confirmación.':'Partida preparada. Ambos jugadores pueden pulsar INICIAR PARTIDA.';
+  if(typeof bloquearSelectorModo==='function')bloquearSelectorModo(hayPropuesta); marcarModoActivo(d.crono_modo||'clasico');
+  if(d.sorteo_id&&_sorteoVisto!==d.sorteo_id){_sorteoVisto=d.sorteo_id;if(d['sorteo_aceptado_'+miRol]!==true)UI.modal('¡SORTEO!','Comienza el '+(d.ultimo_sorteo==='X'?'Jugador 1 (X)':'Jugador 2 (O)'),'ACEPTAR',()=>Firebase.aceptarSorteo());}
+  UI.setMsg(d.ultimo_sorteo==='X'?'Comenzará Jugador 1 (X). Esperando inicio.':'Comenzará Jugador 2 (O). Esperando inicio.');
 }
 function _faseReclamo(d, miRol){
 UI.bloquearTablero(true);
@@ -1599,29 +1622,11 @@ if(!Reclamo.isActivo()){
 UI.modal('Reclamo cancelado','El reclamo fue cancelado. El juego continúa.');
 }
 }
-// Sorteo nuevo — SIEMPRE se procesa primero, antes de cualquier
-// otra lógica que pudiera cortar la ejecución con return
-let esNuevoSorteo = false;
-if(d.sorteo_id && _sorteoVisto !== d.sorteo_id){
-esNuevoSorteo = true;
-_sorteoVisto = d.sorteo_id;
-UI.bloquearBtns(['btn-sortear','btn-nueva'],true);
-const yaAcepto = d['sorteo_aceptado_'+miRol] === true;
-if(!yaAcepto)
-UI.modal('¡SORTEO!','Comienza el '+(d.ultimo_sorteo==='X'?'Jugador 1 (X)':'Jugador 2 (O)'),'ACEPTAR',()=>Firebase.aceptarSorteo());
-}
-// Reflejar visualmente el modo cronómetro elegido (para ambos jugadores)
-if(d.crono_modo) marcarModoActivo(d.crono_modo);
-// Inicializar el motor del cronómetro solo al detectar un sorteo nuevo real
-if(esNuevoSorteo){
-const modo = d.crono_modo || 'clasico';
-try {
-Cronometro.init(modo, miRol,
-async (rolAgotado) => { await Firebase.turnoAgotado(rolAgotado); },
-async (rolAgotado) => { await Firebase.totalAgotado(rolAgotado); }
-);
-} catch(e){ console.error('Error iniciando cronometro:', e); }
-}
+// V32.3: el sorteo pertenece a la fase PREPARADA. La partida y los
+// cronómetros comienzan únicamente después de la confirmación bilateral de INICIAR PARTIDA.
+const inicioWrapJugando=document.getElementById('inicio-partida-wrap');if(inicioWrapJugando)inicioWrapJugando.style.display='none';
+if(typeof bloquearSelectorModo==='function')bloquearSelectorModo(true); if(d.crono_modo)marcarModoActivo(d.crono_modo);
+if(d.partida_iniciada&&_partidaInicioVisto!==d.inicio_partida_ts){_partidaInicioVisto=d.inicio_partida_ts||Date.now();const modo=d.crono_modo||'clasico';try{Cronometro.init(modo,miRol,async r=>Firebase.turnoAgotado(r),async r=>Firebase.totalAgotado(r));}catch(e){console.error('[V32.3] error iniciando cronometro',e);}}
 // El cronómetro se alimenta SIEMPRE del snapshot de Firebase
 // (timestamps compartidos) — es idéntico para ambos jugadores,
 // sin intervalos locales independientes que puedan desincronizarse
@@ -1669,7 +1674,7 @@ UI.bloquearTablero(d.turno !== miRol);
 }
 }
 function reset(){
-    _sorteoVisto=null; _victoriaVista=false; _reclamoKey=null;
+    _sorteoVisto=null; _victoriaVista=false; _reclamoKey=null; _partidaInicioVisto=null;
     _prioridadMostrada=null; _empateFinalKey=null; _resultadoReclamoVisto=null;
     _npConfirmacionVista=null; _npMaxAlertVisto=null; _npFinalizacionEnCurso=null; _abandonoVisto=null; // Limpieza de estado de fin de partida
     _npFinalizacionEnCurso=null; _salidaTrasAbandono=false; _ultimoD=null;
@@ -2169,6 +2174,7 @@ return { init, actualizar, detener, getModo, MODOS };
 })();
 // ── SELECTOR DE MODO (antes del sorteo) ─────────────────
 let _modoSeleccionado = 'clasico';
+function bloquearSelectorModo(bloquear){document.querySelectorAll('.crono-modo-btn').forEach(btn=>{btn.disabled=!!bloquear;btn.style.opacity=bloquear?'0.45':'';btn.style.pointerEvents=bloquear?'none':'auto';});}
 // Marca visualmente (LED verde) el modo actualmente ACTIVO en la partida
 function marcarModoActivo(modo){
 document.querySelectorAll('.crono-modo-btn').forEach(b=>{
@@ -2186,6 +2192,8 @@ if(!Firebase.isIniciado()) return; // requiere sala conectada
 const snap = await Firebase.snapshotFase();
 if(!snap) return;
 if(snap.terminado) return; // no cambiar una partida ya terminada
+if(snap.partida_iniciada) return; // una vez iniciada, el modo queda fijado
+if(snap.inicio_propuesto) return; // mientras se confirma el inicio, no abrir otra propuesta
 if((snap.jugadas||0)>0) return; // después de la primera ficha el modo queda fijado
 if(snap.crono_modo === btn.dataset.modo) return; // ya es el modo actual
 // V31: todo cambio de modalidad requiere confirmación bilateral,
@@ -2271,7 +2279,8 @@ function _mostrarModalDesconexion(pendiente, miRol){
     document.getElementById('btn-desconexion-ok')?.addEventListener('click',()=>{ov.style.display='none';});
   }
   const msg=document.getElementById('desconexion-msg'), ti=document.getElementById('desconexion-tiempo');
-  if(msg) msg.textContent='Tu oponente se ha desconectado. La partida queda temporalmente en espera mientras el sistema permite una reconexión.';
+  const okBtn=document.getElementById('btn-desconexion-ok'); if(okBtn) okBtn.textContent='ACEPTAR';
+  if(msg) msg.textContent=pendiente.preinicio?'Tu oponente ha sufrido una desconexión momentánea. Se esperarán 60 segundos para su reconexión, sin penalización alguna. La partida aún no ha comenzado.':'Tu oponente se ha desconectado. La partida queda temporalmente en espera mientras el sistema permite una reconexión.';
   if(ti) ti.textContent='60';
   ov.style.display='flex';
   clearInterval(_desconexionTimer);
@@ -2292,7 +2301,7 @@ function _mostrarModalReconexion(reconexion,miRol){
   }
   const quien=reconexion.rol==='X'?'Jugador 1 (X)':'Jugador 2 (O)';
   const msg=document.getElementById('reconexion-msg');
-  if(msg) msg.textContent=quien+' se ha reconectado. La partida continúa desde el estado anterior.';
+  if(msg) msg.textContent=reconexion.preinicio?quien+' se ha reconectado. La partida continúa preparada para comenzar.':quien+' se ha reconectado. La partida continúa desde el estado anterior.';
   ov.style.display='flex';
 }
 function _ocultarModalReconexion(){const ov=document.getElementById('reconexion-overlay');if(ov)ov.style.display='none';}
@@ -2329,9 +2338,9 @@ j1:'online',j2:'espera',ts:Date.now(),
 sesionX:_sessionId,sesionO:null,conexion:{X:{online:true,ts:serverTimestamp()},O:{online:false,ts:serverTimestamp()}},
 desconexionesX:0,desconexionesO:0,
 ultimo_sorteo:null,sorteo_id:null,sorteo_usado:false,victoriasX:0,victoriasO:0,
-crono_modo:'clasico', turno_inicio_ts:null, crono_totalX:null, crono_totalO:null,fin_por_desconexion:false,
+crono_modo:'clasico', partida_iniciada:false, inicio_partida_ts:null, inicio_propuesto:null, turno_inicio_ts:null, crono_totalX:null, crono_totalO:null,fin_por_desconexion:false,
 nueva_partida_no_count:0, nueva_partida_max_alert:null, nueva_partida_solicitud:null,
-abandono:null,desconexion_pendiente:null,ultima_reconexion:null,
+abandono:null,cancelada_preinicio:null,desconexion_pendiente:null,ultima_reconexion:null,
 pausa_activa:false, pausa_inicio_ts:null,pausa_propuesta:null,reanudar_propuesta:null,
 crono_total_inicio_X:null,crono_total_inicio_O:null
 });
@@ -2497,7 +2506,7 @@ ultimo_sorteo:null,sorteo_id:null,sorteo_usado:false,
 fichas_ganadoras_reclamadas:null,fichas_marcadas_reclamo:null,
 reclamante:null,reclamo_fichas:null,
 victoriasX:d.victoriasX||0,victoriasO:d.victoriasO||0,
-crono_modo:d.crono_modo||'clasico',crono_turno_forzado:null,
+crono_modo:d.crono_modo||'clasico', partida_iniciada:false, inicio_partida_ts:null, inicio_propuesto:null, crono_turno_forzado:null,
 turno_inicio_ts:null, crono_totalX:null, crono_totalO:null,crono_total_inicio_X:null,crono_total_inicio_O:null,
 pausa_activa:false,pausa_solicitada:null,pausa_reanudar:null,pausa_inicio_ts:null,pausa_propuesta:null,reanudar_propuesta:null,
 fin_por_tiempo:false,fin_por_desconexion:false,
@@ -2506,7 +2515,7 @@ fichas_timeout_reclamo:null,
 empate_sin_respuesta_inicio:null, empate_sin_respuesta_ack:null,
 prioridad_jugador:null, prioridad_intento:null, prioridad_inicio_ts:null, prioridad_timeout_ts:null, prioridad_aceptado_X:false, prioridad_aceptado_O:false, fichas_timeout_reclamo:null,
 nueva_partida_no_count:0, nueva_partida_max_alert:null, nueva_partida_solicitud:null,
-abandono:null,desconexionesX:d.desconexionesX||0,desconexionesO:d.desconexionesO||0,desconexion_pendiente:null,ultima_reconexion:null,pausa_propuesta:null,reanudar_propuesta:null,crono_total_inicio_X:null,crono_total_inicio_O:null
+abandono:null,cancelada_preinicio:null,desconexionesX:d.desconexionesX||0,desconexionesO:d.desconexionesO||0,desconexion_pendiente:null,ultima_reconexion:null,pausa_propuesta:null,reanudar_propuesta:null,crono_total_inicio_X:null,crono_total_inicio_O:null
 });
 },
 // ── NUEVA FUNCIÓN: Confirmación bilateral de Nueva Partida post-empate ─
@@ -2615,21 +2624,31 @@ if(decisiones.X===true && decisiones.O===true){
   const nuevoModo=propuesta.modo;
   const cfg=Cronometro.MODOS[nuevoModo] || {total:0};
   const cambios={crono_modo:nuevoModo,crono_totalX:cfg.total||0,crono_totalO:cfg.total||0,crono_total_inicio_X:null,crono_total_inicio_O:null,modo_propuesto:null};
-  // Si el sorteo ya ocurrió pero todavía no se jugó ninguna ficha, el modo
-  // cambia también en el motor local y el reloj vuelve a esperar el estado de aceptación del sorteo.
-  if(d.sorteo_usado && d.turno && d.sorteo_aceptado_X && d.sorteo_aceptado_O){
-    const ahoraCambio=Date.now();
-    cambios.turno_inicio_ts=ahoraCambio;
-    cambios.crono_total_inicio_X=d.turno==='X'?ahoraCambio:null;
-    cambios.crono_total_inicio_O=d.turno==='O'?ahoraCambio:null;
-  }
+  // V32.3: cambiar de modo antes del inicio NO pone en marcha los relojes.
+  cambios.partida_iniciada=false; cambios.inicio_propuesto=null; cambios.turno_inicio_ts=null;
   await update(_salaRef,cambios);
-  try{ Cronometro.init(nuevoModo,_rol,async r=>Firebase.turnoAgotado(r),async r=>Firebase.totalAgotado(r)); }catch(e){ console.error('[V32.2] error reiniciando cronometro tras cambio de modo',e); }
   return;
 }
 // Un jugador ya aceptó; mantenemos la propuesta visible para que el otro
 // pueda decidir. El modo activo todavía NO cambia.
 await update(_salaRef,{modo_propuesto:Object.assign({},propuesta,{decisiones})});
+},
+async proponerInicioPartida(){
+  if(!_salaRef||!_rol)return;const snap=await get(_salaRef),d=snap.val();
+  if(!d||d.terminado||d.fase!=='preparada'||d.partida_iniciada||d.inicio_propuesto)return;
+  if(d.sorteo_aceptado_X!==true||d.sorteo_aceptado_O!==true)return;
+  await update(_salaRef,{inicio_propuesto:{por:_rol,ts:Date.now(),decisiones:{X:_rol==='X',O:_rol==='O'}}});
+  UI.setMsg('Solicitud de inicio enviada. Esperando la aceptación del otro jugador...');
+},
+async responderInicioPartida(acepta){
+  if(!_salaRef||!_rol)return;
+  const res=await runTransaction(_salaRef,current=>{
+    if(!current||current.terminado||current.fase!=='preparada'||current.partida_iniciada||!current.inicio_propuesto)return;
+    const p=current.inicio_propuesto,decisiones=Object.assign({X:null,O:null},p.decisiones||{});decisiones[_rol]=!!acepta;
+    if(!acepta)return Object.assign({},current,{inicio_propuesto:null});
+    if(decisiones.X===true&&decisiones.O===true){const ahora=Date.now(),modo=current.crono_modo||'clasico',cfg=Cronometro.MODOS[modo]||{total:0};return Object.assign({},current,{fase:'jugando',partida_iniciada:true,inicio_partida_ts:ahora,inicio_propuesto:null,turno_inicio_ts:ahora,crono_totalX:cfg.total||0,crono_totalO:cfg.total||0,crono_total_inicio_X:current.turno==='X'?ahora:null,crono_total_inicio_O:current.turno==='O'?ahora:null});}
+    return Object.assign({},current,{inicio_propuesto:Object.assign({},p,{decisiones})});
+  });return !!res.committed;
 },
 async solicitarPausa(rol){
 if(!_salaRef||!_iniciado)return;
@@ -2820,13 +2839,13 @@ async aceptarEmpateSinRespuesta(){
     const ack=Object.assign({X:null,O:null},current.empate_sin_respuesta_ack||{});
     ack[rol]=true;
     if(ack.X===true && ack.O===true){
-      return Object.assign({},current,{fase:'esperando_sorteo',tablero:Estado.tableroVacio(),turno:null,
+      return Object.assign({},current,{fase:'esperando_sorteo',tablero:Estado.tableroVacio(),turno:null,partida_iniciada:false,inicio_partida_ts:null,inicio_propuesto:null,
         terminado:false,ganador:null,jugadas:0,fichasX:16,fichasO:16,ultimo_sorteo:null,sorteo_id:null,sorteo_usado:false,
         tc_decision:null,tc_inicio:null,tc_decision_final:null,tc_resolucion_ts:null,
         empate_sin_respuesta_inicio:null,empate_sin_respuesta_ack:null,
         fichas_ganadoras_reclamadas:null,fichas_marcadas_reclamo:null,reclamante:null,reclamo_fichas:null,resultado_reclamo:null,
         fichas_timeout_reclamo:null,prioridad_jugador:null,prioridad_intento:null,prioridad_inicio_ts:null,prioridad_timeout_ts:null,
-        prioridad_aceptado_X:false,prioridad_aceptado_O:false,nueva_partida_solicitud:null,pausa_propuesta:null,reanudar_propuesta:null,crono_total_inicio_X:null,crono_total_inicio_O:null});
+        prioridad_aceptado_X:false,prioridad_aceptado_O:false,nueva_partida_solicitud:null,pausa_propuesta:null,reanudar_propuesta:null,crono_total_inicio_X:null,crono_total_inicio_O:null,partida_iniciada:false,inicio_partida_ts:null,inicio_propuesto:null,cancelada_preinicio:null});
     }
     return Object.assign({},current,{empate_sin_respuesta_ack:ack});
   });
@@ -2996,7 +3015,7 @@ reclamante:null, reclamo_fichas:null,
 tc_decision:null, tc_inicio:null, tc_decision_final:null, resultado_reclamo:null,
 fichas_timeout_reclamo:null,
 prioridad_jugador:null, prioridad_intento:null, prioridad_inicio_ts:null, prioridad_timeout_ts:null,
-crono_total_inicio_X:null,crono_total_inicio_O:null,pausa_propuesta:null,reanudar_propuesta:null
+crono_total_inicio_X:null,crono_total_inicio_O:null,pausa_propuesta:null,reanudar_propuesta:null,partida_iniciada:false,inicio_partida_ts:null,inicio_propuesto:null,cancelada_preinicio:null
 });
 },
 async setSesionConfig(n){
@@ -3011,10 +3030,10 @@ ultimo_sorteo:null,sorteo_id:null,sorteo_usado:false,
 fichas_ganadoras_reclamadas:null,fichas_marcadas_reclamo:null,
 reclamante:null,reclamo_fichas:null,
 victoriasX:0,victoriasO:0,empates:0,partidasJugadas:0,
-crono_modo:null,crono_total_inicio_X:null,crono_total_inicio_O:null,empate_detectado:false,fin_sesion:false,
+crono_modo:null,partida_iniciada:false,inicio_partida_ts:null,inicio_propuesto:null,crono_total_inicio_X:null,crono_total_inicio_O:null,empate_detectado:false,fin_sesion:false,
 tc_decision:null, tc_inicio:null, tc_decision_final:null, resultado_reclamo:null,
 fichas_timeout_reclamo:null,
-prioridad_jugador:null, prioridad_intento:null, prioridad_inicio_ts:null, prioridad_timeout_ts:null, prioridad_aceptado_X:false, prioridad_aceptado_O:false, nueva_partida_no_count:0, nueva_partida_max_alert:null, nueva_partida_solicitud:null, abandono:null
+prioridad_jugador:null, prioridad_intento:null, prioridad_inicio_ts:null, prioridad_timeout_ts:null, prioridad_aceptado_X:false, prioridad_aceptado_O:false, nueva_partida_no_count:0, nueva_partida_max_alert:null, nueva_partida_solicitud:null, abandono:null,cancelada_preinicio:null
 });
 },
 async abandonarPartida(){
@@ -3023,6 +3042,7 @@ async abandonarPartida(){
     // La UI exige confirmación SÍ/NO antes de llegar aquí.
     const snap=await get(_salaRef); const d=snap.val();
     if(!d) return;
+    if(d.desconexion_pendiente&&d.desconexion_pendiente.preinicio&&d.desconexion_pendiente.rol!==_rol){await update(_salaRef,{desconexion_pendiente:null,inicio_propuesto:null,cancelada_preinicio:{tipo:'oponente_abandono',abandonador:_rol,ts:Date.now()}});this.salirLocalTrasAbandono();return;}
     // V27: si el oponente ya abandonó, el jugador restante solo necesita salir.
     // No se modifica el resultado ni se registra un segundo abandono.
     if(d.abandono && d.abandono.abandonador !== _rol){
@@ -3068,6 +3088,7 @@ async abandonarPartida(){
     // No dependemos del listener remoto para desmontar su interfaz local.
     this.salirLocalTrasAbandono();
 },
+salirLocalAlLobbyNormal(){if(_unsubSala){_unsubSala();_unsubSala=null;}_iniciado=false;_borrarSesion();if(_unsubConexion){_unsubConexion();_unsubConexion=null;}_ocultarModalDesconexion();_ocultarModalReconexion();UI.cerrarModal();UI.bloquearTablero(true);UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar','btn-abandonar'],true);const wrap=document.getElementById('inicio-partida-wrap');if(wrap)wrap.style.display='none';UI.lobbyPaso('inicio');UI.lobbyVisible(true);setTimeout(()=>{try{window.location.reload();}catch(e){console.error('[V32.3] no se pudo volver al lobby',e);}},120);},
 salirLocalTrasAbandono(){
     if(_recargandoTrasAbandono) return;
     _recargandoTrasAbandono=true;
@@ -3123,6 +3144,7 @@ const res=await runTransaction(_salaRef,current=>{
   const n=Number(current[campo]||0)+1;
   const modo=current.crono_modo||'clasico';
   const ganador=rol==='X'?'O':'X';
+  if(!current.partida_iniciada||current.fase==='preparada') return Object.assign({},current,{desconexion_pendiente:{rol,inicio_ts:Date.now(),numero:n,modo,preinicio:true},inicio_propuesto:null});
   const cambiosBase={};
   if(modo==='basico'&&current.turno===rol&&current.turno_inicio_ts){
     const elapsedMs=Math.max(0,Date.now()-Number(current.turno_inicio_ts));
@@ -3165,15 +3187,10 @@ if(!_salaRef) return;
 await runTransaction(_salaRef,current=>{
   const p=current&&current.desconexion_pendiente; if(!p||current.terminado||current.abandono) return;
   const con=current.conexion&&current.conexion[p.rol];
-  if(con&&con.online===true){
-    let cambios={desconexion_pendiente:null};
-    if(p.modo==='basico'&&current.turno_inicio_ts){ cambios.turno_inicio_ts=Number(current.turno_inicio_ts)+(Date.now()-Number(p.inicio_ts||Date.now())); }
-    return Object.assign({},current,cambios);
-  }
-  if(Date.now()-Number(p.inicio_ts||Date.now())<60000) return;
-  const ganador=p.rol==='X'?'O':'X';
-  const vX=Number(current.victoriasX||0)+(ganador==='X'?1:0);
-  const vO=Number(current.victoriasO||0)+(ganador==='O'?1:0);
+  if(con&&con.online===true){let cambios={desconexion_pendiente:null};if(p.modo==='basico'&&current.partida_iniciada&&current.turno_inicio_ts)cambios.turno_inicio_ts=Number(current.turno_inicio_ts)+(Date.now()-Number(p.inicio_ts||Date.now()));return Object.assign({},current,cambios);}
+  if(Date.now()-Number(p.inicio_ts||Date.now())<60000)return;
+  if(p.preinicio||!current.partida_iniciada||current.fase==='preparada')return Object.assign({},current,{desconexion_pendiente:null,inicio_propuesto:null,cancelada_preinicio:{tipo:'espera_agotada',desconectado:p.rol,ts:Date.now()}});
+  const ganador=p.rol==='X'?'O':'X';const vX=Number(current.victoriasX||0)+(ganador==='X'?1:0),vO=Number(current.victoriasO||0)+(ganador==='O'?1:0);
   return Object.assign({},current,{terminado:true,ganador,fase:'terminado',fin_por_desconexion:true,desconexion_pendiente:null,victoriasX:vX,victoriasO:vO});
 });
 },
@@ -3183,22 +3200,17 @@ await runTransaction(_salaRef,current=>{
 const p=current&&current.desconexion_pendiente;if(!p||p.rol!==_rol||current.terminado||current.abandono)return;
 const con=current.conexion&&current.conexion[_rol];if(!con||con.online!==true)return;
 const dur=Math.max(0,Date.now()-Number(p.inicio_ts||Date.now()));
-const cambios={desconexion_pendiente:null,ultima_reconexion:{rol:_rol,ts:Date.now(),duracion_ms:dur}};
-if(p.modo==='basico'&&current.turno===_rol){if(_rol==='X')cambios.crono_total_inicio_X=Date.now();else cambios.crono_total_inicio_O=Date.now();}
+const cambios={desconexion_pendiente:null,ultima_reconexion:{rol:_rol,ts:Date.now(),duracion_ms:dur,preinicio:!!p.preinicio}};
+if(!p.preinicio&&current.partida_iniciada&&p.modo==='basico'&&current.turno===_rol){if(_rol==='X')cambios.crono_total_inicio_X=Date.now();else cambios.crono_total_inicio_O=Date.now();}
 return Object.assign({},current,cambios);
 });
 },
 async totalAgotado(rol){
-// El jugador que agotó su tiempo pierde
-const snap=await get(_salaRef); const d=snap.val();
-if(!d||d.terminado) return;
-const ganador = rol==='X'?'O':'X';
-const vX=(d.victoriasX||0)+(ganador==='X'?1:0);
-const vO=(d.victoriasO||0)+(ganador==='O'?1:0);
-await update(_salaRef,{
-terminado:true, ganador, fase:'terminado',
-fin_por_tiempo: true,
-victoriasX:vX, victoriasO:vO
+if(!_salaRef)return;
+await runTransaction(_salaRef,current=>{
+ if(!current||current.terminado||current.fase!=='jugando'||current.turno!==rol||!current.partida_iniciada)return;
+ const ganador=rol==='X'?'O':'X',vX=Number(current.victoriasX||0)+(ganador==='X'?1:0),vO=Number(current.victoriasO||0)+(ganador==='O'?1:0);
+ return Object.assign({},current,{terminado:true,ganador,fase:'terminado',fin_por_tiempo:true,victoriasX:vX,victoriasO:vO,turno_inicio_ts:null,crono_total_inicio_X:null,crono_total_inicio_O:null});
 });
 },
 async sortear(){
@@ -3212,7 +3224,7 @@ const modo = d.crono_modo || 'clasico';
 const cfgModo = Cronometro.MODOS[modo];
 // turno_inicio_ts queda en null — el cronometro NO arranca hasta
 // que ambos jugadores pulsen Aceptar (ver aceptarSorteo)
-await update(_salaRef,{turno:primero,fase:'jugando',
+await update(_salaRef,{turno:primero,fase:'preparada',partida_iniciada:false,inicio_partida_ts:null,inicio_propuesto:null,
 ultimo_sorteo:primero,sorteo_id:sid,sorteo_usado:true,sorteo_quien:_rol,
 crono_modo: modo,
 turno_inicio_ts: null,
@@ -3237,14 +3249,10 @@ revisarTimeoutPrioridad(d){
 if(!_salaRef || !d || d.fase!=='prioridad_reclamo' || !d.prioridad_inicio_ts || d.prioridad_timeout_ts) return;
 if(Date.now()-d.prioridad_inicio_ts>=30000) this.timeoutPrioridad();
 },
-async _revisarAceptacionSorteo(d){
-if(_rol !== 'X') return;
-if(d.sorteo_usado && !d.turno_inicio_ts && d.sorteo_aceptado_X && d.sorteo_aceptado_O){
-const ahora=Date.now();
-await update(_salaRef,{turno_inicio_ts:ahora,crono_total_inicio_X:d.turno==='X'?ahora:null,crono_total_inicio_O:d.turno==='O'?ahora:null});
-}
+async _revisarAceptacionSorteo(d){ return !!(d&&d.sorteo_aceptado_X===true&&d.sorteo_aceptado_O===true); }
 }
 };
+function _revisarInicioPropuesto(d){if(!d||!d.inicio_propuesto||d.inicio_propuesto.por===_rol)return;const key='inicio_'+d.inicio_propuesto.ts;if(window._inicioPropuestoVisto===key)return;window._inicioPropuestoVisto=key;const quien=d.inicio_propuesto.por==='X'?'Jugador 1 (X)':'Jugador 2 (O)';_mostrarModalBilateral('Iniciar partida',quien+' desea iniciar la partida. ¿Aceptas?',()=>Firebase.responderInicioPartida(true),()=>Firebase.responderInicioPartida(false));}
 function _escuchar(){
 if(_unsubSala) _unsubSala();
 _unsubSala = onValue(_salaRef, snap=>{
@@ -3261,6 +3269,10 @@ Chat.init(db,_sala,_rol);
 }
 if(!_iniciado&&_rol==='X'&&d.j2==='online') update(_salaRef,{j1:'online'});
 if(_iniciado){
+  if(d.cancelada_preinicio){
+    if(_desconexionTurnoTimer){clearTimeout(_desconexionTurnoTimer);_desconexionTurnoTimer=null;}_ocultarModalDesconexion();_ocultarModalReconexion();_bloquearPorDesconexion(true);
+    if(window._cancelacionPreinicioVisto!==d.cancelada_preinicio.ts){window._cancelacionPreinicioVisto=d.cancelada_preinicio.ts;const c=d.cancelada_preinicio;const msg=c.tipo==='espera_agotada'?'Partida Cancelada. Tiempo de Espera Agotado.':c.tipo==='oponente_abandono'?'La partida se ha cancelado. '+(c.abandonador==='X'?'Jugador 1 (X)':'Jugador 2 (O)')+' ha abandonado la sala.':'Partida Cancelada. '+(c.desconectado==='X'?'Jugador 1 (X)':'Jugador 2 (O)')+' no se reconectó.';UI.modal('Partida Cancelada',msg,'ACEPTAR',()=>Firebase.salirLocalAlLobbyNormal());}return;
+  }
   if(d.desconexion_pendiente){
     const p=d.desconexion_pendiente;
     Firebase.programarTurnoDesconectado(d).catch(()=>{});
@@ -3271,6 +3283,9 @@ if(_iniciado){
       if(_desconexionVisto!==p.inicio_ts){_desconexionVisto=p.inicio_ts;_mostrarModalDesconexion(p,_rol);}
     }
   }else{
+    const rival=_rol==='X'?'O':'X',rivalCon=d.conexion&&d.conexion[rival];
+    if(rivalCon&&rivalCon.online===false)Firebase.programarDesconexionDetectada(rival).catch(()=>{});
+
     if(_desconexionTurnoTimer){clearTimeout(_desconexionTurnoTimer);_desconexionTurnoTimer=null;}
     _ocultarModalDesconexion();_desconexionVisto=null;
     const rec=d.ultima_reconexion;
@@ -3284,6 +3299,7 @@ if(_iniciado){
     const rp=d.reanudar_propuesta,key='reanudar_'+rp.ts;
     if(_reanudarPropuestaVisto!==key){_reanudarPropuestaVisto=key;if(rp.por!==_rol&&rp.decisiones&&rp.decisiones[_rol]!==true){const quien=rp.por==='X'?'Jugador 1 (X)':'Jugador 2 (O)';_mostrarModalBilateral('Solicitud de reanudación',quien+' solicita reanudar la partida. ¿Aceptas?',()=>Firebase.responderReanudar(true),()=>Firebase.responderReanudar(false));}}
   }else if(!d.reanudar_propuesta)_reanudarPropuestaVisto=null;
+  _revisarInicioPropuesto(d);
   Juego.encolarEstado(d,_rol);
 }
 });
@@ -3338,6 +3354,7 @@ $('btn-nueva').onclick = async ()=>{
     UI.bloquearBtns(['btn-sortear'],false);
     UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
 };
+$('btn-iniciar-partida').onclick=async()=>{if(!Firebase.isIniciado())return;const d=await Firebase.snapshotFase();if(!d||d.fase!=='preparada'||d.partida_iniciada||d.sorteo_aceptado_X!==true||d.sorteo_aceptado_O!==true)return;await Firebase.proponerInicioPartida();};
 let _abandonoConfirmCb = null;
 function _mostrarConfirmacionAbandono(cb, yaGanoPorAbandono=false, partidaYaTerminada=false){
   _abandonoConfirmCb = cb;
@@ -3412,12 +3429,7 @@ $('btn-abandonar').onclick = ()=>{
 };
 }
 instalarHandlerAbandonarGeneral();
-$('btn-sortear').onclick = async ()=>{
-if(!Firebase.isIniciado()) return;
-const r=await Firebase.sortear();
-if(!r.ok){ UI.modal('Sorteo',r.msg); return; }
-UI.modal('¡SORTEO!','Comienza el '+(r.primero==='X'?'Jugador 1 (X)':'Jugador 2 (O)'),'ACEPTAR',()=>Firebase.aceptarSorteo());
-};
+$('btn-sortear').onclick=async()=>{if(!Firebase.isIniciado())return;const r=await Firebase.sortear();if(!r.ok)UI.modal('Sorteo',r.msg);};
 $('btn-reclamar').onclick = async ()=>{
 if(!Firebase.isIniciado()) return;
 const snapEstado = await Firebase.snapshotFase();
