@@ -3250,7 +3250,6 @@ if(!_salaRef || !d || d.fase!=='prioridad_reclamo' || !d.prioridad_inicio_ts || 
 if(Date.now()-d.prioridad_inicio_ts>=30000) this.timeoutPrioridad();
 },
 async _revisarAceptacionSorteo(d){ return !!(d&&d.sorteo_aceptado_X===true&&d.sorteo_aceptado_O===true); }
-}
 };
 function _revisarInicioPropuesto(d){if(!d||!d.inicio_propuesto||d.inicio_propuesto.por===_rol)return;const key='inicio_'+d.inicio_propuesto.ts;if(window._inicioPropuestoVisto===key)return;window._inicioPropuestoVisto=key;const quien=d.inicio_propuesto.por==='X'?'Jugador 1 (X)':'Jugador 2 (O)';_mostrarModalBilateral('Iniciar partida',quien+' desea iniciar la partida. ¿Aceptas?',()=>Firebase.responderInicioPartida(true),()=>Firebase.responderInicioPartida(false));}
 function _escuchar(){
