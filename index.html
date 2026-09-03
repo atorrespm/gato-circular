@@ -127,7 +127,7 @@ M3 · PANELES CSS — Laterales, botones, modal
 #btn-reclamar{background:linear-gradient(135deg,#005500,#009933);color:#fff}
 #btn-confirmar{background:linear-gradient(135deg,#003070,#0055bb);color:#fff}
 #btn-abandonar{background:linear-gradient(135deg,#4a0000,#7a0000);color:#fff}
-#inicio-partida-wrap{display:none;flex-direction:column;align-items:center;justify-content:center;gap:5px;width:100%;margin:6px 0 2px;}
+#inicio-partida-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;width:100%;margin:6px 0 2px;}
 #btn-iniciar-partida{background:linear-gradient(135deg,#78cbd0,#a6e1e3);color:#102020;border:1px solid #a6e1e3;box-shadow:0 0 12px rgba(120,203,208,.25);min-width:130px;justify-content:center;}
 #btn-iniciar-partida:hover{filter:brightness(1.08);box-shadow:0 0 18px rgba(120,203,208,.4);}
 #btn-iniciar-partida:disabled{cursor:not-allowed;}
@@ -1076,6 +1076,16 @@ if(d.abandono && d.abandono.abandonador !== miRol){
 }
 
 Estado.fromFirebase(d); _ultimoD = d;
+// V32.3.3: INICIAR PARTIDA permanece visible y fijo en el tablero.
+// Solo la fase PREPARADA puede habilitarlo; en cualquier otra fase queda visible pero bloqueado.
+{
+  const wrapInicio=document.getElementById('inicio-partida-wrap');
+  const btnInicio=document.getElementById('btn-iniciar-partida');
+  const statusInicio=document.getElementById('inicio-partida-status');
+  if(wrapInicio) wrapInicio.style.display='flex';
+  if(btnInicio){ btnInicio.disabled=true; btnInicio.style.opacity='0.45'; btnInicio.style.pointerEvents='none'; }
+  if(statusInicio) statusInicio.textContent='Esperando preparación de la partida...';
+}
 if(typeof Sesion !== 'undefined') Sesion.fromFirebase(d);
 if(typeof _revisarModoPropuesto === 'function') _revisarModoPropuesto(d);
 if(window.Firebase && Firebase._revisarConsensoPausa) Firebase._revisarConsensoPausa(d);
@@ -1121,7 +1131,7 @@ UI.setStats(d.victoriasX||0, d.victoriasO||0);
 // ── CORRECCIÓN 3: puerta centralizada del resultado de reclamo ──
 // El modal de validez (válido/inválido) debe verse en AMBOS clientes,
 // en CUALQUIER fase (jugando, prioridad_reclamo, empate_final).
-if(!d.terminado && d.resultado_reclamo &&
+if(!d.terminado && d.resultado_reclamo && d['resultado_reclamo_ack_'+miRol] !== true &&
 _resultadoReclamoVisto !== d.resultado_reclamo.ts){
 _resultadoReclamoVisto = d.resultado_reclamo.ts;
 EmpateFlow.mostrarModalResultado(d.resultado_reclamo, function(){
@@ -1208,7 +1218,7 @@ _prioridadMostrada = key;
 
 // Si existe resultado pendiente, primero se informa la validez y, al aceptar,
 // se muestra UNA sola vez el modal de prioridad de este intento.
-if(d.resultado_reclamo && _resultadoReclamoVisto !== d.resultado_reclamo.ts){
+if(d.resultado_reclamo && d['resultado_reclamo_ack_'+miRol] !== true && _resultadoReclamoVisto !== d.resultado_reclamo.ts){
   _resultadoReclamoVisto = d.resultado_reclamo.ts;
   EmpateFlow.mostrarModalResultado(d.resultado_reclamo, function(){
     EmpateFlow.mostrarModalPrioridad(d);
@@ -1475,7 +1485,7 @@ UI.setMsg(terminoPorDesconexion?'Partida terminada por desconexión. Esta partid
 UI.bloquearBtns(['btn-nueva'],terminoPorDesconexion);
 const btnNuevaFin=document.getElementById('btn-nueva');
 if(btnNuevaFin){btnNuevaFin.style.opacity=terminoPorDesconexion?'0.45':'';btnNuevaFin.style.pointerEvents=terminoPorDesconexion?'none':'';}
-UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar'],true);const inicioWrapFin=document.getElementById('inicio-partida-wrap');if(inicioWrapFin)inicioWrapFin.style.display='none';if(typeof bloquearSelectorModo==='function')bloquearSelectorModo(true);
+UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar'],true);const inicioWrapFin=document.getElementById('inicio-partida-wrap');if(inicioWrapFin)inicioWrapFin.style.display='flex';if(typeof bloquearSelectorModo==='function')bloquearSelectorModo(true);
 
 // Tras un abandono, el ganador conserva el tablero y recibe una notificación.
 const abandono = d.abandono;
@@ -1557,7 +1567,7 @@ UI.setMsg('Pulsa SORTEAR PARTIDA para comenzar.');
 if(!d.sorteo_usado) UI.bloquearBtns(['btn-sortear'],false);
 UI.bloquearBtns(['btn-reclamar','btn-confirmar'],true);
 UI.bloquearBtns(['btn-abandonar'],false);
-const inicioWrap=$('inicio-partida-wrap');if(inicioWrap)inicioWrap.style.display='none';if(typeof bloquearSelectorModo==='function')bloquearSelectorModo(false);
+const inicioWrap=$('inicio-partida-wrap');if(inicioWrap)inicioWrap.style.display='flex';if(typeof bloquearSelectorModo==='function')bloquearSelectorModo(false);
 // Marcar visualmente el modo activo (Clasico por defecto)
 if(typeof marcarModoActivo === 'function') marcarModoActivo(d.crono_modo || 'clasico');
 }
@@ -1624,7 +1634,7 @@ UI.modal('Reclamo cancelado','El reclamo fue cancelado. El juego continúa.');
 }
 // V32.3: el sorteo pertenece a la fase PREPARADA. La partida y los
 // cronómetros comienzan únicamente después de la confirmación bilateral de INICIAR PARTIDA.
-const inicioWrapJugando=document.getElementById('inicio-partida-wrap');if(inicioWrapJugando)inicioWrapJugando.style.display='none';
+const inicioWrapJugando=document.getElementById('inicio-partida-wrap');if(inicioWrapJugando)inicioWrapJugando.style.display='flex';
 if(typeof bloquearSelectorModo==='function')bloquearSelectorModo(true); if(d.crono_modo)marcarModoActivo(d.crono_modo);
 if(d.partida_iniciada&&_partidaInicioVisto!==d.inicio_partida_ts){_partidaInicioVisto=d.inicio_partida_ts||Date.now();const modo=d.crono_modo||'clasico';try{Cronometro.init(modo,miRol,async r=>Firebase.turnoAgotado(r),async r=>Firebase.totalAgotado(r));}catch(e){console.error('[V32.3] error iniciando cronometro',e);}}
 // El cronómetro se alimenta SIEMPRE del snapshot de Firebase
@@ -1885,9 +1895,10 @@ document.getElementById('resultado-reclamo-modal').classList.add('visible');
 function ocultarModalResultado() {
 document.getElementById('resultado-reclamo-modal').classList.remove('visible');
 }
-function cerrarModalResultado() {
+async function cerrarModalResultado() {
 ocultarModalResultado();
 const cb = _resultadoCb; _resultadoCb = null;
+if(window.Firebase && Firebase.aceptarResultadoReclamo){ await Firebase.aceptarResultadoReclamo(); }
 if(cb) cb();
 }
 return { init, mostrarModalTC, ocultarModalTC, mostrarModalPrioridad, ocultarModalPrioridad, mostrarModalSinRespuesta, ocultarModalSinRespuesta,
@@ -2476,6 +2487,12 @@ reclamo_fichas:null,
 fichas_marcadas_reclamo:null,
 reclamo_cancelado_ts:Date.now()
 }, reanudo));
+},
+async aceptarResultadoReclamo(){
+  if(!_salaRef || !_rol) return;
+  const campo=_rol==='X'?'resultado_reclamo_ack_X':'resultado_reclamo_ack_O';
+  try { await update(_salaRef,{[campo]:true}); }
+  catch(err){ console.error('[V32.3.3] no se pudo registrar la aceptación del resultado de reclamo',err); }
 },
 async lineaInvalida(){
 const snap=await get(_salaRef); const d=snap.val();
