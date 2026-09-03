@@ -2506,6 +2506,8 @@ ultimo_sorteo:null,sorteo_id:null,sorteo_usado:false,
 fichas_ganadoras_reclamadas:null,fichas_marcadas_reclamo:null,
 reclamante:null,reclamo_fichas:null,
 victoriasX:d.victoriasX||0,victoriasO:d.victoriasO||0,
+// V32.3.2: las desconexiones se contabilizan por PARTIDA, no por sesión.
+desconexionesX:0,desconexionesO:0,
 crono_modo:d.crono_modo||'clasico', partida_iniciada:false, inicio_partida_ts:null, inicio_propuesto:null, crono_turno_forzado:null,
 turno_inicio_ts:null, crono_totalX:null, crono_totalO:null,crono_total_inicio_X:null,crono_total_inicio_O:null,
 pausa_activa:false,pausa_solicitada:null,pausa_reanudar:null,pausa_inicio_ts:null,pausa_propuesta:null,reanudar_propuesta:null,
@@ -3134,7 +3136,10 @@ _desconexionDetectTimer=setTimeout(async()=>{
 async registrarDesconexionDetectada(rol){
 if(!_salaRef||!rol) return;
 const res=await runTransaction(_salaRef,current=>{
-  if(!current||current.terminado||current.abandono||!current.sesionX||!current.sesionO) return;
+  // V32.3.2: empate_final también es estado terminal.
+  // Una desconexión posterior al cierre de la partida NUNCA puede convertir
+  // el empate en una victoria ni alterar sus estadísticas.
+  if(!current||current.terminado||current.fase==='empate_final'||current.abandono||!current.sesionX||!current.sesionO) return;
   const con=current.conexion||{};
   const estado=con[rol];
   if(estado && estado.online===true) return;
@@ -3185,7 +3190,10 @@ _desconexionTurnoTimer=setTimeout(()=>{_desconexionTurnoTimer=null;Firebase.reso
 async resolverDesconexionTimeout(){
 if(!_salaRef) return;
 await runTransaction(_salaRef,current=>{
-  const p=current&&current.desconexion_pendiente; if(!p||current.terminado||current.abandono) return;
+  const p=current&&current.desconexion_pendiente;
+  // V32.3.2: nunca resolver una desconexión si la partida ya terminó,
+  // incluido el empate definitivo representado por fase='empate_final'.
+  if(!p||current.terminado||current.fase==='empate_final'||current.abandono) return;
   const con=current.conexion&&current.conexion[p.rol];
   if(con&&con.online===true){let cambios={desconexion_pendiente:null};if(p.modo==='basico'&&current.partida_iniciada&&current.turno_inicio_ts)cambios.turno_inicio_ts=Number(current.turno_inicio_ts)+(Date.now()-Number(p.inicio_ts||Date.now()));return Object.assign({},current,cambios);}
   if(Date.now()-Number(p.inicio_ts||Date.now())<60000)return;
@@ -3197,7 +3205,7 @@ await runTransaction(_salaRef,current=>{
 async confirmarReconexion(){
 if(!_salaRef||!_rol)return;
 await runTransaction(_salaRef,current=>{
-const p=current&&current.desconexion_pendiente;if(!p||p.rol!==_rol||current.terminado||current.abandono)return;
+const p=current&&current.desconexion_pendiente;if(!p||p.rol!==_rol||current.terminado||current.fase==='empate_final'||current.abandono)return;
 const con=current.conexion&&current.conexion[_rol];if(!con||con.online!==true)return;
 const dur=Math.max(0,Date.now()-Number(p.inicio_ts||Date.now()));
 const cambios={desconexion_pendiente:null,ultima_reconexion:{rol:_rol,ts:Date.now(),duracion_ms:dur,preinicio:!!p.preinicio}};
