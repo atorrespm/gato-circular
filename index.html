@@ -1521,10 +1521,15 @@ EmpateFlow.detenerCronometroPrioridad();
 Cronometro.detener();
 UI.bloquearTablero(true);
 const terminoPorDesconexion=!!d.fin_por_desconexion;
-UI.setMsg(terminoPorDesconexion?'Partida terminada por desconexión. Esta partida no puede reiniciarse.':'Partida terminada. Pulsa Nueva Partida.');
-UI.bloquearBtns(['btn-nueva'],terminoPorDesconexion);
+// V32.3.9: una desconexión que termina una partida es un RESULTADO
+// definitivo, no un abandono. El modo remoto debe conservarse al volver
+// al tablero y Nueva Partida debe seguir disponible para continuar la sesión.
+if(d.crono_modo && Cronometro.configurarModo) Cronometro.configurarModo(d.crono_modo);
+if(typeof marcarModoActivo==='function') marcarModoActivo(d.crono_modo||'clasico');
+UI.setMsg(terminoPorDesconexion?'Partida terminada por desconexión. Puedes iniciar una Nueva Partida.':'Partida terminada. Pulsa Nueva Partida.');
+UI.bloquearBtns(['btn-nueva'],false);
 const btnNuevaFin=document.getElementById('btn-nueva');
-if(btnNuevaFin){btnNuevaFin.style.opacity=terminoPorDesconexion?'0.45':'';btnNuevaFin.style.pointerEvents=terminoPorDesconexion?'none':'';}
+if(btnNuevaFin){btnNuevaFin.style.opacity='';btnNuevaFin.style.pointerEvents='';}
 UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar'],true);const inicioWrapFin=document.getElementById('inicio-partida-wrap');if(inicioWrapFin)inicioWrapFin.style.display='flex';if(typeof bloquearSelectorModo==='function')bloquearSelectorModo(true);
 
 // Tras un abandono, el ganador conserva el tablero y recibe una notificación.
@@ -2231,7 +2236,10 @@ const cont = $('crono-container');
 if(cont) cont.classList.remove('activo');
 }
 function getModo() { return _modo; }
-return { init, actualizar, detener, getModo, MODOS };
+function configurarModo(modo){
+  if(MODOS[modo]) _modo=modo;
+}
+return { init, actualizar, detener, getModo, configurarModo, MODOS };
 })();
 // ── SELECTOR DE MODO (antes del sorteo) ─────────────────
 let _modoSeleccionado = 'clasico';
@@ -3268,7 +3276,15 @@ const res=await runTransaction(_salaRef,current=>{
   if(n>=2 || !_modoPermiteGracia(modo)){
     const vX=Number(current.victoriasX||0)+(ganador==='X'?1:0);
     const vO=Number(current.victoriasO||0)+(ganador==='O'?1:0);
-    return Object.assign({},current,{terminado:true,ganador,fase:'terminado',fin_por_desconexion:true,desconexion_pendiente:null,[campo]:n,victoriasX:vX,victoriasO:vO});
+    const partidasJugadas=(current.partidasJugadas||0)+1;
+    const totalPartidas=current.totalPartidas||0;
+    return Object.assign({},current,{
+      terminado:true,ganador,fase:'terminado',fin_por_desconexion:true,
+      desconexion_pendiente:null,[campo]:n,victoriasX:vX,victoriasO:vO,
+      partidasJugadas,fin_sesion:totalPartidas>0&&partidasJugadas>=totalPartidas,
+      nueva_partida_solicitud:null,turno_inicio_ts:null,
+      crono_total_inicio_X:null,crono_total_inicio_O:null
+    });
   }
   return Object.assign({},current,cambiosBase,{[campo]:n,desconexion_pendiente:{rol,inicio_ts:Date.now(),numero:n,modo,turno_elapsed_ms:Number(cambiosBase.desconexion_turno_elapsed_ms||0)}});
 });
@@ -3305,7 +3321,15 @@ await runTransaction(_salaRef,current=>{
   if(Date.now()-Number(p.inicio_ts||Date.now())<60000)return;
   if(p.preinicio||!current.partida_iniciada||current.fase==='preparada')return Object.assign({},current,{desconexion_pendiente:null,inicio_propuesto:null,cancelada_preinicio:{tipo:'espera_agotada',desconectado:p.rol,ts:Date.now()}});
   const ganador=p.rol==='X'?'O':'X';const vX=Number(current.victoriasX||0)+(ganador==='X'?1:0),vO=Number(current.victoriasO||0)+(ganador==='O'?1:0);
-  return Object.assign({},current,{terminado:true,ganador,fase:'terminado',fin_por_desconexion:true,desconexion_pendiente:null,victoriasX:vX,victoriasO:vO});
+  const partidasJugadas=(current.partidasJugadas||0)+1;
+  const totalPartidas=current.totalPartidas||0;
+  return Object.assign({},current,{
+    terminado:true,ganador,fase:'terminado',fin_por_desconexion:true,
+    desconexion_pendiente:null,victoriasX:vX,victoriasO:vO,
+    partidasJugadas,fin_sesion:totalPartidas>0&&partidasJugadas>=totalPartidas,
+    nueva_partida_solicitud:null,turno_inicio_ts:null,
+    crono_total_inicio_X:null,crono_total_inicio_O:null
+  });
 });
 },
 async confirmarReconexion(){
