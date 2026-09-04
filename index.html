@@ -2377,6 +2377,11 @@ function _mostrarModalBilateral(titulo,msg,siCb,noCb){
   document.getElementById('bilateral-title').textContent='⚠️ '+titulo;
   document.getElementById('bilateral-msg').textContent=msg;
   const yes=document.getElementById('btn-bilateral-si'),no=document.getElementById('btn-bilateral-no');
+  // V32.3.8: el modal bilateral se reutiliza entre propuestas y entre jugadores.
+  // Siempre restauramos el estado visual/funcional antes de cargar una nueva propuesta,
+  // para que un SÍ oculto o un NO deshabilitado de una propuesta anterior no sobreviva.
+  if(yes){ yes.style.display=''; yes.disabled=false; yes.textContent='SÍ'; }
+  if(no){ no.style.display=''; no.disabled=false; no.textContent='NO'; no.style.background='#7a0000'; }
   yes.onclick=async()=>{ov.style.display='none';if(siCb)await siCb();};
   no.onclick=async()=>{ov.style.display='none';if(noCb)await noCb();};
   ov.style.display='flex';
