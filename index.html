@@ -2597,6 +2597,8 @@ abandono:null,cancelada_preinicio:null,desconexion_pendiente:null,ultima_reconex
 async confirmarNuevaPartida(){
     // Solo llega aquí cuando AMBOS jugadores respondieron SÍ.
     Juego.reset(); Reclamo.desactivar(); Cronometro.detener();
+    window._inicioPropuestoVisto=null; _inicioPropuestoUltimoTs=0;
+    const ovInicioNueva=document.getElementById('bilateral-overlay'); if(ovInicioNueva) ovInicioNueva.style.display='none';
     const selModo=$('crono-modo-selector');
     if(selModo){ selModo.style.display='flex'; }
     await this.nuevaPartida();
@@ -2719,22 +2721,28 @@ async proponerInicioPartida(){
   UI.setMsg('Solicitud de inicio enviada. Esperando la aceptación del otro jugador...');
 },
 async responderInicioPartida(acepta){
-  if(!_salaRef||!_rol)return;
+  if(!_salaRef||!_rol)return false;
   const res=await runTransaction(_salaRef,current=>{
     if(!current||current.terminado||current.fase!=='preparada'||current.partida_iniciada||!current.inicio_propuesto)return;
-    const p=current.inicio_propuesto,decisiones=Object.assign({X:null,O:null},p.decisiones||{});decisiones[_rol]=!!acepta;
-    if(!acepta){
-      // Cierre inmediato del modal local. Además dejamos registrada la marca
-      // temporal para que un snapshot antiguo de Firebase no lo haga reaparecer.
-      window._inicioPropuestoVisto=null;
-      _inicioPropuestoUltimoTs=Math.max(Number(_inicioPropuestoUltimoTs||0),Number(p.ts||0));
-      const ov=document.getElementById('bilateral-overlay');
-      if(ov) ov.style.display='none';
-      return Object.assign({},current,{inicio_propuesto:null});
+    const p=current.inicio_propuesto;
+    const decisiones=Object.assign({X:null,O:null},p.decisiones||{});
+    decisiones[_rol]=!!acepta;
+    if(!acepta) return Object.assign({},current,{inicio_propuesto:null});
+    if(decisiones.X===true&&decisiones.O===true){
+      const ahora=Date.now(),modo=current.crono_modo||'clasico',cfg=Cronometro.MODOS[modo]||{total:0};
+      return Object.assign({},current,{fase:'jugando',partida_iniciada:true,inicio_partida_ts:ahora,inicio_propuesto:null,turno_inicio_ts:ahora,crono_totalX:cfg.total||0,crono_totalO:cfg.total||0,crono_total_inicio_X:current.turno==='X'?ahora:null,crono_total_inicio_O:current.turno==='O'?ahora:null});
     }
-    if(decisiones.X===true&&decisiones.O===true){const ahora=Date.now(),modo=current.crono_modo||'clasico',cfg=Cronometro.MODOS[modo]||{total:0};return Object.assign({},current,{fase:'jugando',partida_iniciada:true,inicio_partida_ts:ahora,inicio_propuesto:null,turno_inicio_ts:ahora,crono_totalX:cfg.total||0,crono_totalO:cfg.total||0,crono_total_inicio_X:current.turno==='X'?ahora:null,crono_total_inicio_O:current.turno==='O'?ahora:null});}
     return Object.assign({},current,{inicio_propuesto:Object.assign({},p,{decisiones})});
-  });return !!res.committed;
+  });
+  // La transacción es la autoridad; la interfaz se cierra SOLO después de
+  // que Firebase confirma que el cambio fue aplicado.
+  if(res.committed){
+    window._inicioPropuestoVisto=null;
+    const ov=document.getElementById('bilateral-overlay');
+    if(ov) ov.style.display='none';
+    return true;
+  }
+  return false;
 },
 async solicitarPausa(rol){
 if(!_salaRef||!_iniciado)return;
@@ -3355,7 +3363,7 @@ async _revisarAceptacionSorteo(d){ return !!(d&&d.sorteo_aceptado_X===true&&d.so
 let _inicioPropuestoUltimoTs=0;
 function _revisarInicioPropuesto(d){
   const ov=document.getElementById('bilateral-overlay');
-  if(!d||!d.inicio_propuesto){
+  if(!d||!d.inicio_propuesto||d.partida_iniciada||d.fase==='jugando'){
     if(ov) ov.style.display='none';
     window._inicioPropuestoVisto=null;
     return;
@@ -3424,7 +3432,12 @@ if(_iniciado){
     const rp=d.reanudar_propuesta,key='reanudar_'+rp.ts;
     if(_reanudarPropuestaVisto!==key){_reanudarPropuestaVisto=key;if(rp.por!==_rol&&rp.decisiones&&rp.decisiones[_rol]!==true){const quien=rp.por==='X'?'Jugador 1 (X)':'Jugador 2 (O)';_mostrarModalBilateral('Solicitud de reanudación',quien+' solicita reanudar la partida. ¿Aceptas?',()=>Firebase.responderReanudar(true),()=>Firebase.responderReanudar(false));}}
   }else if(!d.reanudar_propuesta)_reanudarPropuestaVisto=null;
-  _revisarInicioPropuesto(d);
+  if(d.partida_iniciada || d.fase==='jugando'){
+    const ovInicioActivo=document.getElementById('bilateral-overlay'); if(ovInicioActivo) ovInicioActivo.style.display='none';
+    window._inicioPropuestoVisto=null;
+  } else {
+    _revisarInicioPropuesto(d);
+  }
   Juego.encolarEstado(d,_rol);
 }
 });
