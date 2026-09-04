@@ -1209,6 +1209,8 @@ if(soyPrioritario){
       if(!Reclamo.isActivo()) Reclamo.activar(fichasPropias,fichasMarcadas);
       else if(typeof Reclamo.restaurarSeleccion==='function') Reclamo.restaurarSeleccion(fichasMarcadas);
       UI.bloquearTablero(false);
+      const capaPrioridad=document.getElementById('tablero-block');
+      if(capaPrioridad){ capaPrioridad.style.display='block'; capaPrioridad.style.cursor='pointer'; capaPrioridad.style.pointerEvents='auto'; }
       UI.setMsg('RECLAMO EN CURSO: continúa seleccionando tus fichas.');
     } else {
       if(Reclamo.isActivo()) Reclamo.desactivar();
@@ -1627,8 +1629,13 @@ const fichasPropias=Object.keys(Estado.tablero).filter(id=>Estado.tablero[id]===
 if(!Reclamo.isActivo()) Reclamo.activar(fichasPropias,d.fichas_marcadas_reclamo||[]);
 else if(typeof Reclamo.restaurarSeleccion==='function') Reclamo.restaurarSeleccion(d.fichas_marcadas_reclamo||[]);
 UI.bloquearTablero(false);
-UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar'],true);
-UI.bloquearBtns(['btn-confirmar','btn-abandonar'],false);
+// El reclamante debe poder ANULAR el reclamo pulsando nuevamente
+// RECLAMAR VICTORIA. La capa transparente se mantiene activa para que
+// cada clic sobre una ficha siga llegando al detector de selección.
+UI.bloquearBtns(['btn-nueva','btn-sortear'],true);
+UI.bloquearBtns(['btn-reclamar','btn-confirmar','btn-abandonar'],false);
+const capaReclamo=document.getElementById('tablero-block');
+if(capaReclamo){ capaReclamo.style.display='block'; capaReclamo.style.cursor='pointer'; capaReclamo.style.pointerEvents='auto'; }
 UI.setMsg('RECLAMO ACTIVO: selecciona tus 4 fichas ganadoras.');
 } else {
 UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
@@ -2703,7 +2710,12 @@ async proponerInicioPartida(){
   if(!_salaRef||!_rol)return;const snap=await get(_salaRef),d=snap.val();
   if(!d||d.terminado||d.fase!=='preparada'||d.partida_iniciada||d.inicio_propuesto)return;
   if(d.sorteo_aceptado_X!==true||d.sorteo_aceptado_O!==true)return;
-  await update(_salaRef,{inicio_propuesto:{por:_rol,ts:Date.now(),decisiones:{X:_rol==='X',O:_rol==='O'}}});
+  const tsInicio=Date.now();
+  window._inicioPropuestoVisto=null;
+  _inicioPropuestoUltimoTs=Math.max(Number(_inicioPropuestoUltimoTs||0),tsInicio);
+  const ovInicio=document.getElementById('bilateral-overlay');
+  if(ovInicio) ovInicio.style.display='none';
+  await update(_salaRef,{inicio_propuesto:{por:_rol,ts:tsInicio,decisiones:{X:_rol==='X',O:_rol==='O'}}});
   UI.setMsg('Solicitud de inicio enviada. Esperando la aceptación del otro jugador...');
 },
 async responderInicioPartida(acepta){
@@ -2711,7 +2723,15 @@ async responderInicioPartida(acepta){
   const res=await runTransaction(_salaRef,current=>{
     if(!current||current.terminado||current.fase!=='preparada'||current.partida_iniciada||!current.inicio_propuesto)return;
     const p=current.inicio_propuesto,decisiones=Object.assign({X:null,O:null},p.decisiones||{});decisiones[_rol]=!!acepta;
-    if(!acepta)return Object.assign({},current,{inicio_propuesto:null});
+    if(!acepta){
+      // Cierre inmediato del modal local. Además dejamos registrada la marca
+      // temporal para que un snapshot antiguo de Firebase no lo haga reaparecer.
+      window._inicioPropuestoVisto=null;
+      _inicioPropuestoUltimoTs=Math.max(Number(_inicioPropuestoUltimoTs||0),Number(p.ts||0));
+      const ov=document.getElementById('bilateral-overlay');
+      if(ov) ov.style.display='none';
+      return Object.assign({},current,{inicio_propuesto:null});
+    }
     if(decisiones.X===true&&decisiones.O===true){const ahora=Date.now(),modo=current.crono_modo||'clasico',cfg=Cronometro.MODOS[modo]||{total:0};return Object.assign({},current,{fase:'jugando',partida_iniciada:true,inicio_partida_ts:ahora,inicio_propuesto:null,turno_inicio_ts:ahora,crono_totalX:cfg.total||0,crono_totalO:cfg.total||0,crono_total_inicio_X:current.turno==='X'?ahora:null,crono_total_inicio_O:current.turno==='O'?ahora:null});}
     return Object.assign({},current,{inicio_propuesto:Object.assign({},p,{decisiones})});
   });return !!res.committed;
@@ -3332,6 +3352,7 @@ if(Date.now()-d.prioridad_inicio_ts>=30000) this.timeoutPrioridad();
 },
 async _revisarAceptacionSorteo(d){ return !!(d&&d.sorteo_aceptado_X===true&&d.sorteo_aceptado_O===true); }
 };
+let _inicioPropuestoUltimoTs=0;
 function _revisarInicioPropuesto(d){
   const ov=document.getElementById('bilateral-overlay');
   if(!d||!d.inicio_propuesto){
@@ -3340,6 +3361,11 @@ function _revisarInicioPropuesto(d){
     return;
   }
   const p=d.inicio_propuesto, key='inicio_'+p.ts;
+  // Firebase puede entregar snapshots consecutivos mientras una propuesta
+  // se cancela y otra nace. Nunca permitimos que un snapshot ANTIGUO vuelva
+  // a pintar el modal de una propuesta anterior.
+  if(Number(p.ts||0) < Number(_inicioPropuestoUltimoTs||0)) return;
+  if(Number(p.ts||0) > Number(_inicioPropuestoUltimoTs||0)) _inicioPropuestoUltimoTs=Number(p.ts||0);
   const quien=p.por==='X'?'Jugador 1 (X)':'Jugador 2 (O)';
   if(window._inicioPropuestoVisto===key) return;
   window._inicioPropuestoVisto=key;
