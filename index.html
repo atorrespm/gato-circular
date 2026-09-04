@@ -128,9 +128,9 @@ M3 · PANELES CSS — Laterales, botones, modal
 #btn-confirmar{background:linear-gradient(135deg,#003070,#0055bb);color:#fff}
 #btn-abandonar{background:linear-gradient(135deg,#4a0000,#7a0000);color:#fff}
 #inicio-partida-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;width:100%;margin:6px 0 2px;}
-#btn-iniciar-partida{background:linear-gradient(135deg,#78cbd0,#a6e1e3);color:#102020;border:1px solid #a6e1e3;box-shadow:0 0 12px rgba(120,203,208,.25);min-width:130px;justify-content:center;}
-#btn-iniciar-partida:hover{filter:brightness(1.08);box-shadow:0 0 18px rgba(120,203,208,.4);}
-#btn-iniciar-partida:disabled{cursor:not-allowed;}
+#btn-iniciar-partida{width:84px;height:84px;min-width:84px;padding:0;border-radius:50%;background:radial-gradient(circle at 35% 30%,#f4f5df,#d9ddbf 62%,#c3c8aa);color:#20231d;border:3px solid #ecefd7;box-shadow:0 0 0 2px #555,0 0 16px rgba(220,225,190,.28),inset 0 0 8px rgba(0,0,0,.18);justify-content:center;text-align:center;line-height:1.05;font-size:10px;letter-spacing:.7px;}
+#btn-iniciar-partida:hover{filter:brightness(1.06);transform:translateY(-1px);box-shadow:0 0 0 2px #666,0 0 22px rgba(220,225,190,.42),inset 0 0 8px rgba(0,0,0,.18);}
+#btn-iniciar-partida:disabled{cursor:not-allowed;transform:none;}
 #inicio-partida-status{font-family:'Rajdhani',sans-serif;font-size:10px;color:#777;text-align:center;min-height:14px;}
 #overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:99}
 #modal{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:linear-gradient(135deg,#1a1a1a,#252525);border:2px solid var(--gold);border-radius:12px;padding:28px 36px;text-align:center;z-index:100;box-shadow:0 0 40px rgba(0,0,0,.9);min-width:280px}
@@ -579,7 +579,7 @@ font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;
 </div>
 <!-- V32.3 · INICIO BILATERAL DE PARTIDA -->
 <div id="inicio-partida-wrap">
-<button class="btn" id="btn-iniciar-partida">▶ INICIAR PARTIDA</button>
+<button class="btn" id="btn-iniciar-partida">INICIAR<br>PARTIDA</button>
 <div id="inicio-partida-status"></div>
 </div>
 <!-- BOTONES -->
@@ -1203,13 +1203,18 @@ if(soyPrioritario){
   UI.bloquearBtns(['btn-abandonar'],false);
   UI.bloquearBtns(['btn-reclamar','btn-confirmar'],!prioridadAceptadaPorAmbos);
   if(prioridadAceptadaPorAmbos){
-    // Reconstrucción exacta tras reload/desconexión: el jugador prioritario
-    // vuelve a tener el tablero operativo y conserva las fichas ya marcadas.
+    const fichasMarcadas=d.fichas_marcadas_reclamo||[];
     const fichasPropias=Object.keys(Estado.tablero).filter(id=>Estado.tablero[id]===miRol);
-    if(!Reclamo.isActivo()) Reclamo.activar(fichasPropias,d.fichas_marcadas_reclamo||[]);
-    else if(typeof Reclamo.restaurarSeleccion==='function') Reclamo.restaurarSeleccion(d.fichas_marcadas_reclamo||[]);
-    UI.bloquearTablero(false);
-    UI.setMsg('¡Tienes prioridad! Tienes 30 segundos para reclamar victoria.');
+    if(fichasMarcadas.length>0){
+      if(!Reclamo.isActivo()) Reclamo.activar(fichasPropias,fichasMarcadas);
+      else if(typeof Reclamo.restaurarSeleccion==='function') Reclamo.restaurarSeleccion(fichasMarcadas);
+      UI.bloquearTablero(false);
+      UI.setMsg('RECLAMO EN CURSO: continúa seleccionando tus fichas.');
+    } else {
+      if(Reclamo.isActivo()) Reclamo.desactivar();
+      UI.bloquearTablero(true);
+      UI.setMsg('¡Tienes prioridad! Pulsa RECLAMAR VICTORIA para comenzar tu reclamo.');
+    }
   } else {
     if(Reclamo.isActivo()) Reclamo.desactivar();
     UI.bloquearTablero(true);
@@ -1225,7 +1230,15 @@ if(soyPrioritario){
 
 // Sincronización continua de las fichas marcadas durante ESTE intento.
 const marcadas = d.fichas_marcadas_reclamo || [];
-if(marcadas.length===0) limpiarMarcasReclamoVisuales();
+if(marcadas.length===0){
+  document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el=>{
+    const g=el.closest('[data-id]'); if(!g) return;
+    const cid=g.dataset.id;
+    el.classList.remove('ficha-seleccionada-x','ficha-seleccionada-o');
+    el.style.stroke=el.style.strokeWidth=el.style.fill=el.style.filter='';
+    if(Estado.tablero[cid]) el.classList.add('ficha-'+Estado.tablero[cid].toLowerCase());
+  });
+}
 document.querySelectorAll('.ficha-seleccionada-x,.ficha-seleccionada-o').forEach(el => {
   const g = el.closest('[data-id]'); if(!g) return;
   const cid = g.dataset.id;
@@ -1283,8 +1296,8 @@ function _faseEmpateFinal(d, miRol){
   UI.bloquearTablero(true);
   // En empate final el tablero queda visible para estudio.
   // Solo Nueva Partida podrá habilitarse mediante _revisarNuevaPartida().
-  UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
-  UI.bloquearBtns(['btn-abandonar'],false);
+  UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar'],true);
+  UI.bloquearBtns(['btn-nueva','btn-abandonar'],false);
 
   // En empate definitivo NO se restauran marcas de intentos anteriores.
   // El tablero que se observa debe ser exactamente el tablero final.
@@ -1608,10 +1621,14 @@ function _fasePreparada(d, miRol){
   UI.setMsg(d.ultimo_sorteo==='X'?'Comenzará Jugador 1 (X). Esperando inicio.':'Comenzará Jugador 2 (O). Esperando inicio.');
 }
 function _faseReclamo(d, miRol){
-UI.bloquearTablero(true);
 Cronometro.actualizar(d);
 if(d.reclamante===miRol){
-UI.bloquearBtns(['btn-abandonar'],false);
+const fichasPropias=Object.keys(Estado.tablero).filter(id=>Estado.tablero[id]===miRol);
+if(!Reclamo.isActivo()) Reclamo.activar(fichasPropias,d.fichas_marcadas_reclamo||[]);
+else if(typeof Reclamo.restaurarSeleccion==='function') Reclamo.restaurarSeleccion(d.fichas_marcadas_reclamo||[]);
+UI.bloquearTablero(false);
+UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar'],true);
+UI.bloquearBtns(['btn-confirmar','btn-abandonar'],false);
 UI.setMsg('RECLAMO ACTIVO: selecciona tus 4 fichas ganadoras.');
 } else {
 UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
@@ -2566,7 +2583,7 @@ fichas_timeout_reclamo:null,
 empate_sin_respuesta_inicio:null, empate_sin_respuesta_ack:null,
 prioridad_jugador:null, prioridad_intento:null, prioridad_inicio_ts:null, prioridad_timeout_ts:null, prioridad_aceptado_X:false, prioridad_aceptado_O:false, fichas_timeout_reclamo:null,
 nueva_partida_no_count:0, nueva_partida_max_alert:null, nueva_partida_solicitud:null,
-abandono:null,cancelada_preinicio:null,desconexionesX:d.desconexionesX||0,desconexionesO:d.desconexionesO||0,desconexion_pendiente:null,ultima_reconexion:null,pausa_propuesta:null,reanudar_propuesta:null,crono_total_inicio_X:null,crono_total_inicio_O:null
+abandono:null,cancelada_preinicio:null,desconexion_pendiente:null,ultima_reconexion:null,pausa_propuesta:null,reanudar_propuesta:null,crono_total_inicio_X:null,crono_total_inicio_O:null
 });
 },
 // ── NUEVA FUNCIÓN: Confirmación bilateral de Nueva Partida post-empate ─
@@ -2575,13 +2592,11 @@ async confirmarNuevaPartida(){
     Juego.reset(); Reclamo.desactivar(); Cronometro.detener();
     const selModo=$('crono-modo-selector');
     if(selModo){ selModo.style.display='flex'; }
-    document.querySelectorAll('.crono-modo-btn').forEach(b=>b.classList.remove('seleccionado'));
-    const btnClas=document.querySelector('.crono-modo-btn.clasico');
-    if(btnClas) btnClas.classList.add('seleccionado');
-    _modoSeleccionado='clasico';
     await this.nuevaPartida();
-    UI.bloquearBtns(['btn-sortear'],false);
-    UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+    const estadoNuevo=await this.snapshotFase();
+    if(estadoNuevo) { _modoSeleccionado=estadoNuevo.crono_modo||'clasico'; if(typeof marcarModoActivo==='function') marcarModoActivo(_modoSeleccionado); }
+    UI.bloquearBtns(['btn-nueva','btn-reclamar','btn-confirmar'],true);
+    UI.bloquearBtns(['btn-sortear','btn-abandonar'],false);
 },
 async solicitarNuevaPartida(){
     if(!_salaRef) return;
@@ -2654,7 +2669,7 @@ if(_salaRef) await update(_salaRef,{crono_modo: modo});
 async proponerModo(modo){
 if(!_salaRef) return;
 const snap=await get(_salaRef); const d=snap.val();
-if(d.terminado || (d.jugadas||0)>0) return; // el modo queda fijado al jugar la primera ficha
+if(d.terminado || d.partida_iniciada || d.inicio_propuesto || (d.jugadas||0)>0) return; // el modo queda fijado al iniciar/jugar
 if(d.crono_modo === modo) return;
 await update(_salaRef,{modo_propuesto:{modo, por:_rol, ts:Date.now(), decisiones:{X:null,O:null}}});
 },
@@ -3317,7 +3332,26 @@ if(Date.now()-d.prioridad_inicio_ts>=30000) this.timeoutPrioridad();
 },
 async _revisarAceptacionSorteo(d){ return !!(d&&d.sorteo_aceptado_X===true&&d.sorteo_aceptado_O===true); }
 };
-function _revisarInicioPropuesto(d){if(!d||!d.inicio_propuesto||d.inicio_propuesto.por===_rol)return;const key='inicio_'+d.inicio_propuesto.ts;if(window._inicioPropuestoVisto===key)return;window._inicioPropuestoVisto=key;const quien=d.inicio_propuesto.por==='X'?'Jugador 1 (X)':'Jugador 2 (O)';_mostrarModalBilateral('Iniciar partida',quien+' desea iniciar la partida. ¿Aceptas?',()=>Firebase.responderInicioPartida(true),()=>Firebase.responderInicioPartida(false));}
+function _revisarInicioPropuesto(d){
+  const ov=document.getElementById('bilateral-overlay');
+  if(!d||!d.inicio_propuesto){
+    if(ov) ov.style.display='none';
+    window._inicioPropuestoVisto=null;
+    return;
+  }
+  const p=d.inicio_propuesto, key='inicio_'+p.ts;
+  const quien=p.por==='X'?'Jugador 1 (X)':'Jugador 2 (O)';
+  if(window._inicioPropuestoVisto===key) return;
+  window._inicioPropuestoVisto=key;
+  if(p.por===_rol){
+    _mostrarModalBilateral('Inicio de partida','Has solicitado iniciar la partida. Esperando que '+(p.por==='X'?'Jugador 2 (O)':'Jugador 1 (X)')+' acepte...',null,null);
+    const yes=document.getElementById('btn-bilateral-si'), no=document.getElementById('btn-bilateral-no');
+    if(yes) yes.style.display='none';
+    if(no){no.textContent='ESPERANDO...';no.style.background='#444';no.disabled=true;}
+  }else{
+    _mostrarModalBilateral('Iniciar partida',quien+' desea iniciar la partida. ¿Aceptas?',()=>Firebase.responderInicioPartida(true),()=>Firebase.responderInicioPartida(false));
+  }
+}
 function _escuchar(){
 if(_unsubSala) _unsubSala();
 _unsubSala = onValue(_salaRef, snap=>{
@@ -3411,13 +3445,11 @@ $('btn-nueva').onclick = async ()=>{
     Juego.reset(); Reclamo.desactivar(); Cronometro.detener();
     const selModo=$('crono-modo-selector');
     if(selModo){ selModo.style.display='flex'; }
-    document.querySelectorAll('.crono-modo-btn').forEach(b=>b.classList.remove('seleccionado'));
-    const btnClas=document.querySelector('.crono-modo-btn.clasico');
-    if(btnClas) btnClas.classList.add('seleccionado');
-    _modoSeleccionado='clasico';
     await Firebase.nuevaPartida();
-    UI.bloquearBtns(['btn-sortear'],false);
-    UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+    const estadoNuevo=await Firebase.snapshotFase();
+    if(estadoNuevo) { _modoSeleccionado=estadoNuevo.crono_modo||'clasico'; if(typeof marcarModoActivo==='function') marcarModoActivo(_modoSeleccionado); }
+    UI.bloquearBtns(['btn-nueva','btn-reclamar','btn-confirmar'],true);
+    UI.bloquearBtns(['btn-sortear','btn-abandonar'],false);
 };
 $('btn-iniciar-partida').onclick=async()=>{if(!Firebase.isIniciado())return;const d=await Firebase.snapshotFase();if(!d||d.fase!=='preparada'||d.partida_iniciada||d.sorteo_aceptado_X!==true||d.sorteo_aceptado_O!==true)return;await Firebase.proponerInicioPartida();};
 let _abandonoConfirmCb = null;
