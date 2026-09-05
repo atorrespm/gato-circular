@@ -1039,7 +1039,7 @@ M12· JUEGO — Orquestador principal · V17
 const Juego = (() => {
 const $ = id => document.getElementById(id);
 let _sorteoVisto=null, _victoriaVista=false, _reclamoKey=null, _turnoAnterior=null, _reclamoCanceladoVisto=null, _ultimoD=null, _partidaInicioVisto=null;
-let _resultadoReclamoVisto=null, _abandonoVisto=null;   // CORRECCIÓN: control de orden de modales (validez antes que prioridad/empate)
+let _resultadoReclamoVisto=null, _abandonoVisto=null, _desconexionResultadoVisto=null, _abandonoPostDesconexionVisto=null;   // V32.3.11: control de modales terminales de desconexión
 // V17 · SERIALIZADOR DEL ESTADO: onValue puede entregar snapshots mientras
 // el snapshot anterior todavía está esperando una transacción. No permitimos
 // que dos aplicarEstado() pinten fases diferentes simultáneamente.
@@ -1088,6 +1088,31 @@ if(d.abandono && d.abandono.abandonador !== miRol){
   UI.bloquearBtns(['btn-abandonar'],false);
   const btnAbV27=document.getElementById('btn-abandonar');
   if(btnAbV27){btnAbV27.disabled=false;btnAbV27.style.opacity='';btnAbV27.style.pointerEvents='auto';}
+
+  // V32.3.11: si la partida terminó por segunda desconexión y el ganador
+  // abandonó posteriormente el tablero, el perdedor que regresa debe conocer
+  // primero el RESULTADO de la partida y después la salida del oponente.
+  // No sustituimos el resultado por el abandono: son dos hechos distintos.
+  const esPerdedorPorSegundaDesconexion = !!(d.fin_por_desconexion && Number(d.desconexion_numero||0)>=2 && d.ganador!==miRol);
+  const abandonoPostDesconexionKey = esPerdedorPorSegundaDesconexion
+    ? String(d.abandono.ts||'')+'|'+String(d.desconexion_numero||0)+'|'+String(d.partidasJugadas||0)
+    : null;
+  if(esPerdedorPorSegundaDesconexion && _abandonoPostDesconexionVisto!==abandonoPostDesconexionKey){
+    _abandonoPostDesconexionVisto=abandonoPostDesconexionKey;
+    const nombreGanador=d.ganador==='X'?'Jugador 1 (X)':'Jugador 2 (O)';
+    const msgPerdida='Has perdido la partida por tu segunda desconexión. '+nombreGanador+' es el ganador.';
+    UI.modal('📡 PARTIDA TERMINADA POR SEGUNDA DESCONEXIÓN',msgPerdida,'ACEPTAR',()=>{
+      UI.modal('🚪 TU OPONENTE YA ABANDONÓ EL TABLERO','Tu oponente ya abandonó el tablero. Puedes estudiar las jugadas previas y, cuando termines, pulsar ABANDONAR PARTIDA para volver al lobby.','ACEPTAR',()=>{
+        UI.bloquearTablero(true);
+        UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+        UI.bloquearBtns(['btn-abandonar'],false);
+        const b=document.getElementById('btn-abandonar');
+        if(b){b.disabled=false;b.style.opacity='';b.style.pointerEvents='auto';b.dataset.salidaTrasAbandono='1';_salidaTrasAbandono=true;b.onclick=()=>{try{_ocultarModalOponenteAbandono();if(window.Juego&&Juego.marcarSalidaTrasAbandono)Juego.marcarSalidaTrasAbandono();if(window.Firebase&&Firebase.salirLocalTrasAbandono)Firebase.salirLocalTrasAbandono();}catch(e){console.error('[V32.3.11] salida tras abandono:',e);}};}
+        UI.setMsg('La partida terminó por segunda desconexión. Tu oponente ya abandonó el tablero. Puedes estudiar las jugadas o abandonar.');
+      });
+    });
+    return;
+  }
   _mostrarModalOponenteAbandono(d.abandono.ts, miRol);
   UI.setMsg(d.abandono.ganador===miRol
     ? 'Tu oponente abandonó. Eres el ganador. Puedes estudiar las jugadas o abandonar la partida.'
@@ -1578,8 +1603,13 @@ if(abandono){
   if(btnAbFin){ btnAbFin.disabled=false; btnAbFin.style.opacity=''; btnAbFin.style.pointerEvents=''; }
 }
 
-if(!_victoriaVista&&d.ganador){
+const claveResultadoDesconexion=d.fin_por_desconexion&&d.ganador
+  ? String(d.desconexion_numero||0)+'|'+String(d.partidasJugadas||0)+'|'+String(d.ganador)
+  : null;
+const debeMostrarResultado = !!(d.ganador && ((!_victoriaVista) || (d.fin_por_desconexion && _desconexionResultadoVisto!==claveResultadoDesconexion)));
+if(debeMostrarResultado){
 _victoriaVista=true;
+if(d.fin_por_desconexion) _desconexionResultadoVisto=claveResultadoDesconexion;
 if(Array.isArray(d.fichas_ganadoras_reclamadas) && d.fichas_ganadoras_reclamadas.length){
   Tablero.resaltarGanadores(d.fichas_ganadoras_reclamadas,d.ganador);
   setTimeout(()=>{if(Array.isArray(d.fichas_ganadoras_reclamadas))Tablero.resaltarGanadores(d.fichas_ganadoras_reclamadas,d.ganador);},0);
@@ -1758,7 +1788,7 @@ UI.bloquearTablero(d.turno !== miRol);
 function reset(){
     _sorteoVisto=null; _victoriaVista=false; _reclamoKey=null; _partidaInicioVisto=null;
     _prioridadMostrada=null; _empateFinalKey=null; _resultadoReclamoVisto=null;
-    _npConfirmacionVista=null; _npMaxAlertVisto=null; _npFinalizacionEnCurso=null; _abandonoVisto=null; // Limpieza de estado de fin de partida
+    _npConfirmacionVista=null; _npMaxAlertVisto=null; _npFinalizacionEnCurso=null; _abandonoVisto=null; _desconexionResultadoVisto=null; _abandonoPostDesconexionVisto=null; // V32.3.11: limpieza de estados terminales
     _npFinalizacionEnCurso=null; _salidaTrasAbandono=false; _ultimoD=null;
     window._empateYaMostrado=false;
 }
@@ -3309,6 +3339,16 @@ const res=await runTransaction(_salaRef,current=>{
   }
   return Object.assign({},current,cambiosBase,{[campo]:n,desconexion_pendiente:{rol,inicio_ts:Date.now(),numero:n,modo,turno_elapsed_ms:Number(cambiosBase.desconexion_turno_elapsed_ms||0)}});
 });
+// V32.3.11: cuando esta detección convierte inmediatamente la partida en
+// terminal (segunda desconexión o modo sin gracia), forzamos además la
+// reconstrucción local del estado en el superviviente. Así el aviso de
+// victoria no depende de que el jugador desconectado vuelva a conectarse.
+if(res.committed && res.snapshot && res.snapshot.val){
+  const terminal=res.snapshot.val();
+  if(terminal&&terminal.terminado&&terminal.fin_por_desconexion){
+    setTimeout(()=>{try{if(window.Juego&&Juego.encolarEstado)Juego.encolarEstado(terminal,_rol);}catch(e){console.warn('[V32.3.11] no pudo aplicar resultado inmediato:',e);}},0);
+  }
+}
 return res.committed;
 },
 async resolverTurnoDesconectado(){
