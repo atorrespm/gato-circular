@@ -1587,15 +1587,33 @@ if(Array.isArray(d.fichas_ganadoras_reclamadas) && d.fichas_ganadoras_reclamadas
 const resSesion = Sesion.verificarFinSesion(d.victoriasX||0, d.victoriasO||0);
 if(resSesion) setTimeout(() => Sesion.mostrarFinSesion(resSesion, miRol), 2500);
 const porTiempo = d.fin_por_tiempo ? '\n Ganó por tiempo agotado del oponente.' : '';
-const porDesconexion = d.fin_por_desconexion ? '\n Ganó por desconexión del oponente.' : '';
 const nombreGanador = d.ganador === 'X' ? 'Jugador 1 (X)' : 'Jugador 2 (O)';
+const nombreDesconectado = d.ganador === 'X' ? 'Jugador 2 (O)' : 'Jugador 1 (X)';
+let textoResultado = nombreGanador+' gana la partida.'+porTiempo;
+if(d.fin_por_desconexion){
+  const numeroDesconexion=Number(d.desconexion_numero||0);
+  if(numeroDesconexion>=2){
+    textoResultado = miRol===d.ganador
+      ? 'Has ganado la partida porque '+nombreDesconectado+' se desconectó por segunda vez.'
+      : 'Has perdido la partida por tu segunda desconexión. '+nombreGanador+' es el ganador.';
+  }else if((d.crono_modo==='experto'||d.crono_modo==='blitz') || d.desconexion_motivo==='modo_sin_gracia'){
+    const nombreModo = d.crono_modo==='blitz' ? 'Blitz' : d.crono_modo==='experto' ? 'Experto' : (d.crono_modo||'').replace(/^./,c=>c.toUpperCase());
+    textoResultado = miRol===d.ganador
+      ? 'Has ganado la partida porque '+nombreDesconectado+' se desconectó. En modo '+nombreModo+' las desconexiones no están permitidas; por lo tanto, el oponente gana inmediatamente.'
+      : 'Has perdido la partida por desconexión. En modo '+nombreModo+' las desconexiones no están permitidas; por lo tanto, el oponente gana inmediatamente.';
+  }else{
+    textoResultado = miRol===d.ganador
+      ? 'Has ganado la partida por desconexión de '+nombreDesconectado+'.'
+      : 'Has perdido la partida por desconexión. '+nombreGanador+' es el ganador.';
+  }
+}
 const titulo=d.fin_por_desconexion?'📡 DESCONEXIÓN DEL OPONENTE':(d.fin_por_tiempo?'⏱️ TIEMPO AGOTADO':'🏆 RECLAMO DE VICTORIA VÁLIDO');
 if(!abandono && !d.nueva_partida_solicitud) {
   setTimeout(()=>{
     // No reaparecer encima del modal bilateral si mientras tanto alguien
     // solicitó una Nueva Partida.
-    if(!_npConfirmacionVista && !_npFinalizacionEnCurso) UI.modal(titulo, nombreGanador+' gana la partida.'+porTiempo+porDesconexion);
-  },400);
+    if(!_npConfirmacionVista && !_npFinalizacionEnCurso) UI.modal(titulo, textoResultado);
+  },d.fin_por_desconexion?120:400);
 }
 }
 }
@@ -3282,8 +3300,11 @@ const res=await runTransaction(_salaRef,current=>{
       terminado:true,ganador,fase:'terminado',fin_por_desconexion:true,
       desconexion_pendiente:null,[campo]:n,victoriasX:vX,victoriasO:vO,
       partidasJugadas,fin_sesion:totalPartidas>0&&partidasJugadas>=totalPartidas,
+      desconexion_numero:n,
+      desconexion_motivo:(n>=2?'segunda_desconexion':'modo_sin_gracia'),
       nueva_partida_solicitud:null,turno_inicio_ts:null,
-      crono_total_inicio_X:null,crono_total_inicio_O:null
+      crono_total_inicio_X:null,crono_total_inicio_O:null,
+      pausa_propuesta:null,reanudar_propuesta:null,pausa_activa:false,pausa_inicio_ts:null
     });
   }
   return Object.assign({},current,cambiosBase,{[campo]:n,desconexion_pendiente:{rol,inicio_ts:Date.now(),numero:n,modo,turno_elapsed_ms:Number(cambiosBase.desconexion_turno_elapsed_ms||0)}});
@@ -3327,8 +3348,11 @@ await runTransaction(_salaRef,current=>{
     terminado:true,ganador,fase:'terminado',fin_por_desconexion:true,
     desconexion_pendiente:null,victoriasX:vX,victoriasO:vO,
     partidasJugadas,fin_sesion:totalPartidas>0&&partidasJugadas>=totalPartidas,
+    desconexion_numero:Number(p.numero||1),
+    desconexion_motivo:(Number(p.numero||1)>=2?'segunda_desconexion':'modo_sin_gracia'),
     nueva_partida_solicitud:null,turno_inicio_ts:null,
-    crono_total_inicio_X:null,crono_total_inicio_O:null
+    crono_total_inicio_X:null,crono_total_inicio_O:null,
+    pausa_propuesta:null,reanudar_propuesta:null,pausa_activa:false,pausa_inicio_ts:null
   });
 });
 },
@@ -3462,7 +3486,12 @@ if(_iniciado){
     if(_reanudarPropuestaVisto!==key){_reanudarPropuestaVisto=key;if(rp.por!==_rol&&rp.decisiones&&rp.decisiones[_rol]!==true){const quien=rp.por==='X'?'Jugador 1 (X)':'Jugador 2 (O)';_mostrarModalBilateral('Solicitud de reanudación',quien+' solicita reanudar la partida. ¿Aceptas?',()=>Firebase.responderReanudar(true),()=>Firebase.responderReanudar(false));}}
   }else if(!d.reanudar_propuesta)_reanudarPropuestaVisto=null;
   if(d.partida_iniciada || d.fase==='jugando'){
-    const ovInicioActivo=document.getElementById('bilateral-overlay'); if(ovInicioActivo) ovInicioActivo.style.display='none';
+    // El mismo overlay bilateral también se usa para PAUSA/REANUDACIÓN.
+    // Solo debe cerrarse automáticamente para una propuesta de INICIAR PARTIDA;
+    // nunca mientras exista una solicitud bilateral de pausa/reanudación.
+    const hayPausaBilateral=!!d.pausa_propuesta || !!d.reanudar_propuesta;
+    const ovInicioActivo=document.getElementById('bilateral-overlay');
+    if(ovInicioActivo && !hayPausaBilateral) ovInicioActivo.style.display='none';
     window._inicioPropuestoVisto=null;
   } else {
     _revisarInicioPropuesto(d);
