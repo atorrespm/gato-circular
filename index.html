@@ -3346,7 +3346,35 @@ const res=await runTransaction(_salaRef,current=>{
 if(res.committed && res.snapshot && res.snapshot.val){
   const terminal=res.snapshot.val();
   if(terminal&&terminal.terminado&&terminal.fin_por_desconexion){
-    setTimeout(()=>{try{if(window.Juego&&Juego.encolarEstado)Juego.encolarEstado(terminal,_rol);}catch(e){console.warn('[V32.3.11] no pudo aplicar resultado inmediato:',e);}},0);
+    // V32.3.12: la notificación al SUPERVIVIENTE de una segunda desconexión
+    // debe salir desde el mismo cliente que detectó la desconexión, sin
+    // depender de que el onValue posterior repinte el estado terminal.
+    // La transacción ya dejó el resultado definitivo en Firebase.
+    const nTerminal=Number(terminal.desconexion_numero||0);
+    const esGanadorLocal=terminal.ganador===_rol;
+    const claveInmediata=String(nTerminal)+'|'+String(terminal.partidasJugadas||0)+'|'+String(terminal.ganador||'');
+    if(esGanadorLocal && nTerminal>=2 && _desconexionResultadoVisto!==claveInmediata){
+      _desconexionResultadoVisto=claveInmediata;
+      _victoriaVista=true;
+      const nombrePerdedor=terminal.ganador==='X'?'Jugador 2 (O)':'Jugador 1 (X)';
+      // Detención local inmediata: no dejamos al superviviente esperando ni
+      // un ciclo adicional de snapshots para conocer el resultado.
+      try{Cronometro.detener();}catch(e){}
+      try{UI.bloquearTablero(true);}catch(e){}
+      try{
+        UI.bloquearBtns(['btn-nueva'],false);
+        UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar'],true);
+        UI.bloquearBtns(['btn-abandonar'],false);
+        UI.setMsg('Has ganado la partida porque '+nombrePerdedor+' se desconectó por segunda vez.');
+      }catch(e){}
+      setTimeout(()=>{
+        try{UI.modal('📡 SEGUNDA DESCONEXIÓN','Has ganado la partida porque '+nombrePerdedor+' se desconectó por segunda vez.','ACEPTAR');}
+        catch(e){console.warn('[V32.3.12] no pudo mostrar aviso inmediato:',e);}
+      },0);
+    }
+    // También conservamos la reconstrucción central del estado para tablero,
+    // estadísticas, modo, sesión y controles persistidos.
+    setTimeout(()=>{try{if(window.Juego&&Juego.encolarEstado)Juego.encolarEstado(terminal,_rol);}catch(e){console.warn('[V32.3.12] no pudo aplicar resultado inmediato:',e);}},0);
   }
 }
 return res.committed;
