@@ -1078,6 +1078,16 @@ if(d.abandono && d.abandono.abandonador !== miRol){
   // pisar los botones o abra una espera bilateral imposible.
   Estado.fromFirebase(d); _ultimoD = d;
   if(typeof Sesion !== 'undefined') Sesion.fromFirebase(d);
+  // V32.3.13 DUENDE Nº2: si el ganador por desconexión abandonó después
+  // y el perdedor regresa, conservar la partida histórica visible y sus stats.
+  try{
+    if(Reclamo.isActivo()){ UI.actualizarPaneles(Estado); Reclamo.reaplicar(); }
+    else { Tablero.render(Estado.tablero,id=>Firebase.jugar(id)); UI.actualizarPaneles(Estado); }
+    UI.setStats(d.victoriasX||0,d.victoriasO||0);
+    if(d.crono_modo&&Cronometro.configurarModo) Cronometro.configurarModo(d.crono_modo);
+    if(typeof marcarModoActivo==='function') marcarModoActivo(d.crono_modo||'clasico');
+    Cronometro.detener();
+  }catch(e){ console.warn('[V32.3.13] no pudo restaurar tablero histórico post-abandono:',e); }
   if(d.nueva_partida_solicitud){
     try{ await update(_salaRef,{nueva_partida_solicitud:null,nueva_partida_max_alert:null}); }catch(e){ console.warn('[FLOW-V27] no pudo limpiar solicitud post-abandono',e); }
   }
@@ -3512,6 +3522,29 @@ if(_unsubSala) _unsubSala();
 _unsubSala = onValue(_salaRef, snap=>{
 if(!snap.exists()) return;
 const d=snap.val();
+// V32.3.13 DUENDE Nº1: consumir el resultado terminal por desconexión
+// directamente al recibir el snapshot. Así el jugador que permanece en línea
+// no depende del callback de la transacción ni del regreso del rival.
+if(d.terminado && d.fin_por_desconexion && d.ganador===_rol){
+  const nTD=Number(d.desconexion_numero||0);
+  const keyTD=String(d.desconexion_numero||0)+'|'+String(d.fin_sesion||d.ts||'');
+  if(_desconexionResultadoVisto!==keyTD){
+    _desconexionResultadoVisto=keyTD; _victoriaVista=true;
+    if(_desconexionTurnoTimer){clearTimeout(_desconexionTurnoTimer);_desconexionTurnoTimer=null;}
+    Cronometro.detener();
+    UI.bloquearTablero(true);
+    UI.bloquearBtns(['btn-nueva'],false);
+    UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar'],true);
+    UI.bloquearBtns(['btn-abandonar'],false);
+    const perdio=d.ganador==='X'?'Jugador 2 (O)':'Jugador 1 (X)';
+    let msgTD;
+    if(nTD>=2) msgTD='Has ganado la partida: '+perdio+' se desconectó por segunda vez.';
+    else if(d.desconexion_motivo==='modo_sin_gracia' || ['experto','blitz'].includes(String(d.crono_modo||'').toLowerCase())) msgTD='Has ganado la partida: '+perdio+' se desconectó. En el modo '+String(d.crono_modo||'').toUpperCase()+' las desconexiones no tienen período de gracia.';
+    else msgTD='Has ganado la partida: '+perdio+' se desconectó y no se reconectó a tiempo.';
+    UI.setMsg(msgTD);
+    setTimeout(()=>UI.modal(nTD>=2?'📡 SEGUNDA DESCONEXIÓN':'📡 DESCONEXIÓN DEL OPONENTE',msgTD,'ACEPTAR'),0);
+  }
+}
 if(!_iniciado&&d.j1==='online'&&d.j2==='online'){
 _iniciado=true;
 UI.lobbyVisible(false);
