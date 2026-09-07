@@ -1089,7 +1089,9 @@ async function procesarTerminalDesconexion(d, miRol){
     UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar'],true);
     UI.bloquearBtns(['btn-abandonar'],false);
     const bn=document.getElementById('btn-nueva');
-    if(bn){bn.disabled=false;bn.style.opacity='';bn.style.pointerEvents='auto';}
+    const sesionTerminada=!!d.fin_sesion;
+    if(bn){bn.disabled=sesionTerminada;bn.style.opacity=sesionTerminada?'0.4':'';bn.style.pointerEvents=sesionTerminada?'none':'auto';}
+    if(sesionTerminada) UI.setMsg('La sesión ha terminado. Esta fue la última partida.');
     const wrap=document.getElementById('inicio-partida-wrap');
     if(wrap) wrap.style.display='flex';
     if(typeof bloquearSelectorModo==='function') bloquearSelectorModo(true);
@@ -1141,7 +1143,7 @@ async function procesarTerminalDesconexion(d, miRol){
     _victoriaVista=true;
     if(Array.isArray(d.fichas_ganadoras_reclamadas) && d.fichas_ganadoras_reclamadas.length) Tablero.resaltarGanadores(d.fichas_ganadoras_reclamadas,d.ganador);
     const resSesion=Sesion.verificarFinSesion(d.victoriasX||0,d.victoriasO||0);
-    if(resSesion) setTimeout(()=>Sesion.mostrarFinSesion(resSesion,miRol),2500);
+    if(resSesion && d.fin_sesion) setTimeout(()=>Sesion.mostrarFinSesion(resSesion,miRol),2500);
     const titulo=numero>=2?'📡 SEGUNDA DESCONEXIÓN':((d.crono_modo==='experto'||d.crono_modo==='blitz'||d.desconexion_motivo==='modo_sin_gracia')?'📡 DESCONEXIÓN DEL OPONENTE':'📡 DESCONEXIÓN DEL OPONENTE');
     UI.modal(titulo,texto,'ACEPTAR',mostrarAbandonoDespues);
   }else{
@@ -2468,11 +2470,22 @@ databaseURL:       "https://gato-circular-default-rtdb.firebaseio.com"
 /* ── M13 · FIREBASE ─────────────────────────────────── */
 let _salaRef=null, _sala=null, _rol=null, _iniciado=false, _enviandoJugada=false, _unsubSala=null, _tcResolviendo=false, _recargandoTrasAbandono=false;
 const GC_SESSION_KEY='gc_sesion_v32';
+const GC_SESSION_MAX_INACTIVA_MS=60*60*1000;
+let _sessionExpiryTimer=null;
+function _sesionLocalCaducada(ses){ return !!(ses&&ses.ts&&Date.now()-Number(ses.ts)>=GC_SESSION_MAX_INACTIVA_MS); }
+function _programarCaducidadSesionLocal(){
+  if(_sessionExpiryTimer) clearTimeout(_sessionExpiryTimer);
+  const ses=_leerSesion();
+  if(!ses||!ses.ts) return;
+  const restante=GC_SESSION_MAX_INACTIVA_MS-Math.max(0,Date.now()-Number(ses.ts));
+  if(restante<=0){ _borrarSesion(); return; }
+  _sessionExpiryTimer=setTimeout(()=>{ _borrarSesion(); _sessionExpiryTimer=null; },restante+50);
+}
 let _sessionId=null, _unsubConexion=null, _desconexionTimer=null, _desconexionVisto=null, _desconexionDetectTimer=null, _desconexionTurnoTimer=null, _reconexionVisto=null, _pausaPropuestaVisto=null, _reanudarPropuestaVisto=null;
 function _nuevoSessionId(){ return 'gc_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,10); }
-function _guardarSesion(){ if(_sala&&_rol&&_sessionId) localStorage.setItem(GC_SESSION_KEY,JSON.stringify({sala:_sala,rol:_rol,sessionId:_sessionId,ts:Date.now()})); }
+function _guardarSesion(){ if(_sala&&_rol&&_sessionId){ localStorage.setItem(GC_SESSION_KEY,JSON.stringify({sala:_sala,rol:_rol,sessionId:_sessionId,ts:Date.now()})); _programarCaducidadSesionLocal(); } }
 function _leerSesion(){ try{return JSON.parse(localStorage.getItem(GC_SESSION_KEY)||'null')}catch(e){return null} }
-function _borrarSesion(){ try{localStorage.removeItem(GC_SESSION_KEY)}catch(e){} }
+function _borrarSesion(){ try{localStorage.removeItem(GC_SESSION_KEY); if(_sessionExpiryTimer)clearTimeout(_sessionExpiryTimer); _sessionExpiryTimer=null;}catch(e){} }
 function _modoPermiteGracia(modo){ return modo==='clasico'||modo==='basico'; }
 function _bloquearPorDesconexion(bloquear){ UI.bloquearTablero(bloquear); UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],bloquear); UI.bloquearBtns(['btn-abandonar'],false); const b=document.getElementById('btn-abandonar'); if(b){b.disabled=false;b.style.opacity='';b.style.pointerEvents='auto';} }
 function _mostrarModalDesconexion(pendiente, miRol){
@@ -2595,7 +2608,12 @@ const snap=await get(ref(db,'salas/'+ses.sala));
 if(!snap.exists()){_borrarSesion();return {ok:false,msg:'La sala ya no existe.'};}
 const d=snap.val();
 if(d.sesionX!==ses.sessionId && d.sesionO!==ses.sessionId){_borrarSesion();return {ok:false,msg:'Esta sesión ya no corresponde a esa partida.'};}
-if(d.terminado===true || d.abandono || d.fin_sesion===true){_borrarSesion();return {ok:false,msg:'No hay una partida pendiente: la partida anterior ya terminó.'};}
+if(d.fin_sesion===true){_borrarSesion();return {ok:false,msg:'La sesión ya terminó.'};}
+// V32.3.15: una partida terminada NO implica necesariamente el fin de la sesión.
+// Se permite retomar una partida histórica pendiente de sesión, incluso si el
+// oponente abandonó después del resultado; el tablero y los modales informativos
+// deben poder reconstruirse.
+if(d.terminado===true && !d.fin_por_desconexion && !d.ganador){_borrarSesion();return {ok:false,msg:'No hay una partida pendiente válida para retomar.'};}
 _sala=ses.sala; _rol=d.sesionX===ses.sessionId?'X':'O'; _sessionId=ses.sessionId; _salaRef=ref(db,'salas/'+_sala);
 await update(_salaRef,{['conexion/'+_rol]:{online:true,ts:serverTimestamp()}});
 _guardarSesion(); _escuchar(); Firebase._registrarPresencia();
@@ -2629,6 +2647,7 @@ _enviandoJugada = true;
 try {
 const snap=await get(_salaRef); if(!snap.exists()) return;
 const d=snap.val(), t=Estado.tableroCompleto();
+_guardarSesion();
 if(d.terminado||d.fase!=='jugando'||t[id]!==null||d.turno!==_rol) return;
 t[id]=_rol; UI.bloquearTablero(true);
 // Descontar el tiempo realmente transcurrido en este turno del total
@@ -2728,6 +2747,7 @@ fichas_marcadas_reclamo:null, resultado_reclamo:resultado}, reanudo, pen.cambios
 },
 async nuevaPartida(){
 const snap=await get(_salaRef); const d=snap.val();
+_guardarSesion();
 await update(_salaRef,{
 tablero:Estado.tableroVacio(),turno:null,fase:'esperando_sorteo',
 terminado:false,ganador:null,jugadas:0,fichasX:16,fichasO:16,
@@ -3574,6 +3594,10 @@ _unsubSala = onValue(_salaRef, snap=>{
 if(!snap.exists()) return;
 const d=snap.val();
 if(typeof Juego!=='undefined' && Juego.setUltimoEstado) Juego.setUltimoEstado(d);
+// V32.3.15: mientras este navegador siga recibiendo estado de su sesión,
+// renovamos la marca local de actividad. Si permanece realmente inactiva,
+// el marcador caduca a la hora y ya no se podrá retomar desde este navegador.
+if(_sessionId && ((d.sesionX===_sessionId)||(d.sesionO===_sessionId))) _guardarSesion();
 // V32.3.14: un estado terminal por desconexión se procesa como una
 // transición definitiva y se entrega DIRECTAMENTE al motor terminal.
 // No se permite que el flujo de presencia, turnos o fases de juego lo pise.
@@ -3653,14 +3677,18 @@ $('lbtn-volver2').onclick = ()=>UI.lobbyPaso('inicio');
 $('lbtn-unirse').onclick  = ()=>{ const inp=$('lobby-input'); if(inp) inp.value=''; UI.lobbyPaso('unirse'); inp?.focus(); };
 $('lobby-input').oninput  = e=>{ e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,''); };
 const _sesionPendienteInicial=_leerSesion();
+_programarCaducidadSesionLocal();
 if(_sesionPendienteInicial && _sesionPendienteInicial.sala && _sesionPendienteInicial.sessionId){
   const rb=$('lbtn-retomar'), rs=$('lst-retomar');
   if(rb) rb.style.display='none';
   if(rs) rs.style.display='none';
   get(ref(db,'salas/'+_sesionPendienteInicial.sala)).then(snap=>{
     const d=snap.exists()?snap.val():null;
+    const caducada=_sesionLocalCaducada(_sesionPendienteInicial);
     const corresponde=d && (d.sesionX===_sesionPendienteInicial.sessionId || d.sesionO===_sesionPendienteInicial.sessionId);
-    const pendiente=corresponde && !d.terminado && !d.abandono && !d.fin_sesion;
+    // V32.3.15: puede existir una partida terminada con resultado, pero la sesión
+    // seguir abierta. También puede existir abandono posterior del ganador.
+    const pendiente=!caducada && corresponde && !d.fin_sesion && (!d.terminado || !!d.ganador);
     if(pendiente){
       if(rb) rb.style.display='block';
       if(rs){rs.style.display='block';rs.textContent='Hay una partida pendiente asociada a este navegador.';}
