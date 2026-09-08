@@ -3627,6 +3627,17 @@ if(_sessionId && ((d.sesionX===_sessionId)||(d.sesionO===_sessionId))) _guardarS
 // transición definitiva y se entrega DIRECTAMENTE al motor terminal.
 // No se permite que el flujo de presencia, turnos o fases de juego lo pise.
 if(d.terminado && d.fin_por_desconexion){
+  // V32.3.17: al retomar una partida ya terminada por desconexión, el cliente
+  // podía seguir con _iniciado=false porque este gate terminal retornaba antes
+  // del bloque general que inicializa la sala. El tablero se reconstruía bien,
+  // pero los handlers de NUEVA PARTIDA y ABANDONAR empiezan con
+  // Firebase.isIniciado(), por lo que quedaban visualmente activos pero mudos.
+  // Aquí declaramos la sala inicializada antes de entregar el estado terminal.
+  if(!_iniciado){
+    _iniciado=true;
+    try{ Reclamo.init(_rol); }catch(e){}
+    try{ Chat.init(db,_sala,_rol); }catch(e){}
+  }
   if(typeof Juego!=='undefined' && Juego.setUltimoEstado) Juego.setUltimoEstado(d);
   _ocultarModalDesconexion();
   _ocultarModalReconexion();
