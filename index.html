@@ -1089,8 +1089,22 @@ async function procesarTerminalDesconexion(d, miRol){
     UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar'],true);
     UI.bloquearBtns(['btn-abandonar'],false);
     const bn=document.getElementById('btn-nueva');
+    const ba=document.getElementById('btn-abandonar');
     const sesionTerminada=!!d.fin_sesion;
-    if(bn){bn.disabled=sesionTerminada;bn.style.opacity=sesionTerminada?'0.4':'';bn.style.pointerEvents=sesionTerminada?'none':'auto';}
+    // V32.3.16: bloquearBtns() solo modifica la capa visual/pointer-events;
+    // no modifica la propiedad HTML disabled. Tras volver de una desconexión,
+    // ambos botones podían quedar visualmente activos pero realmente
+    // deshabilitados. La terminalización debe fijar explícitamente ambas capas.
+    if(bn){
+      bn.disabled=sesionTerminada;
+      bn.style.opacity=sesionTerminada?'0.4':'';
+      bn.style.pointerEvents=sesionTerminada?'none':'auto';
+    }
+    if(ba){
+      ba.disabled=false;
+      ba.style.opacity='';
+      ba.style.pointerEvents='auto';
+    }
     if(sesionTerminada) UI.setMsg('La sesión ha terminado. Esta fue la última partida.');
     const wrap=document.getElementById('inicio-partida-wrap');
     if(wrap) wrap.style.display='flex';
@@ -1106,6 +1120,17 @@ async function procesarTerminalDesconexion(d, miRol){
   // sigue siendo inmediata; no debe volver a interactuar con la partida.
   if(d.abandono && d.abandono.abandonador===miRol){
     try{ Firebase.salirLocalTrasAbandono(); }catch(e){}
+    return;
+  }
+
+  // V32.3.16: una partida terminada por desconexión NO implica que la sesión
+  // haya terminado. Si ambos jugadores siguen presentes y uno propone
+  // NUEVA PARTIDA, el flujo bilateral debe seguir funcionando aunque el
+  // snapshot continúe siendo terminado=true. El gate terminal de _escuchar()
+  // ya no pasa por aplicarEstado(), por lo que debemos atender aquí mismo
+  // la solicitud de nueva partida.
+  if(d.nueva_partida_solicitud && !d.abandono && !d.fin_sesion){
+    try{ _revisarNuevaPartida(d,miRol); }catch(e){ console.warn('[V32.3.16] no pudo revisar Nueva Partida post-desconexión:',e); }
     return;
   }
 
