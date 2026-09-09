@@ -1071,8 +1071,8 @@ async function procesarTerminalDesconexion(d, miRol){
   Estado.fromFirebase(d);
   if(typeof Sesion!=='undefined') Sesion.fromFirebase(d);
 
-  // Restauración terminal completa: tablero, estadísticas, modo y relojes
-  // quedan inmediatamente sincronizados con el snapshot definitivo.
+  // V32.3.18: una partida terminada por desconexión debe conservarse como
+  // HISTORIAL visible y navegable, pero la sesión puede continuar.
   try{
     if(Reclamo.isActivo()) Reclamo.desactivar();
     Tablero.render(Estado.tablero,id=>{});
@@ -1080,7 +1080,7 @@ async function procesarTerminalDesconexion(d, miRol){
     UI.setStats(d.victoriasX||0,d.victoriasO||0);
     if(d.crono_modo&&Cronometro.configurarModo) Cronometro.configurarModo(d.crono_modo);
     if(typeof marcarModoActivo==='function') marcarModoActivo(d.crono_modo||'clasico');
-  }catch(e){ console.warn('[V32.3.14] restauración terminal:',e); }
+  }catch(e){ console.warn('[V32.3.18] restauración terminal:',e); }
 
   try{
     Cronometro.detener();
@@ -1088,13 +1088,12 @@ async function procesarTerminalDesconexion(d, miRol){
     UI.bloquearTablero(true);
     UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar'],true);
     UI.bloquearBtns(['btn-abandonar'],false);
+
     const bn=document.getElementById('btn-nueva');
     const ba=document.getElementById('btn-abandonar');
     const sesionTerminada=!!d.fin_sesion;
-    // V32.3.16: bloquearBtns() solo modifica la capa visual/pointer-events;
-    // no modifica la propiedad HTML disabled. Tras volver de una desconexión,
-    // ambos botones podían quedar visualmente activos pero realmente
-    // deshabilitados. La terminalización debe fijar explícitamente ambas capas.
+
+    // Mantener sincronizadas la capa visual Y la propiedad HTML disabled.
     if(bn){
       bn.disabled=sesionTerminada;
       bn.style.opacity=sesionTerminada?'0.4':'';
@@ -1105,32 +1104,27 @@ async function procesarTerminalDesconexion(d, miRol){
       ba.style.opacity='';
       ba.style.pointerEvents='auto';
     }
+
     if(sesionTerminada) UI.setMsg('La sesión ha terminado. Esta fue la última partida.');
     const wrap=document.getElementById('inicio-partida-wrap');
     if(wrap) wrap.style.display='flex';
     if(typeof bloquearSelectorModo==='function') bloquearSelectorModo(true);
+
     _ocultarModalDesconexion();
     _ocultarModalReconexion();
-    if(window.EmpateFlow){EmpateFlow.ocultarModalTC();EmpateFlow.ocultarModalSinRespuesta();EmpateFlow.ocultarModalPrioridad();EmpateFlow.ocultarModalResultado();}
+    if(window.EmpateFlow){
+      EmpateFlow.ocultarModalTC();
+      EmpateFlow.ocultarModalSinRespuesta();
+      EmpateFlow.ocultarModalPrioridad();
+      EmpateFlow.ocultarModalResultado();
+    }
     const bi=document.getElementById('bilateral-overlay'); if(bi) bi.style.display='none';
     const ac=document.getElementById('abandono-confirm-overlay'); if(ac) ac.style.display='none';
   }catch(e){}
 
-  // Si este cliente fue quien abandonó después del resultado, su salida local
-  // sigue siendo inmediata; no debe volver a interactuar con la partida.
+  // Si este cliente abandonó DESPUÉS del resultado, sale localmente.
   if(d.abandono && d.abandono.abandonador===miRol){
     try{ Firebase.salirLocalTrasAbandono(); }catch(e){}
-    return;
-  }
-
-  // V32.3.16: una partida terminada por desconexión NO implica que la sesión
-  // haya terminado. Si ambos jugadores siguen presentes y uno propone
-  // NUEVA PARTIDA, el flujo bilateral debe seguir funcionando aunque el
-  // snapshot continúe siendo terminado=true. El gate terminal de _escuchar()
-  // ya no pasa por aplicarEstado(), por lo que debemos atender aquí mismo
-  // la solicitud de nueva partida.
-  if(d.nueva_partida_solicitud && !d.abandono && !d.fin_sesion){
-    try{ _revisarNuevaPartida(d,miRol); }catch(e){ console.warn('[V32.3.16] no pudo revisar Nueva Partida post-desconexión:',e); }
     return;
   }
 
@@ -1139,6 +1133,7 @@ async function procesarTerminalDesconexion(d, miRol){
   const nombreGanador=d.ganador==='X'?'Jugador 1 (X)':'Jugador 2 (O)';
   const nombreDesconectado=d.ganador==='X'?'Jugador 2 (O)':'Jugador 1 (X)';
   let texto;
+
   if(numero>=2){
     texto = miRol===d.ganador
       ? 'Has ganado la partida porque '+nombreDesconectado+' se desconectó por segunda vez.'
@@ -1155,26 +1150,57 @@ async function procesarTerminalDesconexion(d, miRol){
   }
   UI.setMsg(texto);
 
+  // V32.3.18: las notificaciones posteriores al resultado tienen orden estricto:
+  // RESULTADO -> (RECONEXIÓN) -> (NUEVA PARTIDA).
   const mostrarAbandonoDespues=()=>{
     if(d.abandono && d.abandono.abandonador!==miRol && _abandonoOponenteAvisoVisto!==d.abandono.ts){
       _abandonoOponenteAvisoVisto=d.abandono.ts;
       _mostrarModalOponenteAbandono(d.abandono.ts,miRol);
       UI.setMsg('Tu oponente abandonó el tablero. Puedes estudiar las jugadas o abandonar la partida.');
+      return true;
     }
+    return false;
+  };
+
+  const mostrarReconexionDespues=()=>{
+    const rec=d.ultima_reconexion;
+    if(rec && rec.rol!==miRol && rec.ts && _reconexionVisto!==rec.ts){
+      _reconexionVisto=rec.ts;
+      _mostrarModalReconexion(rec,miRol);
+      UI.setMsg('Tu oponente se ha reconectado al tablero. La partida anterior ya terminó; ahora pueden decidir si iniciar una nueva partida.');
+      return true;
+    }
+    return false;
+  };
+
+  const continuarPostResultado=()=>{
+    if(d.nueva_partida_solicitud && !d.abandono && !d.fin_sesion){
+      try{ _revisarNuevaPartida(d,miRol); }
+      catch(e){ console.warn('[V32.3.18] no pudo revisar Nueva Partida post-desconexión:',e); }
+    }
+  };
+
+  const despuesDelResultado=()=>{
+    if(mostrarAbandonoDespues()) return;
+    if(mostrarReconexionDespues()) return;
+    continuarPostResultado();
   };
 
   if(_desconexionResultadoVisto!==key){
     _desconexionResultadoVisto=key;
     _victoriaVista=true;
-    if(Array.isArray(d.fichas_ganadoras_reclamadas) && d.fichas_ganadoras_reclamadas.length) Tablero.resaltarGanadores(d.fichas_ganadoras_reclamadas,d.ganador);
+    if(Array.isArray(d.fichas_ganadoras_reclamadas) && d.fichas_ganadoras_reclamadas.length){
+      Tablero.resaltarGanadores(d.fichas_ganadoras_reclamadas,d.ganador);
+    }
     const resSesion=Sesion.verificarFinSesion(d.victoriasX||0,d.victoriasO||0);
     if(resSesion && d.fin_sesion) setTimeout(()=>Sesion.mostrarFinSesion(resSesion,miRol),2500);
-    const titulo=numero>=2?'📡 SEGUNDA DESCONEXIÓN':((d.crono_modo==='experto'||d.crono_modo==='blitz'||d.desconexion_motivo==='modo_sin_gracia')?'📡 DESCONEXIÓN DEL OPONENTE':'📡 DESCONEXIÓN DEL OPONENTE');
-    UI.modal(titulo,texto,'ACEPTAR',mostrarAbandonoDespues);
+    const titulo=numero>=2?'📡 SEGUNDA DESCONEXIÓN':'📡 DESCONEXIÓN DEL OPONENTE';
+    UI.modal(titulo,texto,'ACEPTAR',despuesDelResultado);
   }else{
-    mostrarAbandonoDespues();
+    despuesDelResultado();
   }
 }
+
 
 async function aplicarEstado(d, miRol) {
 if(!d) return;
@@ -2546,7 +2572,17 @@ function _mostrarModalReconexion(reconexion,miRol){
     ov.style.cssText='display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:395;align-items:center;justify-content:center;';
     ov.innerHTML=`<div style="background:linear-gradient(135deg,#101810,#202820);border:3px solid #35d06f;border-radius:14px;padding:28px 34px;text-align:center;min-width:330px;max-width:460px;box-shadow:0 0 55px rgba(53,208,111,.25);"><h2 style="font-family:'Orbitron',sans-serif;font-size:18px;color:#55e884;margin-bottom:12px;">📡 OPONENTE RECONectado</h2><p id="reconexion-msg" style="font-size:13px;color:#ddd;line-height:1.7;margin-bottom:18px;"></p><button id="btn-reconexion-ok" style="padding:10px 24px;background:#185b32;color:#fff;border:1px solid #35d06f;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;">ENTENDIDO</button></div>`;
     document.body.appendChild(ov);
-    document.getElementById('btn-reconexion-ok')?.addEventListener('click',()=>{ov.style.display='none';});
+    document.getElementById('btn-reconexion-ok')?.addEventListener('click',()=>{
+    ov.style.display='none';
+    // V32.3.18: si ya existía una propuesta de NUEVA PARTIDA creada
+    // antes de esta reconexión, se muestra SOLO después del aviso de retorno.
+    try{
+      const ult=window.Juego&&Juego.getUltimoEstado?Juego.getUltimoEstado():null;
+      if(ult && ult.terminado && ult.fin_por_desconexion && ult.nueva_partida_solicitud && !ult.abandono && !ult.fin_sesion){
+        _revisarNuevaPartida(ult,_rol);
+      }
+    }catch(e){ console.warn('[V32.3.18] no pudo continuar solicitud tras reconexión:',e); }
+  });
   }
   const quien=reconexion.rol==='X'?'Jugador 1 (X)':'Jugador 2 (O)';
   const msg=document.getElementById('reconexion-msg');
@@ -2640,7 +2676,14 @@ if(d.fin_sesion===true){_borrarSesion();return {ok:false,msg:'La sesión ya term
 // deben poder reconstruirse.
 if(d.terminado===true && !d.fin_por_desconexion && !d.ganador){_borrarSesion();return {ok:false,msg:'No hay una partida pendiente válida para retomar.'};}
 _sala=ses.sala; _rol=d.sesionX===ses.sessionId?'X':'O'; _sessionId=ses.sessionId; _salaRef=ref(db,'salas/'+_sala);
-await update(_salaRef,{['conexion/'+_rol]:{online:true,ts:serverTimestamp()}});
+const retomaAhora=Date.now();
+const cambiosRetoma={['conexion/'+_rol]:{online:true,ts:serverTimestamp()}};
+if(d.terminado===true && d.fin_por_desconexion===true){
+  // V32.3.18: regresar después de que la partida ya terminó NO reabre
+  // la partida ni consume una nueva gracia. Solo informa al rival.
+  cambiosRetoma.ultima_reconexion={rol:_rol,ts:retomaAhora,duracion_ms:0,post_terminal:true};
+}
+await update(_salaRef,cambiosRetoma);
 _guardarSesion(); _escuchar(); Firebase._registrarPresencia();
 return {ok:true,reconectada:true,rol:_rol};
 },
@@ -2813,16 +2856,143 @@ async solicitarNuevaPartida(){
     const snap=await get(_salaRef); const d=snap.val();
     if(!d || !(d.fase==='empate_final' || d.terminado===true)) return;
     // V22: si el oponente ya abandonó, nunca se crea una solicitud bilateral.
-    if(d.abandono){
-      _ocultarConfirmacionNuevaPartida();
-      _ocultarMaxNoNuevaPartida();
-      UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
-      UI.bloquearBtns(['btn-abandonar'],false);
-      const b=document.getElementById('btn-abandonar');
-      if(b){b.disabled=false;b.style.opacity='';b.style.pointerEvents='auto';}
-      return;
+function procesarTerminalDesconexion(d, miRol){
+  if(!d || !d.terminado || !d.fin_por_desconexion) return;
+  _ultimoD=d;
+  Estado.fromFirebase(d);
+  if(typeof Sesion!=='undefined') Sesion.fromFirebase(d);
+
+  // V32.3.18: una partida terminada por desconexión debe conservarse como
+  // HISTORIAL visible y navegable, pero la sesión puede continuar.
+  try{
+    if(Reclamo.isActivo()) Reclamo.desactivar();
+    Tablero.render(Estado.tablero,id=>{});
+    UI.actualizarPaneles(Estado);
+    UI.setStats(d.victoriasX||0,d.victoriasO||0);
+    if(d.crono_modo&&Cronometro.configurarModo) Cronometro.configurarModo(d.crono_modo);
+    if(typeof marcarModoActivo==='function') marcarModoActivo(d.crono_modo||'clasico');
+  }catch(e){ console.warn('[V32.3.18] restauración terminal:',e); }
+
+  try{
+    Cronometro.detener();
+    EmpateFlow.detenerCronometroPrioridad();
+    UI.bloquearTablero(true);
+    UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar'],true);
+    UI.bloquearBtns(['btn-abandonar'],false);
+
+    const bn=document.getElementById('btn-nueva');
+    const ba=document.getElementById('btn-abandonar');
+    const sesionTerminada=!!d.fin_sesion;
+
+    // Mantener sincronizadas la capa visual Y la propiedad HTML disabled.
+    if(bn){
+      bn.disabled=sesionTerminada;
+      bn.style.opacity=sesionTerminada?'0.4':'';
+      bn.style.pointerEvents=sesionTerminada?'none':'auto';
     }
-    if(d.nueva_partida_max_alert) return;
+    if(ba){
+      ba.disabled=false;
+      ba.style.opacity='';
+      ba.style.pointerEvents='auto';
+    }
+
+    if(sesionTerminada) UI.setMsg('La sesión ha terminado. Esta fue la última partida.');
+    const wrap=document.getElementById('inicio-partida-wrap');
+    if(wrap) wrap.style.display='flex';
+    if(typeof bloquearSelectorModo==='function') bloquearSelectorModo(true);
+
+    _ocultarModalDesconexion();
+    _ocultarModalReconexion();
+    if(window.EmpateFlow){
+      EmpateFlow.ocultarModalTC();
+      EmpateFlow.ocultarModalSinRespuesta();
+      EmpateFlow.ocultarModalPrioridad();
+      EmpateFlow.ocultarModalResultado();
+    }
+    const bi=document.getElementById('bilateral-overlay'); if(bi) bi.style.display='none';
+    const ac=document.getElementById('abandono-confirm-overlay'); if(ac) ac.style.display='none';
+  }catch(e){}
+
+  // Si este cliente abandonó DESPUÉS del resultado, sale localmente.
+  if(d.abandono && d.abandono.abandonador===miRol){
+    try{ Firebase.salirLocalTrasAbandono(); }catch(e){}
+    return;
+  }
+
+  const numero=Number(d.desconexion_numero||0);
+  const key=String(numero)+'|'+String(d.partidasJugadas||0)+'|'+String(d.ganador||'');
+  const nombreGanador=d.ganador==='X'?'Jugador 1 (X)':'Jugador 2 (O)';
+  const nombreDesconectado=d.ganador==='X'?'Jugador 2 (O)':'Jugador 1 (X)';
+  let texto;
+
+  if(numero>=2){
+    texto = miRol===d.ganador
+      ? 'Has ganado la partida porque '+nombreDesconectado+' se desconectó por segunda vez.'
+      : 'Has perdido la partida por tu segunda desconexión. '+nombreGanador+' es el ganador.';
+  }else if((d.crono_modo==='experto'||d.crono_modo==='blitz') || d.desconexion_motivo==='modo_sin_gracia'){
+    const nombreModo=d.crono_modo==='blitz'?'Blitz':d.crono_modo==='experto'?'Experto':String(d.crono_modo||'').replace(/^./,c=>c.toUpperCase());
+    texto=miRol===d.ganador
+      ? 'Has ganado la partida porque '+nombreDesconectado+' se desconectó. En modo '+nombreModo+' las desconexiones no están permitidas; por lo tanto, ganas inmediatamente.'
+      : 'Has perdido la partida por desconexión. En modo '+nombreModo+' las desconexiones no están permitidas; por lo tanto, el oponente gana inmediatamente.';
+  }else{
+    texto=miRol===d.ganador
+      ? 'Has ganado la partida por desconexión de '+nombreDesconectado+'.'
+      : 'Has perdido la partida por desconexión. '+nombreGanador+' es el ganador.';
+  }
+  UI.setMsg(texto);
+
+  // V32.3.18: las notificaciones posteriores al resultado tienen orden estricto:
+  // RESULTADO -> (RECONEXIÓN) -> (NUEVA PARTIDA).
+  const mostrarAbandonoDespues=()=>{
+    if(d.abandono && d.abandono.abandonador!==miRol && _abandonoOponenteAvisoVisto!==d.abandono.ts){
+      _abandonoOponenteAvisoVisto=d.abandono.ts;
+      _mostrarModalOponenteAbandono(d.abandono.ts,miRol);
+      UI.setMsg('Tu oponente abandonó el tablero. Puedes estudiar las jugadas o abandonar la partida.');
+      return true;
+    }
+    return false;
+  };
+
+  const mostrarReconexionDespues=()=>{
+    const rec=d.ultima_reconexion;
+    if(rec && rec.rol!==miRol && rec.ts && _reconexionVisto!==rec.ts){
+      _reconexionVisto=rec.ts;
+      _mostrarModalReconexion(rec,miRol);
+      UI.setMsg('Tu oponente se ha reconectado al tablero. La partida anterior ya terminó; ahora pueden decidir si iniciar una nueva partida.');
+      return true;
+    }
+    return false;
+  };
+
+  const continuarPostResultado=()=>{
+    if(d.nueva_partida_solicitud && !d.abandono && !d.fin_sesion){
+      try{ _revisarNuevaPartida(d,miRol); }
+      catch(e){ console.warn('[V32.3.18] no pudo revisar Nueva Partida post-desconexión:',e); }
+    }
+  };
+
+  const despuesDelResultado=()=>{
+    if(mostrarAbandonoDespues()) return;
+    if(mostrarReconexionDespues()) return;
+    continuarPostResultado();
+  };
+
+  if(_desconexionResultadoVisto!==key){
+    _desconexionResultadoVisto=key;
+    _victoriaVista=true;
+    if(Array.isArray(d.fichas_ganadoras_reclamadas) && d.fichas_ganadoras_reclamadas.length){
+      Tablero.resaltarGanadores(d.fichas_ganadoras_reclamadas,d.ganador);
+    }
+    const resSesion=Sesion.verificarFinSesion(d.victoriasX||0,d.victoriasO||0);
+    if(resSesion && d.fin_sesion) setTimeout(()=>Sesion.mostrarFinSesion(resSesion,miRol),2500);
+    const titulo=numero>=2?'📡 SEGUNDA DESCONEXIÓN':'📡 DESCONEXIÓN DEL OPONENTE';
+    UI.modal(titulo,texto,'ACEPTAR',despuesDelResultado);
+  }else{
+    despuesDelResultado();
+  }
+}
+
+
     const solicitudActual=d.nueva_partida_solicitud;
     if(solicitudActual && !(solicitudActual.decisiones && (solicitudActual.decisiones.X===false || solicitudActual.decisiones.O===false))) return;
     await update(_salaRef,{nueva_partida_solicitud:{ts:Date.now(),por:_rol,decisiones:{X:null,O:null}}});
