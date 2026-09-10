@@ -1071,7 +1071,7 @@ async function procesarTerminalDesconexion(d, miRol){
   Estado.fromFirebase(d);
   if(typeof Sesion!=='undefined') Sesion.fromFirebase(d);
 
-  // V32.3.23 — Máquina post-desconexión: el resultado de la PARTIDA es
+  // V32.3.24 — Máquina post-desconexión: el resultado de la PARTIDA es
   // independiente de la continuidad de la SESIÓN. El ganador que permaneció
   // conectado ya figura como retorno=true en la transición terminal; el rival
   // solo pasa a retorno=true cuando realmente ejecuta RETOMAR SESIÓN.
@@ -1094,7 +1094,7 @@ async function procesarTerminalDesconexion(d, miRol){
     if(Reclamo.isActivo()) Reclamo.desactivar();
     Tablero.render(Estado.tablero,id=>{});
     UI.actualizarPaneles(Estado);
-    // V32.3.23: las estadísticas de la PARTIDA terminada provienen de Firebase
+    // V32.3.24: las estadísticas de la PARTIDA terminada provienen de Firebase
     // y se vuelven a pintar explícitamente en cada reconstrucción terminal.
     UI.setStats(Number(d.victoriasX||0),Number(d.victoriasO||0));
     if(d.crono_modo&&Cronometro.configurarModo) Cronometro.configurarModo(d.crono_modo);
@@ -1112,7 +1112,7 @@ async function procesarTerminalDesconexion(d, miRol){
     if(window.EmpateFlow){EmpateFlow.ocultarModalTC();EmpateFlow.ocultarModalSinRespuesta();EmpateFlow.ocultarModalPrioridad();EmpateFlow.ocultarModalResultado();}
     const bi=document.getElementById('bilateral-overlay'); if(bi) bi.style.display='none';
     const ac=document.getElementById('abandono-confirm-overlay'); if(ac) ac.style.display='none';
-  }catch(e){ console.warn('[V32.3.23] restauración terminal:',e); }
+  }catch(e){ console.warn('[V32.3.24] restauración terminal:',e); }
 
   // Si este jugador ya abandonó después del resultado, su salida local es inmediata.
   if(d.abandono && d.abandono.abandonador===miRol){
@@ -1180,14 +1180,18 @@ async function procesarTerminalDesconexion(d, miRol){
   if(!esGanador) return;
 
   // 4) El ganador recibe una única notificación de que su oponente regresó.
+  // V32.3.24: esta notificación tiene prioridad sobre cualquier nueva apertura
+  // del resultado terminal. El ganador ya conoce el resultado; lo que necesita
+  // ahora es saber que el rival efectivamente volvió.
+
   // La condición se basa en retorno real + ultimo_retorno_rol, no en una nueva
   // lectura de presencia que pudiera abrir nuevamente el modal de resultado.
-  if(yoRet && otroRet && otroAck && post.ultimo_retorno_rol===otro && rac[miRol]!==true){
+  if(yoRet && otroRet && post.ultimo_retorno_rol===otro && rac[miRol]!==true && post.reconexion_mostrada_para!==miRol){
     const retornoTs=String(post.ultimo_retorno_ts||'');
     if(_reconexionVisto!==retornoTs){
       _reconexionVisto=retornoTs;
       UI.modal('📡 OPONENTE RECONectado','Tu oponente se ha reconectado. Ya pueden solicitar una Nueva Partida.','ACEPTAR',async()=>{
-        try{await update(_salaRef,{['post_desconexion/reconexion_ack/'+miRol]:true});}catch(e){}
+        try{await update(_salaRef,{['post_desconexion/reconexion_ack/'+miRol]:true,['post_desconexion/reconexion_mostrada_para']:miRol});}catch(e){}
       });
       return;
     }
@@ -2852,7 +2856,7 @@ async solicitarNuevaPartida(){
       const soyGanador=d.ganador===_rol;
       const soyDesconectado=p.desconectado===_rol;
 
-      // V32.3.23: el ganador que permaneció en el tablero es el único que recibe
+      // V32.3.24: el ganador que permaneció en el tablero es el único que recibe
       // ESPERA POR DESCONEXIÓN. El jugador que está regresando jamás debe recibirlo.
       if(soyGanador && (!ambosRegresaron || !ambosAceptaron)){
         UI.modal('⏳ ESPERA POR DESCONEXIÓN','La partida terminó por desconexión de tu oponente. Antes de solicitar Nueva Partida, ambos jugadores deben aceptar el resultado. Mientras tanto, puedes regresar al tablero y esperar a que se reconecte (se te notificará) o puedes Abandonar la partida.','ACEPTAR');
@@ -2867,8 +2871,16 @@ async solicitarNuevaPartida(){
           return;
         }
         if(!ambosAceptaron){
-          UI.modal('⏳ ESPERA RESULTADO','Tu oponente aún debe aceptar el resultado de la partida antes de solicitar una Nueva Partida. Puedes regresar al tablero y esperar, o puedes Abandonar la partida.','ACEPTAR');
-          return;
+          // V32.3.24: si quien regresa ya aceptó su derrota pero el ganador
+          // permaneció en el tablero, NO corresponde ESPERA RESULTADO si el
+          // ganador ya aceptó. En ese caso la solicitud puede ir al flujo
+          // bilateral cuando el oponente está presente.
+          if(soyDesconectado && d.ganador===otro && a[otro]===true){
+            // continuar hacia la comprobación de presencia y propuesta bilateral
+          }else{
+            UI.modal('⏳ ESPERA RESULTADO','Tu oponente aún debe aceptar el resultado de la partida antes de solicitar una Nueva Partida. Puedes regresar al tablero y esperar, o puedes Abandonar la partida.','ACEPTAR');
+            return;
+          }
         }
         // No exigimos aquí “reconexión” del propio jugador: ya regresó.
         // La disponibilidad bilateral se determina por presencia real más abajo.
