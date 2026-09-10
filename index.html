@@ -3759,6 +3759,21 @@ if(_iniciado){
     const rival=_rol==='X'?'O':'X',rivalCon=d.conexion&&d.conexion[rival];
     if(rivalCon&&rivalCon.online===false)Firebase.programarDesconexionDetectada(rival).catch(()=>{});
 
+    // V32.3.25: en una partida ya terminada por desconexión, el retorno
+    // a ESTA partida se determina por post_desconexion.retorno. No dependemos
+    // de ultima_reconexion, que pertenece a la ruta general de presencia.
+    if(d.fin_por_desconexion){
+      const post=d.post_desconexion||{}, retorno=post.retorno||{}, ra=post.reconexion_ack||{};
+      const soyGanador=d.ganador===_rol;
+      const retornoRival=retorno[rival]===true;
+      const yaAvisado=ra[_rol]===true || post.reconexion_mostrada_para===_rol;
+      if(soyGanador && retornoRival && !yaAvisado){
+        UI.modal('📡 OPONENTE RECONectado','Tu oponente se ha reconectado. Ya pueden solicitar una Nueva Partida.','ACEPTAR',async()=>{
+          try{await update(_salaRef,{['post_desconexion/reconexion_ack/'+_rol]:true,['post_desconexion/reconexion_mostrada_para']:_rol});}catch(e){}
+        });
+      }
+    }
+
     if(_desconexionTurnoTimer){clearTimeout(_desconexionTurnoTimer);_desconexionTurnoTimer=null;}
     _ocultarModalDesconexion();_desconexionVisto=null;
     const rec=d.ultima_reconexion;
