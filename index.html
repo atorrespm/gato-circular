@@ -1039,8 +1039,7 @@ M12· JUEGO — Orquestador principal · V17
 const Juego = (() => {
 const $ = id => document.getElementById(id);
 let _sorteoVisto=null, _victoriaVista=false, _reclamoKey=null, _turnoAnterior=null, _reclamoCanceladoVisto=null, _ultimoD=null, _partidaInicioVisto=null;
-let _resultadoReclamoVisto=null, _abandonoVisto=null, _desconexionResultadoVisto=null, _abandonoPostDesconexionVisto=null;
-let _postDesconexionProcesando=false, _postDesconexionModalClave=null;   // V32.3.11: control de modales terminales de desconexión
+let _resultadoReclamoVisto=null, _abandonoVisto=null, _desconexionResultadoVisto=null, _abandonoPostDesconexionVisto=null;   // V32.3.11: control de modales terminales de desconexión
 // V17 · SERIALIZADOR DEL ESTADO: onValue puede entregar snapshots mientras
 // el snapshot anterior todavía está esperando una transacción. No permitimos
 // que dos aplicarEstado() pinten fases diferentes simultáneamente.
@@ -1072,137 +1071,133 @@ async function procesarTerminalDesconexion(d, miRol){
   Estado.fromFirebase(d);
   if(typeof Sesion!=='undefined') Sesion.fromFirebase(d);
 
+  // V32.3.21 — MÁQUINA POST-DESCONEXIÓN.
+  // PARTIDA y SESIÓN son entidades distintas: la partida termina, pero la
+  // sesión puede continuar. El resultado se confirma antes de permitir otra partida.
+  // La máquina se inicializa atómicamente al cerrar la partida y solo retomarSesion()
+  // puede marcar el retorno real del jugador que estuvo fuera.
+  const post=d.post_desconexion||{};
+  const retorno=post.retorno||{};
+  const ack=post.resultado_ack||{};
+  const rac=post.reconexion_ack||{};
+  const otro=miRol==='X'?'O':'X';
+  const yoRet=retorno[miRol]===true;
+  const otroRet=retorno[otro]===true;
+  const yoAck=ack[miRol]===true;
+  const otroAck=ack[otro]===true;
+  const esGanador=miRol===d.ganador;
+
   try{
     if(Reclamo.isActivo()) Reclamo.desactivar();
     Tablero.render(Estado.tablero,id=>{});
     UI.actualizarPaneles(Estado);
-    UI.setStats(d.victoriasX||0,d.victoriasO||0);
+    UI.setStats(Number(d.victoriasX||0),Number(d.victoriasO||0));
     if(d.crono_modo&&Cronometro.configurarModo) Cronometro.configurarModo(d.crono_modo);
     if(typeof marcarModoActivo==='function') marcarModoActivo(d.crono_modo||'clasico');
-    Cronometro.detener(); EmpateFlow.detenerCronometroPrioridad(); UI.bloquearTablero(true);
+    Cronometro.detener();
+    EmpateFlow.detenerCronometroPrioridad();
+    UI.bloquearTablero(true);
     UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar'],true);
     const bn=document.getElementById('btn-nueva'), ba=document.getElementById('btn-abandonar');
-    const finSesion=!!d.fin_sesion;
-    if(bn){bn.disabled=finSesion;bn.style.opacity=finSesion?'0.4':'';bn.style.pointerEvents=finSesion?'none':'auto';}
+    if(bn){bn.disabled=!!d.fin_sesion;bn.style.opacity=d.fin_sesion?'0.4':'';bn.style.pointerEvents=d.fin_sesion?'none':'auto';}
     if(ba){ba.disabled=false;ba.style.opacity='';ba.style.pointerEvents='auto';}
-    if(typeof bloquearSelectorModo==='function') bloquearSelectorModo(true);
     const wrap=document.getElementById('inicio-partida-wrap'); if(wrap) wrap.style.display='flex';
+    if(typeof bloquearSelectorModo==='function') bloquearSelectorModo(true);
     _ocultarModalDesconexion(); _ocultarModalReconexion();
     if(window.EmpateFlow){EmpateFlow.ocultarModalTC();EmpateFlow.ocultarModalSinRespuesta();EmpateFlow.ocultarModalPrioridad();EmpateFlow.ocultarModalResultado();}
     const bi=document.getElementById('bilateral-overlay'); if(bi) bi.style.display='none';
     const ac=document.getElementById('abandono-confirm-overlay'); if(ac) ac.style.display='none';
-  }catch(e){ console.warn('[V32.3.20] restauración terminal:',e); }
+  }catch(e){ console.warn('[V32.3.21] restauración terminal:',e); }
 
+  // Si este jugador ya abandonó después del resultado, su salida local es inmediata.
   if(d.abandono && d.abandono.abandonador===miRol){
     try{ Firebase.salirLocalTrasAbandono(); }catch(e){}
     return;
   }
 
   const numero=Number(d.desconexion_numero||0);
-  const key=String(numero)+'|'+String(d.partidasJugadas||0)+'|'+String(d.ganador||'');
   const nombreGanador=d.ganador==='X'?'Jugador 1 (X)':'Jugador 2 (O)';
   const nombreDesconectado=d.ganador==='X'?'Jugador 2 (O)':'Jugador 1 (X)';
-  let texto;
+  const modo=d.crono_modo||'clasico';
+  const modoSinGracia=(modo==='experto'||modo==='blitz'||d.desconexion_motivo==='modo_sin_gracia');
+  let textoResultado;
   if(numero>=2){
-    texto=miRol===d.ganador?'Has ganado la partida porque '+nombreDesconectado+' se desconectó por segunda vez.':'Has perdido la partida por tu segunda desconexión. '+nombreGanador+' es el ganador.';
-  }else if(d.crono_modo==='experto'||d.crono_modo==='blitz'||d.desconexion_motivo==='modo_sin_gracia'){
-    const modo=d.crono_modo==='blitz'?'Blitz':d.crono_modo==='experto'?'Experto':String(d.crono_modo||'').replace(/^./,c=>c.toUpperCase());
-    texto=miRol===d.ganador?'Has ganado la partida porque '+nombreDesconectado+' se desconectó. En modo '+modo+' las desconexiones no están permitidas; ganas inmediatamente.':'Has perdido la partida por desconexión. En modo '+modo+' las desconexiones no están permitidas; el oponente gana inmediatamente.';
-  }else texto=miRol===d.ganador?'Has ganado la partida por desconexión de '+nombreDesconectado+'.':'Has perdido la partida por desconexión. '+nombreGanador+' es el ganador.';
-  UI.setMsg(texto);
-
-  // ── MÁQUINA DE ESTADOS POST-DESCONEXIÓN ─────────────────────────────
-  // RESULTADO -> ambos aceptan resultado -> ambos están de regreso ->
-  // aviso de RECONEXIÓN al rival -> NUEVA PARTIDA disponible.
-  // Una solicitud de Nueva Partida nunca puede saltarse estos estados.
-  let post=d.post_desconexion||{};
-  let retorno=post.retorno||{};
-  // Al nacer el estado terminal, el jugador que sigue conectado queda
-  // registrado como retornado. El segundo jugador se marca al volver.
-  if(retorno[miRol]!==true){
-    try{
-      await update(_salaRef,{['post_desconexion/retorno/'+miRol]:true,
-        ['post_desconexion/ultimo_retorno_rol']:miRol,
-        ['post_desconexion/ultimo_retorno_ts']:Date.now()});
-      post=(await get(_salaRef)).val().post_desconexion||{};
-      retorno=post.retorno||{};
-    }catch(e){ console.warn('[V32.3.20] no pudo registrar retorno post-desconexión:',e); }
-  }
-  const ack=post.resultado_ack||{};
-  const recAck=post.reconexion_ack||{};
-  const otro=miRol==='X'?'O':'X';
-  const yoRet=retorno[miRol]===true;
-  const otroRet=retorno[otro]===true;
-  const yoAck=ack[miRol]===true;
-  const otroAck=ack[otro]===true;
-  const ambosRegresaron=yoRet&&otroRet;
-  const ambosAceptaron=yoAck&&otroAck;
-  const listoNueva=ambosRegresaron&&ambosAceptaron&&(!d.abandono)&&(!d.fin_sesion);
-
-  const mostrarAbandono=()=>{
-    if(d.abandono&&d.abandono.abandonador!==miRol&&_abandonoPostDesconexionVisto!==d.abandono.ts){
-      _abandonoPostDesconexionVisto=d.abandono.ts;
-      _mostrarModalOponenteAbandono(d.abandono.ts,miRol);
-      UI.setMsg('Tu oponente abandonó el tablero. Puedes estudiar las jugadas o abandonar la partida.');
-    }
-  };
-
-  const continuar=()=>{
-    if(d.abandono){mostrarAbandono();return;}
-    if(d.fin_sesion)return;
-    if(!listoNueva)return;
-    if(d.nueva_partida_solicitud){
-      try{_revisarNuevaPartida(d,miRol);}catch(e){console.warn('[V32.3.20] revisar Nueva Partida:',e);}
+    textoResultado=esGanador
+      ? 'Has GANADO la partida porque '+nombreDesconectado+' se desconectó por segunda vez.'
+      : 'Has PERDIDO la partida por tu segunda desconexión. '+nombreGanador+' es el ganador.';
+  }else if(modoSinGracia){
+    const nombreModo=modo==='blitz'?'Blitz':modo==='experto'?'Experto':'Básico';
+    if(esGanador){
+      textoResultado='Has GANADO la partida. En modo '+nombreModo+' las desconexiones NO están permitidas. El oponente PIERDE inmediatamente. Puedes regresar al tablero para su revisión. Si tu oponente se reconecta en breve (se te notificará), podrás iniciar Nueva Partida, o si no, puedes Abandonar.';
     }else{
-      const b=document.getElementById('btn-nueva');
-      if(b){b.disabled=false;b.style.opacity='';b.style.pointerEvents='auto';}
-      UI.bloquearBtns(['btn-nueva'],false);
-      UI.setMsg('Ambos jugadores están de regreso. Pueden solicitar una Nueva Partida.');
+      textoResultado='Has PERDIDO la partida. En modo '+nombreModo+' las desconexiones NO están permitidas. El oponente GANA inmediatamente. Puedes regresar al tablero para su revisión. Si tu oponente permanece en el tablero, puedes iniciar Nueva Partida, o si no, puedes Abandonar.';
     }
+  }else{
+    textoResultado=esGanador
+      ? 'Has GANADO la partida por desconexión de tu oponente. Puedes regresar al tablero para su revisión. Si tu oponente se reconecta en breve (se te notificará), podrás iniciar Nueva Partida, o si no, puedes Abandonar.'
+      : 'Has PERDIDO la partida por desconexión. Puedes regresar al tablero para su revisión. Si tu oponente permanece en el tablero, puedes iniciar Nueva Partida, o si no, puedes Abandonar.';
+  }
+
+  const claveResultado=String(numero)+'|'+String(d.partidasJugadas||0)+'|'+String(d.ganador||'');
+  const mostrarAbandonoOponente=()=>{
+    if(d.abandono && d.abandono.abandonador!==miRol && _abandonoOponenteAvisoVisto!==d.abandono.ts){
+      _abandonoOponenteAvisoVisto=d.abandono.ts;
+      UI.modal('🚪 TU OPONENTE YA ABANDONÓ EL TABLERO','Tu oponente ya abandonó el tablero. Puedes estudiar las jugadas previas y, cuando termines, pulsar ABANDONAR PARTIDA para volver al lobby.','ACEPTAR',()=>{
+        UI.bloquearTablero(true);
+        UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+        UI.bloquearBtns(['btn-abandonar'],false);
+        const b=document.getElementById('btn-abandonar');
+        if(b){b.disabled=false;b.style.opacity='';b.style.pointerEvents='auto';b.dataset.salidaTrasAbandono='1';}
+      });
+      return true;
+    }
+    return false;
   };
 
-  // Resultado: se muestra una sola vez y su aceptación queda persistida.
-  if(_desconexionResultadoVisto!==key){
-    _desconexionResultadoVisto=key;
-    _victoriaVista=true;
-    if(Array.isArray(d.fichas_ganadoras_reclamadas)&&d.fichas_ganadoras_reclamadas.length) Tablero.resaltarGanadores(d.fichas_ganadoras_reclamadas,d.ganador);
-    UI.modal(numero>=2?'📡 SEGUNDA DESCONEXIÓN':'📡 DESCONEXIÓN DEL OPONENTE',texto,'ACEPTAR',async()=>{
-      try{ await update(_salaRef,{['post_desconexion/resultado_ack/'+miRol]:true}); }catch(e){console.warn('[V32.3.20] ack resultado:',e);}
+  const actualizarPost=[(obj)=>update(_salaRef,obj)];
+  const mostrarEspera=()=>{
+    UI.modal('⏳ ESPERA POR DESCONEXIÓN','La partida terminó por desconexión de tu oponente. Antes de solicitar Nueva Partida, ambos jugadores deben aceptar el resultado. Mientras tanto, puedes regresar al tablero y esperar a que se reconecte (se te notificará) o puedes Abandonar la partida.','ACEPTAR');
+  };
+
+  // Resultado: cada jugador debe aceptarlo. Nunca una solicitud de Nueva Partida
+  // puede saltarse este paso.
+  if(!yoAck){
+    const titulo=numero>=2?'📡 SEGUNDA DESCONEXIÓN':'📡 POR DESCONEXIÓN';
+    UI.modal(titulo,textoResultado,'ACEPTAR',async()=>{
+      try{await update(_salaRef,{['post_desconexion/resultado_ack/'+miRol]:true});}catch(e){}
+      // Si el oponente ya abandonó, el segundo hecho se informa después del resultado.
+      setTimeout(()=>{
+        if(d.abandono && d.abandono.abandonador!==miRol) mostrarAbandonoOponente();
+      },0);
     });
     return;
   }
 
-  // El resultado ya fue visto. Si el oponente ya abandonó después del
-  // resultado, ese aviso tiene prioridad absoluta y no depende de que ambos
-  // hayan completado el estado de retorno.
-  if(d.abandono&&d.abandono.abandonador!==miRol&&yoAck){
-    mostrarAbandono();
-    const bnA=document.getElementById('btn-nueva');
-    if(bnA){bnA.disabled=true;bnA.style.opacity='0.4';bnA.style.pointerEvents='none';}
+  // Si el resultado ya fue aceptado pero el rival abandonó, ese hecho tiene prioridad.
+  if(d.abandono && d.abandono.abandonador!==miRol){ mostrarAbandonoOponente(); return; }
+
+  // El jugador que permaneció conectado ya tiene retorno=true desde la transición
+  // terminal; el que se desconectó solo lo obtiene al ejecutar retomarSesion().
+  // Si falta el retorno del rival, Nueva Partida no se solicita todavía: el botón
+  // permanece visible/activo y al pulsarlo muestra una guía clara, sin crear una espera.
+  if(!(yoRet && otroRet)) return;
+
+  // Ambos regresaron y aceptaron resultado. El jugador que permaneció en el tablero
+  // recibe una única notificación explícita de reconexión antes de Nueva Partida.
+  if(esGanador && !rac[miRol] && post.ultimo_retorno_rol===otro){
+    UI.modal('📡 OPONENTE RECONectado', 'Tu oponente se ha reconectado. Ya pueden continuar con la siguiente partida.', 'ACEPTAR', async()=>{
+      try{await update(_salaRef,{['post_desconexion/reconexion_ack/'+miRol]:true});}catch(e){}
+    });
     return;
   }
 
-  // El resultado ya fue visto. Si el oponente ya volvió, el aviso de
-  // reconexión tiene prioridad absoluta sobre Nueva Partida.
-  if(ambosAceptaron&&ambosRegresaron&&recAck[miRol]!==true&&post.ultimo_retorno_rol===otro){
-    const recKey=String(post.ultimo_retorno_ts||'')+'|'+otro;
-    if(_postDesconexionModalClave!==recKey){
-      _postDesconexionModalClave=recKey;
-      _mostrarModalReconexion({rol:otro,ts:post.ultimo_retorno_ts,post_terminal:true},miRol,async()=>{
-        try{await update(_salaRef,{['post_desconexion/reconexion_ack/'+miRol]:true});}catch(e){}
-        continuar();
-      });
-      return;
-    }
-  }
-
-  // Si todavía falta que el rival vuelva, Nueva Partida NO existe todavía.
-  if(!listoNueva){
-    const b=document.getElementById('btn-nueva');
-    if(b){b.disabled=true;b.style.opacity='0.4';b.style.pointerEvents='none';}
+  // Máquina lista para Nueva Partida: el resultado fue aceptado por ambos, ambos
+  // regresaron y la notificación de reconexión ya fue aceptada por quien la recibió.
+  if(yoAck && otroAck && yoRet && otroRet && (!post.ultimo_retorno_rol || rac[miRol]===true || miRol===post.ultimo_retorno_rol)){
+    // No hacemos nada aquí: NUEVA PARTIDA queda disponible y su handler verifica
+    // nuevamente estas condiciones antes de crear la solicitud bilateral.
     return;
   }
-  continuar();
 }
 
 async function aplicarEstado(d, miRol) {
@@ -2567,22 +2562,21 @@ function _mostrarModalDesconexion(pendiente, miRol){
   pintar(); _desconexionTimer=setInterval(pintar,250);
 }
 function _ocultarModalDesconexion(){ const ov=document.getElementById('desconexion-overlay'); if(ov) ov.style.display='none'; clearInterval(_desconexionTimer); _desconexionTimer=null; }
-function _mostrarModalReconexion(reconexion,miRol,despues){
-  if(!reconexion||reconexion.rol===miRol)return;
+function _mostrarModalReconexion(reconexion,miRol){
+  if(!reconexion || reconexion.rol===miRol) return;
   let ov=document.getElementById('reconexion-overlay');
   if(!ov){
-    ov=document.createElement('div');ov.id='reconexion-overlay';
+    ov=document.createElement('div'); ov.id='reconexion-overlay';
     ov.style.cssText='display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:395;align-items:center;justify-content:center;';
     ov.innerHTML=`<div style="background:linear-gradient(135deg,#101810,#202820);border:3px solid #35d06f;border-radius:14px;padding:28px 34px;text-align:center;min-width:330px;max-width:460px;box-shadow:0 0 55px rgba(53,208,111,.25);"><h2 style="font-family:'Orbitron',sans-serif;font-size:18px;color:#55e884;margin-bottom:12px;">📡 OPONENTE RECONectado</h2><p id="reconexion-msg" style="font-size:13px;color:#ddd;line-height:1.7;margin-bottom:18px;"></p><button id="btn-reconexion-ok" style="padding:10px 24px;background:#185b32;color:#fff;border:1px solid #35d06f;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;">ENTENDIDO</button></div>`;
     document.body.appendChild(ov);
+    document.getElementById('btn-reconexion-ok')?.addEventListener('click',()=>{ov.style.display='none';});
   }
   const quien=reconexion.rol==='X'?'Jugador 1 (X)':'Jugador 2 (O)';
-  const msg=document.getElementById('reconexion-msg');if(msg)msg.textContent=quien+' ha regresado al tablero. La partida anterior permanece como resultado histórico.';
-  const ok=document.getElementById('btn-reconexion-ok');
-  if(ok){ok.onclick=async()=>{ov.style.display='none';if(typeof despues==='function')await despues();};}
+  const msg=document.getElementById('reconexion-msg');
+  if(msg) msg.textContent=reconexion.preinicio?quien+' se ha reconectado. La partida continúa preparada para comenzar.':quien+' se ha reconectado. La partida continúa desde el estado anterior.';
   ov.style.display='flex';
 }
-
 function _ocultarModalReconexion(){const ov=document.getElementById('reconexion-overlay');if(ov)ov.style.display='none';}
 function _mostrarModalBilateral(titulo,msg,siCb,noCb){
   let ov=document.getElementById('bilateral-overlay');
@@ -2670,7 +2664,13 @@ if(d.fin_sesion===true){_borrarSesion();return {ok:false,msg:'La sesión ya term
 // deben poder reconstruirse.
 if(d.terminado===true && !d.fin_por_desconexion && !d.ganador){_borrarSesion();return {ok:false,msg:'No hay una partida pendiente válida para retomar.'};}
 _sala=ses.sala; _rol=d.sesionX===ses.sessionId?'X':'O'; _sessionId=ses.sessionId; _salaRef=ref(db,'salas/'+_sala);
-await update(_salaRef,{['conexion/'+_rol]:{online:true,ts:serverTimestamp()}, ...(d.terminado&&d.fin_por_desconexion&&!d.fin_sesion?{['post_desconexion/retorno/'+_rol]:true,['post_desconexion/ultimo_retorno_rol']:_rol,['post_desconexion/ultimo_retorno_ts']:Date.now(),['ultima_reconexion']:{rol:_rol,ts:Date.now(),duracion_ms:0,post_terminal:true}}:{})});
+const cambiosRet={['conexion/'+_rol]:{online:true,ts:serverTimestamp()}};
+if(d.terminado===true && d.fin_por_desconexion && d.post_desconexion && !d.fin_sesion){
+  cambiosRet['post_desconexion/retorno/'+_rol]=true;
+  cambiosRet['post_desconexion/ultimo_retorno_rol']=_rol;
+  cambiosRet['post_desconexion/ultimo_retorno_ts']=Date.now();
+}
+await update(_salaRef,cambiosRet);
 _guardarSesion(); _escuchar(); Firebase._registrarPresencia();
 return {ok:true,reconectada:true,rol:_rol};
 },
@@ -2815,8 +2815,7 @@ desconexionesX:0,desconexionesO:0,
 crono_modo:d.crono_modo||'clasico', partida_iniciada:false, inicio_partida_ts:null, inicio_propuesto:null, crono_turno_forzado:null,
 turno_inicio_ts:null, crono_totalX:null, crono_totalO:null,crono_total_inicio_X:null,crono_total_inicio_O:null,
 pausa_activa:false,pausa_solicitada:null,pausa_reanudar:null,pausa_inicio_ts:null,pausa_propuesta:null,reanudar_propuesta:null,
-fin_por_tiempo:false,fin_por_desconexion:false,
-post_desconexion:null,
+fin_por_tiempo:false,fin_por_desconexion:false,post_desconexion:null,
 tc_decision:null, tc_inicio:null, tc_decision_final:null, tc_resolucion_ts:null, resultado_reclamo:null, resultado_reclamo_ack_X:false,resultado_reclamo_ack_O:false, empate_final_ack_X:false,empate_final_ack_O:false,
 fichas_timeout_reclamo:null,
 empate_sin_respuesta_inicio:null, empate_sin_respuesta_ack:null,
@@ -2840,25 +2839,34 @@ async confirmarNuevaPartida(){
     UI.bloquearBtns(['btn-sortear','btn-abandonar'],false);
 },
 async solicitarNuevaPartida(){
-    if(!_salaRef)return;
-    const snap=await get(_salaRef);const d=snap.val();
-    if(!d||!(d.fase==='empate_final'||d.terminado===true))return;
-    if(d.fin_sesion)return;
-    if(d.abandono){UI.modal('🚪 OPONENTE YA ABANDONÓ','Tu oponente ya abandonó el tablero. La partida anterior permanece visible como resultado histórico.','ACEPTAR');return;}
-    const post=d.post_desconexion||{},ret=post.retorno||{},ack=post.resultado_ack||{};
-    const otro=_rol==='X'?'O':'X';
-    if(ret.X!==true||ret.O!==true||ack.X!==true||ack.O!==true){
-      UI.modal('⏳ ESPERA POST-DESCONEXIÓN','La partida terminó por desconexión. Primero ambos jugadores deben regresar y aceptar el resultado. Luego podrán solicitar una Nueva Partida.','ACEPTAR');
+    if(!_salaRef) return;
+    const snap=await get(_salaRef); const d=snap.val();
+    if(!d || !(d.fase==='empate_final' || d.terminado===true)) return;
+    if(d.fin_sesion) return;
+    if(d.abandono){
+      UI.modal('🚪 OPONENTE YA ABANDONÓ','Tu oponente ya abandonó el tablero. No puedes iniciar una Nueva Partida. Puedes regresar al tablero para revisar las jugadas o pulsar ABANDONAR para volver al lobby.','ACEPTAR');
       return;
     }
-    const rivalCon=d.conexion&&d.conexion[otro];
-    if(!rivalCon||rivalCon.online!==true){
-      UI.modal('📡 OPONENTE AÚN DESCONECTADO','No se puede solicitar una Nueva Partida mientras tu oponente continúe desconectado. Puedes esperar su regreso o abandonar.','ACEPTAR');
-      return;
+    if(d.fin_por_desconexion){
+      const p=d.post_desconexion||{}, r=p.retorno||{}, a=p.resultado_ack||{}, ra=p.reconexion_ack||{};
+      const otro=_rol==='X'?'O':'X';
+      const ambosRegresaron=r.X===true&&r.O===true;
+      const ambosAceptaron=a.X===true&&a.O===true;
+      const reconexionLista=(p.ganador ? ra[p.ganador]===true : true);
+      if(!ambosRegresaron || !ambosAceptaron || !reconexionLista){
+        UI.modal('⏳ ESPERA POR DESCONEXIÓN','La partida terminó por desconexión de tu oponente. Antes de solicitar Nueva Partida, ambos jugadores deben aceptar el resultado. Mientras tanto, puedes regresar al tablero y esperar a que se reconecte (se te notificará) o puedes Abandonar la partida.','ACEPTAR');
+        return;
+      }
     }
-    if(d.nueva_partida_max_alert)return;
+    if(d.nueva_partida_max_alert) return;
     const solicitudActual=d.nueva_partida_solicitud;
-    if(solicitudActual&&!(solicitudActual.decisiones&&(solicitudActual.decisiones.X===false||solicitudActual.decisiones.O===false)))return;
+    if(solicitudActual && !(solicitudActual.decisiones && (solicitudActual.decisiones.X===false || solicitudActual.decisiones.O===false))) return;
+    const otro=_rol==='X'?'O':'X';
+    const con=d.conexion&&d.conexion[otro];
+    if(!con || con.online!==true){
+      UI.modal('⏳ ESPERA POR DESCONEXIÓN','La partida terminó por desconexión de tu oponente. Antes de solicitar Nueva Partida, ambos jugadores deben aceptar el resultado. Mientras tanto, puedes regresar al tablero y esperar a que se reconecte (se te notificará) o puedes Abandonar la partida.','ACEPTAR');
+      return;
+    }
     await update(_salaRef,{nueva_partida_solicitud:{ts:Date.now(),por:_rol,decisiones:{X:null,O:null}}});
 },
 async responderNuevaPartida(acepta){
@@ -3506,6 +3514,7 @@ const res=await runTransaction(_salaRef,current=>{
       partidasJugadas,fin_sesion:totalPartidas>0&&partidasJugadas>=totalPartidas,
       desconexion_numero:n,
       desconexion_motivo:(n>=2?'segunda_desconexion':'modo_sin_gracia'),
+      post_desconexion:{estado:'resultado_pendiente',desconectado:rol,ganador,ts:Date.now(),retorno:{X:ganador==='X',O:ganador==='O'},resultado_ack:{X:false,O:false},reconexion_ack:{X:false,O:false},ultimo_retorno_rol:null,ultimo_retorno_ts:null},
       nueva_partida_solicitud:null,turno_inicio_ts:null,
       crono_total_inicio_X:null,crono_total_inicio_O:null,
       pausa_propuesta:null,reanudar_propuesta:null,pausa_activa:false,pausa_inicio_ts:null
