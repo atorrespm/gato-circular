@@ -2853,9 +2853,36 @@ async solicitarNuevaPartida(){
       const ambosRegresaron=r.X===true&&r.O===true;
       const ambosAceptaron=a.X===true&&a.O===true;
       const reconexionLista=(p.ganador ? ra[p.ganador]===true : true);
-      if(!ambosRegresaron || !ambosAceptaron || !reconexionLista){
-        UI.modal('⏳ ESPERA POR DESCONEXIÓN','La partida terminó por desconexión de tu oponente. Antes de solicitar Nueva Partida, ambos jugadores deben aceptar el resultado. Mientras tanto, puedes regresar al tablero y esperar a que se reconecte (se te notificará) o puedes Abandonar la partida.','ACEPTAR');
-        return;
+      const soyGanador=(d.ganador===_rol);
+      const soyElDesconectado=(p.desconectado===_rol);
+
+      // V32.3.22 — el modal ESPERA POR DESCONEXIÓN pertenece exclusivamente
+      // al jugador que permaneció en el tablero y está esperando el retorno
+      // de su oponente. Nunca debe mostrarse al jugador que está regresando
+      // después de haberse desconectado.
+      if(soyElDesconectado){
+        // Si el ganador sigue en el tablero, el jugador que regresa ya vio su
+        // resultado y puede solicitar directamente la Nueva Partida bilateral.
+        // Si el ganador ya abandonó, se informa por separado y no se crea solicitud.
+        if(d.abandono && d.abandono.abandonador!==_rol){
+          UI.modal('🚪 TU OPONENTE YA ABANDONÓ LA PARTIDA','Tu oponente ya abandonó la partida. Puedes regresar al tablero para su revisión, y después ABANDONAR la partida.','ACEPTAR');
+          return;
+        }
+        if(ambosRegresaron && ambosAceptaron && reconexionLista){
+          // Rival presente: continuar con la solicitud bilateral normal.
+        }else if(!ambosRegresaron || !ambosAceptaron){
+          // El resultado del rival aún no está aceptado. No corresponde decir
+          // que el oponente debe reconectarse, porque este jugador ya regresó.
+          UI.modal('⏳ ESPERA RESULTADO','Tu oponente aún debe aceptar el resultado de la partida antes de solicitar una Nueva Partida. Puedes regresar al tablero y esperar, o puedes Abandonar la partida.','ACEPTAR');
+          return;
+        }
+      }else if(soyGanador){
+        // Este es el único jugador al que corresponde ESPERA POR DESCONEXIÓN:
+        // permaneció en el tablero y su oponente todavía no ha regresado.
+        if(!ambosRegresaron || !ambosAceptaron || !reconexionLista){
+          UI.modal('⏳ ESPERA POR DESCONEXIÓN','La partida terminó por desconexión de tu oponente. Antes de solicitar Nueva Partida, ambos jugadores deben aceptar el resultado. Mientras tanto, puedes regresar al tablero y esperar a que se reconecte (se te notificará) o puedes Abandonar la partida.','ACEPTAR');
+          return;
+        }
       }
     }
     if(d.nueva_partida_max_alert) return;
