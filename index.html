@@ -1179,17 +1179,13 @@ async function procesarTerminalDesconexion(d, miRol){
   // permaneció en el tablero mientras esperaba el regreso del rival.
   if(!esGanador) return;
 
-  // 4) El ganador recibe una única notificación de que su oponente regresó.
-  // V32.3.24: esta notificación tiene prioridad sobre cualquier nueva apertura
-  // del resultado terminal. El ganador ya conoce el resultado; lo que necesita
-  // ahora es saber que el rival efectivamente volvió.
-
-  // La condición se basa en retorno real + ultimo_retorno_rol, no en una nueva
-  // lectura de presencia que pudiera abrir nuevamente el modal de resultado.
-  if(esGanador && otroRet && rac[miRol]!==true && post.reconexion_mostrada_para!==miRol){
-    // V32.3.27: no dependemos de _reconexionVisto ni de ultimo_retorno_rol.
-    // El retorno persistido del rival es suficiente para disparar una sola vez
-    // la notificación al ganador; el marcador persistente evita duplicados.
+  // 4) RECONEXIÓN: solo el ganador que permaneció conectado recibe el aviso.
+  // V32.3.28: usamos dos señales persistentes del MISMO update de retorno:
+  // retorno[rival]=true y ultimo_retorno_rol=rival. Además exigimos que el
+  // ganador ya haya aceptado su resultado; así este aviso nunca pisa el modal
+  // de resultado. No dependemos de conexion.online ni de ultima_reconexion.
+  const retornoFueDelRival = post.ultimo_retorno_rol===otro && Number(post.ultimo_retorno_ts||0)>0;
+  if(esGanador && yoAck && otroRet && retornoFueDelRival && rac[miRol]!==true && post.reconexion_mostrada_para!==miRol){
     UI.modal('📡 OPONENTE RECONectado','Tu oponente se ha reconectado. Ya pueden solicitar una Nueva Partida.','ACEPTAR',async()=>{
       try{await update(_salaRef,{['post_desconexion/reconexion_ack/'+miRol]:true,['post_desconexion/reconexion_mostrada_para']:miRol});}catch(e){}
     });
@@ -2840,70 +2836,59 @@ async confirmarNuevaPartida(){
 },
 async solicitarNuevaPartida(){
     if(!_salaRef) return;
-    const snap=await get(_salaRef); const d=snap.val();
+    let snap=await get(_salaRef); let d=snap.val();
     if(!d || !(d.fase==='empate_final' || d.terminado===true)) return;
     if(d.fin_sesion) return;
     if(d.abandono){
       UI.modal('🚪 OPONENTE YA ABANDONÓ LA PARTIDA','Tu oponente ya abandonó la partida. Puedes regresar al tablero para su revisión, y después ABANDONAR la partida.','ACEPTAR');
       return;
     }
-    if(d.fin_por_desconexion){
-      const p=d.post_desconexion||{}, r=p.retorno||{}, a=p.resultado_ack||{};
-      const otro=_rol==='X'?'O':'X';
-      const ambosRegresaron=r.X===true&&r.O===true;
-      const ambosAceptaron=a.X===true&&a.O===true;
-      const soyGanador=d.ganador===_rol;
-      const soyDesconectado=p.desconectado===_rol;
 
-      // V32.3.27 — ÚNICA puerta de entrada post-desconexión.
-      // post_desconexion.retorno y resultado_ack son la fuente de verdad.
-      // No se consulta conexion.online ni se permite caer en una segunda
-      // puerta que pueda contradecir este estado.
-      if(!ambosRegresaron){
-        // Solo el ganador que permaneció conectado puede recibir esta espera.
-        if(soyGanador){
-          UI.modal('⏳ ESPERA POR DESCONEXIÓN','La partida terminó por desconexión de tu oponente. Antes de solicitar Nueva Partida, ambos jugadores deben aceptar el resultado. Mientras tanto, puedes regresar al tablero y esperar a que se reconecte (se te notificará) o puedes Abandonar la partida.','ACEPTAR');
-        }
-        return;
-      }
-
-      // Ambos jugadores ya regresaron a ESTA partida. Desde aquí nunca debe
-      // aparecer ESPERA POR DESCONEXIÓN. Si falta un ACK, solo puede ser el
-      // resultado pendiente del otro jugador.
-      if(!ambosAceptaron){
-        if(soyDesconectado && a[otro]===true){
-          // El ganador ya aceptó: permitir que el jugador que regresó continúe
-          // hasta el flujo bilateral cuando ambos ACK estén sincronizados.
-        }else{
-          UI.modal('⏳ ESPERA RESULTADO','Tu oponente aún debe aceptar el resultado de la partida antes de solicitar una Nueva Partida. Puedes regresar al tablero y esperar, o puedes Abandonar la partida.','ACEPTAR');
-          return;
-        }
-      }
-
-      // Ambos regresaron + ambos aceptaron = flujo bilateral normal.
-      if(!soyGanador && !soyDesconectado){ return; }
-    }
-    if(d.nueva_partida_max_alert) return;
-    const solicitudActual=d.nueva_partida_solicitud;
-    if(solicitudActual && !(solicitudActual.decisiones && (solicitudActual.decisiones.X===false || solicitudActual.decisiones.O===false))) return;
     const otro=_rol==='X'?'O':'X';
-    // V32.3.26: en una partida terminada por desconexión, post_desconexion.retorno es la fuente de verdad.
-    // No volver a consultar conexion.online para decidir si ya puede solicitarse Nueva Partida.
+
+    // V32.3.28 — POST-DESCONEXIÓN: no usamos conexion.online para decidir
+    // si el rival regresó. post_desconexion.retorno es la fuente de verdad.
+    // Además, pulsar NUEVA PARTIDA después de volver al histórico implica
+    // que este jugador ya acepta el resultado; lo registramos explícitamente
+    // y volvemos a leer el estado antes de decidir. Esto elimina el estado
+    // imposible en que ambos clientes creen que el otro todavía no aceptó.
     if(d.fin_por_desconexion===true){
-      const post2=d.post_desconexion||{};
-      const retorno2=post2.retorno||{};
-      const otroRegreso2=retorno2[otro]===true;
-      const ambosRegresaron2=retorno2.X===true && retorno2.O===true;
-      const rac2=post2.resultado_ack||{};
-      const ambosAceptaron2=rac2.X===true && rac2.O===true;
-      if(!otroRegreso2){
-        if(d.ganador===_rol){
-          UI.modal('⏳ ESPERA POR DESCONEXIÓN','La partida terminó por desconexión de tu oponente. Antes de solicitar Nueva Partida, ambos jugadores deben aceptar el resultado. Mientras tanto, puedes regresar al tablero y esperar a que se reconecte (se te notificará) o puedes Abandonar la partida.','ACEPTAR');
+      let post=d.post_desconexion||{};
+      let retorno=post.retorno||{};
+      let ack=post.resultado_ack||{};
+      const soyGanador=d.ganador===_rol;
+      const soyDesconectado=post.desconectado===_rol;
+
+      // Si este jugador está realmente de vuelta en ESTA partida, su click en
+      // NUEVA PARTIDA confirma también el resultado. El update es atómico en
+      // Firebase y luego releemos para obtener el estado compartido real.
+      if(retorno[_rol]===true && ack[_rol]!==true){
+        await update(_salaRef,{['post_desconexion/resultado_ack/'+_rol]:true});
+        snap=await get(_salaRef); d=snap.val();
+        post=d.post_desconexion||{}; retorno=post.retorno||{}; ack=post.resultado_ack||{};
+      }
+
+      const ambosRegresaron=retorno.X===true && retorno.O===true;
+      const ambosAceptaron=ack.X===true && ack.O===true;
+
+      if(!ambosRegresaron){
+        // Solo el ganador que permaneció conectado puede quedar esperando.
+        if(soyGanador){
+          UI.modal('⏳ ESPERA POR DESCONEXIÓN','La partida terminó por desconexión de tu oponente. Mientras tanto, puedes regresar al tablero y esperar a que se reconecte (se te notificará) o puedes Abandonar la partida.','ACEPTAR');
         }
         return;
       }
-      if(!ambosRegresaron2 || !ambosAceptaron2) return;
-      // Ambos regresaron y ambos aceptaron el resultado: continuar al flujo bilateral normal.
+
+      if(!ambosAceptaron){
+        // Aquí ambos ya están presentes. Si falta un ACK, es realmente el ACK
+        // del otro jugador: no inventamos presencia ni mostramos otra espera.
+        UI.modal('⏳ ESPERA RESULTADO','Tu oponente aún debe aceptar el resultado de la partida antes de solicitar una Nueva Partida. Puedes regresar al tablero y esperar, o puedes Abandonar la partida.','ACEPTAR');
+        return;
+      }
+
+      // Ambos regresaron + ambos aceptaron: flujo bilateral normal.
+      // El jugador que volvió por desconexión y el ganador llegan aquí por igual.
+      if(!soyGanador && !soyDesconectado) return;
     }else{
       const con=d.conexion&&d.conexion[otro];
       if(!con || con.online!==true){
@@ -2911,6 +2896,10 @@ async solicitarNuevaPartida(){
         return;
       }
     }
+
+    if(d.nueva_partida_max_alert) return;
+    const solicitudActual=d.nueva_partida_solicitud;
+    if(solicitudActual && !(solicitudActual.decisiones && (solicitudActual.decisiones.X===false || solicitudActual.decisiones.O===false))) return;
     await update(_salaRef,{nueva_partida_solicitud:{por:_rol,ts:Date.now(),decisiones:{X:_rol==='X',O:_rol==='O'}}});
 },
 
