@@ -1180,15 +1180,26 @@ async function procesarTerminalDesconexion(d, miRol){
   if(!esGanador) return;
 
   // 4) RECONEXIÓN: solo el ganador que permaneció conectado recibe el aviso.
-  // V32.3.28: usamos dos señales persistentes del MISMO update de retorno:
+  // V32.3.29: usamos dos señales persistentes del MISMO update de retorno:
   // retorno[rival]=true y ultimo_retorno_rol=rival. Además exigimos que el
   // ganador ya haya aceptado su resultado; así este aviso nunca pisa el modal
   // de resultado. No dependemos de conexion.online ni de ultima_reconexion.
   const retornoFueDelRival = post.ultimo_retorno_rol===otro && Number(post.ultimo_retorno_ts||0)>0;
-  if(esGanador && yoAck && otroRet && retornoFueDelRival && rac[miRol]!==true && post.reconexion_mostrada_para!==miRol){
-    UI.modal('📡 OPONENTE RECONectado','Tu oponente se ha reconectado. Ya pueden solicitar una Nueva Partida.','ACEPTAR',async()=>{
-      try{await update(_salaRef,{['post_desconexion/reconexion_ack/'+miRol]:true,['post_desconexion/reconexion_mostrada_para']:miRol});}catch(e){}
-    });
+  // V32.3.29 — EL AVISO SE MARCA ANTES DE MOSTRARSE.
+  // En V32.3.28 cada snapshot posterior podía volver a entrar aquí mientras
+  // el callback del modal aún no había escrito reconexion_mostrada_para.
+  // Eso producía el bucle 'OPONENTE RECONectado'.
+  // La marca persistente se escribe primero y el modal se abre después.
+  // Además, si ya existe una solicitud de Nueva Partida, el aviso de
+  // reconexión pierde prioridad: ambos jugadores ya están intentando continuar.
+  const hayNuevaPartida=d.nueva_partida_solicitud;
+  if(esGanador && yoAck && otroRet && retornoFueDelRival && !hayNuevaPartida && rac[miRol]!==true && post.reconexion_mostrada_para!==miRol && window._terminalReconexionAvisoPendiente!==String(post.ultimo_retorno_ts)){
+    window._terminalReconexionAvisoPendiente=String(post.ultimo_retorno_ts);
+    try{
+      await update(_salaRef,{['post_desconexion/reconexion_ack/'+miRol]:true,['post_desconexion/reconexion_mostrada_para']:miRol});
+    }catch(e){}
+    // Solo ahora mostramos el aviso; cualquier snapshot posterior ya verá la marca.
+    UI.modal('📡 OPONENTE RECONectado','Tu oponente se ha reconectado. Ya pueden solicitar una Nueva Partida.','ACEPTAR',null);
     return;
   }
 
@@ -2846,7 +2857,7 @@ async solicitarNuevaPartida(){
 
     const otro=_rol==='X'?'O':'X';
 
-    // V32.3.28 — POST-DESCONEXIÓN: no usamos conexion.online para decidir
+    // V32.3.29 — POST-DESCONEXIÓN: no usamos conexion.online para decidir
     // si el rival regresó. post_desconexion.retorno es la fuente de verdad.
     // Además, pulsar NUEVA PARTIDA después de volver al histórico implica
     // que este jugador ya acepta el resultado; lo registramos explícitamente
@@ -2879,15 +2890,14 @@ async solicitarNuevaPartida(){
         return;
       }
 
-      if(!ambosAceptaron){
-        // Aquí ambos ya están presentes. Si falta un ACK, es realmente el ACK
-        // del otro jugador: no inventamos presencia ni mostramos otra espera.
-        UI.modal('⏳ ESPERA RESULTADO','Tu oponente aún debe aceptar el resultado de la partida antes de solicitar una Nueva Partida. Puedes regresar al tablero y esperar, o puedes Abandonar la partida.','ACEPTAR');
-        return;
-      }
-
-      // Ambos regresaron + ambos aceptaron: flujo bilateral normal.
-      // El jugador que volvió por desconexión y el ganador llegan aquí por igual.
+      // V32.3.29 — UNA VEZ QUE AMBOS REGRESARON, NO EXISTE 'ESPERA RESULTADO'.
+      // El resultado ya fue presentado a cada cliente y el botón NUEVA PARTIDA
+      // es la acción de continuación. Si todavía falta un resultado_ack, el
+      // propio click lo acaba de registrar o el otro cliente lo registrará al
+      // pulsar su botón. No bloqueamos aquí: pasamos directamente a la
+      // propuesta bilateral de Nueva Partida.
+      // Esto evita el bucle en que ambos clientes quedan esperando el ACK del
+      // otro sin poder generar nunca la solicitud bilateral.
       if(!soyGanador && !soyDesconectado) return;
     }else{
       const con=d.conexion&&d.conexion[otro];
