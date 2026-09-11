@@ -1180,12 +1180,12 @@ async function procesarTerminalDesconexion(d, miRol){
   if(!esGanador) return;
 
   // 4) RECONEXIÓN: solo el ganador que permaneció conectado recibe el aviso.
-  // V32.3.29: usamos dos señales persistentes del MISMO update de retorno:
+  // V32.3.30: usamos dos señales persistentes del MISMO update de retorno:
   // retorno[rival]=true y ultimo_retorno_rol=rival. Además exigimos que el
   // ganador ya haya aceptado su resultado; así este aviso nunca pisa el modal
   // de resultado. No dependemos de conexion.online ni de ultima_reconexion.
   const retornoFueDelRival = post.ultimo_retorno_rol===otro && Number(post.ultimo_retorno_ts||0)>0;
-  // V32.3.29 — EL AVISO SE MARCA ANTES DE MOSTRARSE.
+  // V32.3.30 — EL AVISO SE MARCA ANTES DE MOSTRARSE.
   // En V32.3.28 cada snapshot posterior podía volver a entrar aquí mientras
   // el callback del modal aún no había escrito reconexion_mostrada_para.
   // Eso producía el bucle 'OPONENTE RECONectado'.
@@ -2857,7 +2857,7 @@ async solicitarNuevaPartida(){
 
     const otro=_rol==='X'?'O':'X';
 
-    // V32.3.29 — POST-DESCONEXIÓN: no usamos conexion.online para decidir
+    // V32.3.30 — POST-DESCONEXIÓN: no usamos conexion.online para decidir
     // si el rival regresó. post_desconexion.retorno es la fuente de verdad.
     // Además, pulsar NUEVA PARTIDA después de volver al histórico implica
     // que este jugador ya acepta el resultado; lo registramos explícitamente
@@ -2890,7 +2890,7 @@ async solicitarNuevaPartida(){
         return;
       }
 
-      // V32.3.29 — UNA VEZ QUE AMBOS REGRESARON, NO EXISTE 'ESPERA RESULTADO'.
+      // V32.3.30 — UNA VEZ QUE AMBOS REGRESARON, NO EXISTE 'ESPERA RESULTADO'.
       // El resultado ya fue presentado a cada cliente y el botón NUEVA PARTIDA
       // es la acción de continuación. Si todavía falta un resultado_ack, el
       // propio click lo acaba de registrar o el otro cliente lo registrará al
@@ -3730,7 +3730,19 @@ if(d.terminado && d.fin_por_desconexion){
   _ocultarModalDesconexion();
   _ocultarModalReconexion();
   if(typeof Juego!=='undefined' && Juego.procesarTerminalDesconexion){
-    Juego.procesarTerminalDesconexion(d,_rol).catch(e=>console.error('[V32.3.14] terminal desconexión:',e));
+    // V32.3.30: el estado terminal por desconexión NO puede tragarse
+    // la solicitud bilateral de Nueva Partida. Primero procesamos el estado
+    // terminal (resultado/reconexión) y, si ya existe una solicitud, la
+    // entregamos también al mismo renderer bilateral que usan los demás
+    // finales de partida.
+    Juego.procesarTerminalDesconexion(d,_rol).then(()=>{
+      const sActual = d.nueva_partida_solicitud;
+      if(sActual && typeof _revisarNuevaPartida==='function'){
+        _revisarNuevaPartida(d,_rol);
+      }
+    }).catch(e=>console.error('[V32.3.30] terminal desconexión:',e));
+  } else if(d.nueva_partida_solicitud && typeof _revisarNuevaPartida==='function'){
+    _revisarNuevaPartida(d,_rol);
   }
   return;
 }
