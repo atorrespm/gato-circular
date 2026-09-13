@@ -1180,12 +1180,12 @@ async function procesarTerminalDesconexion(d, miRol){
   if(!esGanador) return;
 
   // 4) RECONEXIÓN: solo el ganador que permaneció conectado recibe el aviso.
-  // V32.3.33: usamos dos señales persistentes del MISMO update de retorno:
+  // V32.3.34: usamos dos señales persistentes del MISMO update de retorno:
   // retorno[rival]=true y ultimo_retorno_rol=rival. Además exigimos que el
   // ganador ya haya aceptado su resultado; así este aviso nunca pisa el modal
   // de resultado. No dependemos de conexion.online ni de ultima_reconexion.
   const retornoFueDelRival = post.ultimo_retorno_rol===otro && Number(post.ultimo_retorno_ts||0)>0;
-  // V32.3.33 — EL AVISO SE MARCA ANTES DE MOSTRARSE.
+  // V32.3.34 — EL AVISO SE MARCA ANTES DE MOSTRARSE.
   // En V32.3.28 cada snapshot posterior podía volver a entrar aquí mientras
   // el callback del modal aún no había escrito reconexion_mostrada_para.
   // Eso producía el bucle 'OPONENTE RECONectado'.
@@ -1203,7 +1203,7 @@ async function procesarTerminalDesconexion(d, miRol){
     return;
   }
 
-  // V32.3.33: una solicitud bilateral existente debe ser entregada al renderer.
+  // V32.3.34: una solicitud bilateral existente debe ser entregada al renderer.
   if(d.nueva_partida_solicitud && typeof _revisarNuevaPartida==='function') _revisarNuevaPartida(d,miRol);
 }
 
@@ -1610,7 +1610,11 @@ function _revisarNuevaPartida(d, miRol){
     return;
   }
   const dec = solicitud.decisiones || {};
-  if(dec.X === false || dec.O === false){
+  // V32.3.34 — RECHAZADA es un estado explícito. El false aislado solo se
+  // considera rechazo para compatibilidad con solicitudes antiguas que ya
+  // hubieran recibido un NO real antes de esta versión.
+  const solicitudRechazada = solicitud.estado==='rechazada' || solicitud.estado==='cancelada';
+  if(solicitudRechazada){
     _ocultarConfirmacionNuevaPartida();
     // V31: Abandonar es siempre una salida disponible. Después de un NO
     // a Nueva Partida, el tablero puede quedar visible para estudio, pero
@@ -1627,6 +1631,8 @@ function _revisarNuevaPartida(d, miRol){
   }
   _mostrarConfirmacionNuevaPartida(miRol, solicitud);
   if(dec.X === true && dec.O === true && _npFinalizacionEnCurso !== solicitud.ts){
+    // V32.3.34: ambos SÍ convierten la solicitud en aceptada antes de limpiar
+    // el tablero. El cambio visual sigue dependiendo de confirmarNuevaPartida().
     _npFinalizacionEnCurso = solicitud.ts;
     Firebase.confirmarNuevaPartida();
   }
@@ -2857,7 +2863,7 @@ async solicitarNuevaPartida(){
 
     const otro=_rol==='X'?'O':'X';
 
-    // V32.3.33 — POST-DESCONEXIÓN: no usamos conexion.online para decidir
+    // V32.3.34 — POST-DESCONEXIÓN: no usamos conexion.online para decidir
     // si el rival regresó. post_desconexion.retorno es la fuente de verdad.
     // Además, pulsar NUEVA PARTIDA después de volver al histórico implica
     // que este jugador ya acepta el resultado; lo registramos explícitamente
@@ -2890,7 +2896,7 @@ async solicitarNuevaPartida(){
         return;
       }
 
-      // V32.3.33 — UNA VEZ QUE AMBOS REGRESARON, NO EXISTE 'ESPERA RESULTADO'.
+      // V32.3.34 — UNA VEZ QUE AMBOS REGRESARON, NO EXISTE 'ESPERA RESULTADO'.
       // El resultado ya fue presentado a cada cliente y el botón NUEVA PARTIDA
       // es la acción de continuación. Si todavía falta un resultado_ack, el
       // propio click lo acaba de registrar o el otro cliente lo registrará al
@@ -2909,13 +2915,21 @@ async solicitarNuevaPartida(){
 
     if(d.nueva_partida_max_alert) return;
     const solicitudActual=d.nueva_partida_solicitud;
-    if(solicitudActual && !(solicitudActual.decisiones && (solicitudActual.decisiones.X===false || solicitudActual.decisiones.O===false))) return;
-    const solicitudNueva={por:_rol,ts:Date.now(),decisiones:{X:null,O:null}};
-    // V32.3.33: null = SIN DECISIÓN; false = NO explícito.
-    // El proponente registra su propio SÍ, pero jamás inventamos un NO para el rival.
+    // V32.3.34 — una solicitud PENDIENTE solo puede bloquear la creación de otra
+    // solicitud. Una solicitud RECHAZADA, en cambio, puede ser reemplazada por
+    // un nuevo intento. El estado explícito evita confundir ausencia/valor nulo
+    // con un NO real.
+    const decActual=solicitudActual && solicitudActual.decisiones ? solicitudActual.decisiones : {};
+    const solicitudRechazadaActual=solicitudActual && (solicitudActual.estado==='rechazada' || solicitudActual.estado==='cancelada' || (solicitudActual.estado==null && (decActual.X===false || decActual.O===false)));
+    if(solicitudActual && !solicitudRechazadaActual) return;
+    const tsNueva=Date.now();
+    // IMPORTANTE: no usamos null como marcador persistente de "sin respuesta",
+    // porque Firebase RTDB elimina hijos cuyo valor sea null. Usamos una cadena
+    // explícita y solo escribimos false cuando un jugador pulsa NO.
+    const solicitudNueva={por:_rol,ts:tsNueva,estado:'pendiente',decisiones:{X:'pendiente',O:'pendiente'}};
     solicitudNueva.decisiones[_rol]=true;
     await update(_salaRef,{nueva_partida_solicitud:solicitudNueva});
-    // V32.3.33: el proponente pinta su propio modal inmediatamente.
+    // V32.3.34: el proponente pinta su propio modal inmediatamente.
     if(typeof _revisarNuevaPartida==='function'){ const sp=await get(_salaRef); if(sp.exists()) _revisarNuevaPartida(sp.val(),_rol); }
 },
 
@@ -2924,15 +2938,22 @@ async responderNuevaPartida(acepta){
     const snap=await get(_salaRef); const d=snap.val();
     if(!d || !(d.fase==='empate_final' || d.terminado===true) || !d.nueva_partida_solicitud) return;
     const solicitud=d.nueva_partida_solicitud;
-    const decisiones=Object.assign({}, solicitud.decisiones||{});
+    const decisiones=Object.assign({X:'pendiente',O:'pendiente'}, solicitud.decisiones||{});
+    // V32.3.34 — solo la pulsación real de NO escribe false.
     decisiones[_rol]=!!acepta;
     if(acepta){
-      await update(_salaRef,{['nueva_partida_solicitud/decisiones/'+_rol]:true});
+      const cambios={
+        ['nueva_partida_solicitud/decisiones/'+_rol]:true
+      };
+      // El estado ACEPTADA no necesita un campo paralelo: cuando ambos
+      // jugadores están en true, _revisarNuevaPartida() ejecuta la transición
+      // única hacia confirmarNuevaPartida().
+      await update(_salaRef,cambios);
       return;
     }
     const nuevoNo=(d.nueva_partida_no_count||0)+1;
     const cambios={
-      nueva_partida_solicitud:Object.assign({},solicitud,{decisiones}),
+      nueva_partida_solicitud:Object.assign({},solicitud,{estado:'rechazada',decisiones}),
       nueva_partida_no_count:nuevoNo,
       nueva_partida_cancelada_ts:Date.now()
     };
@@ -3736,13 +3757,13 @@ if(d.terminado && d.fin_por_desconexion){
   _ocultarModalDesconexion();
   _ocultarModalReconexion();
   if(typeof Juego!=='undefined' && Juego.procesarTerminalDesconexion){
-    // V32.3.33: el estado terminal por desconexión NO puede tragarse
+    // V32.3.34: el estado terminal por desconexión NO puede tragarse
     // la solicitud bilateral de Nueva Partida. Primero procesamos el estado
     // terminal (resultado/reconexión) y, si ya existe una solicitud, la
     // entregamos también al mismo renderer bilateral que usan los demás
     // finales de partida.
     Juego.procesarTerminalDesconexion(d,_rol).then(async()=>{
-      // V32.3.33: el procesador terminal puede haber actualizado ACKs/marcadores.
+      // V32.3.34: el procesador terminal puede haber actualizado ACKs/marcadores.
       // Se relee Firebase antes de pintar la solicitud bilateral; nunca usamos
       // el snapshot viejo capturado antes del procesamiento asíncrono.
       try{
@@ -3754,8 +3775,8 @@ if(d.terminado && d.fin_por_desconexion){
             _revisarNuevaPartida(dActual,_rol);
           }
         }
-      }catch(e){ console.warn('[V32.3.33] no pudo refrescar solicitud terminal:',e); }
-    }).catch(e=>console.error('[V32.3.33] terminal desconexión:',e));
+      }catch(e){ console.warn('[V32.3.34] no pudo refrescar solicitud terminal:',e); }
+    }).catch(e=>console.error('[V32.3.34] terminal desconexión:',e));
   } else if(d.nueva_partida_solicitud && typeof _revisarNuevaPartida==='function'){
     _revisarNuevaPartida(d,_rol);
   }
