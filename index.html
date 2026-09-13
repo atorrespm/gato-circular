@@ -1174,6 +1174,18 @@ async function procesarTerminalDesconexion(d, miRol){
   // 2) ABANDONO POSTERIOR: siempre tiene prioridad sobre Nueva Partida.
   if(d.abandono && d.abandono.abandonador!==miRol){ mostrarAbandonoOponente(); return; }
 
+  // V32.3.36 — UNA SOLICITUD DE NUEVA PARTIDA DEBE SER VISIBLE EN AMBOS
+  // CLIENTES, INCLUIDO EL JUGADOR QUE REGRESÓ TRAS LA DESCONEXIÓN.
+  // En V32.3.35 el procesador terminal hacía return para el perdedor antes de
+  // entregar la solicitud al renderer. Resultado: el ganador veía el modal,
+  // pero el perdedor veía cómo el tablero se limpiaba cuando el ganador aceptaba.
+  // La solicitud bilateral tiene prioridad sobre el aviso de reconexión y sobre
+  // la distinción ganador/perdedor: ambos deben conocer y aceptar el cambio.
+  if(d.nueva_partida_solicitud && typeof window._revisarNuevaPartida==='function'){
+    window._revisarNuevaPartida(d,miRol);
+    return;
+  }
+
   // 3) Si quien vuelve es el jugador que se desconectó, NUNCA recibe el modal
   // ESPERA POR DESCONEXIÓN. Ese modal pertenece exclusivamente al ganador que
   // permaneció en el tablero mientras esperaba el regreso del rival.
@@ -3777,13 +3789,13 @@ if(d.terminado && d.fin_por_desconexion){
   _ocultarModalDesconexion();
   _ocultarModalReconexion();
   if(typeof Juego!=='undefined' && Juego.procesarTerminalDesconexion){
-    // V32.3.35: el estado terminal por desconexión NO puede tragarse
+    // V32.3.36: el estado terminal por desconexión NO puede tragarse
     // la solicitud bilateral de Nueva Partida. Primero procesamos el estado
     // terminal (resultado/reconexión) y, si ya existe una solicitud, la
     // entregamos también al mismo renderer bilateral que usan los demás
     // finales de partida.
     Juego.procesarTerminalDesconexion(d,_rol).then(async()=>{
-      // V32.3.35: el procesador terminal puede haber actualizado ACKs/marcadores.
+      // V32.3.36: el procesador terminal puede haber actualizado ACKs/marcadores.
       // Se relee Firebase antes de pintar la solicitud bilateral; nunca usamos
       // el snapshot viejo capturado antes del procesamiento asíncrono.
       try{
@@ -3795,8 +3807,8 @@ if(d.terminado && d.fin_por_desconexion){
             window._revisarNuevaPartida(dActual,_rol);
           }
         }
-      }catch(e){ console.warn('[V32.3.35] no pudo refrescar solicitud terminal:',e); }
-    }).catch(e=>console.error('[V32.3.35] terminal desconexión:',e));
+      }catch(e){ console.warn('[V32.3.36] no pudo refrescar solicitud terminal:',e); }
+    }).catch(e=>console.error('[V32.3.36] terminal desconexión:',e));
   } else if(d.nueva_partida_solicitud && typeof _revisarNuevaPartida==='function'){
     _revisarNuevaPartida(d,_rol);
   }
