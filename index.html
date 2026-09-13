@@ -1657,9 +1657,12 @@ function _revisarNuevaPartida(d, miRol){
   }
   _mostrarConfirmacionNuevaPartida(miRol, solicitud);
   if(dec.X === true && dec.O === true && _npFinalizacionEnCurso !== solicitud.ts){
-    // V32.3.35: ambos SÍ convierten la solicitud en aceptada antes de limpiar
-    // el tablero. El cambio visual sigue dependiendo de confirmarNuevaPartida().
+    // V32.3.37: ambos jugadores ya respondieron SÍ. Cerramos primero el
+    // modal bilateral LOCAL y recién después ejecutamos la transición de
+    // Nueva Partida. confirmarNuevaPartida() limpia el overlay de INICIAR
+    // PARTIDA, pero este es el overlay específico de Nueva Partida.
     _npFinalizacionEnCurso = solicitud.ts;
+    _ocultarConfirmacionNuevaPartida();
     Firebase.confirmarNuevaPartida();
   }
 }
