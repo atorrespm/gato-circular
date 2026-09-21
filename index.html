@@ -1690,7 +1690,7 @@ window._revisarNuevaPartida = _revisarNuevaPartida;
 let _abandonoOponenteAvisoVisto = null;
 let _salidaTrasAbandono = false;
 function _mostrarModalOponenteAbandono(ts, miRol){
-  // V32.3.41 · MICRO-CIRUGÍA: el modal de abandono debe tener prioridad visual.
+  // V32.3.42 · MICRO-CIRUGÍA: el modal de abandono debe tener prioridad visual.
   // Antes de mostrarlo, cerramos cualquier capa que pueda quedar por encima
   // (modal genérico, Nueva Partida, desconexión/reconexión, bilateral, etc.).
   // NO se toca la lógica de latencia de 3 s, reclamo ni desconexión.
@@ -1752,6 +1752,7 @@ function _mostrarModalOponenteAbandono(ts, miRol){
     });
   }
   ov.style.display='flex';
+  _abandonoOponenteAvisoVisto=ts;
 }
 function _ocultarModalOponenteAbandono(){
   const ov=document.getElementById('abandono-oponente-overlay');
@@ -1946,6 +1947,9 @@ const reclamoConsumido = d.reclamo_consumido_rol === miRol &&
 const latenciaActiva = !!d.latencia_jugada_activa;
 const esRolLatencia = latenciaActiva && d.latencia_jugada_rol === miRol;
 const puedeReclamar = d.turno === miRol && !reclamoConsumido;
+// V32.3.42: si el reclamo de este turno ya fue utilizado e invalidado,
+// la jugada del turno queda consumida: no se puede colocar otra ficha ni reclamar otra vez.
+const turnoBloqueadoPorReclamo = d.turno === miRol && reclamoConsumido;
 UI.bloquearBtns(['btn-reclamar','btn-confirmar'],!puedeReclamar);
 UI.bloquearBtns(['btn-abandonar'],false);
 // Limpiar amarillos residuales antes de pintar los nuevos
@@ -2013,6 +2017,9 @@ if(latenciaActiva){
   // reclamar victoria por la jugada recién realizada.
   UI.bloquearTablero(true);
   UI.setMsg(esRolLatencia ? 'Jugada realizada. Tienes unos segundos para reclamar victoria si corresponde.' : 'Esperando la entrega del turno...');
+}else if(turnoBloqueadoPorReclamo){
+  UI.bloquearTablero(true);
+  UI.setMsg('Reclamo invalidado. Debes esperar a que termine tu tiempo para pasar el turno.');
 }else{
   UI.bloquearTablero(!esMio);
   UI.setMsg(esMio?'¡ES TU TURNO! Haz clic en una casilla.':'Esperando jugada del oponente...');
@@ -2027,7 +2034,7 @@ function reset(){
     _sorteoVisto=null; _victoriaVista=false; _reclamoKey=null; _partidaInicioVisto=null;
     _prioridadMostrada=null; _empateFinalKey=null; _resultadoReclamoVisto=null;
     _npConfirmacionVista=null; _npMaxAlertVisto=null; _npFinalizacionEnCurso=null; _abandonoVisto=null; _desconexionResultadoVisto=null; _abandonoPostDesconexionVisto=null; // V32.3.11: limpieza de estados terminales
-    _npFinalizacionEnCurso=null; _salidaTrasAbandono=false; _ultimoD=null;
+    _npFinalizacionEnCurso=null; _salidaTrasAbandono=false; _abandonoOponenteAvisoVisto=null; window._abandonoOponenteAvisoVisto=null; _ultimoD=null;
     window._empateYaMostrado=false;
 }
 return {aplicarEstado, encolarEstado, procesarTerminalDesconexion, setUltimoEstado:(d)=>{_ultimoD=d;}, reset, getUltimoEstado:()=>_ultimoD, isSalidaTrasAbandono:()=>_salidaTrasAbandono, marcarSalidaTrasAbandono:()=>{_salidaTrasAbandono=true;}};
@@ -3902,17 +3909,27 @@ if(d.terminado && d.abandono && !d.fin_por_desconexion && d.abandono.abandonador
   }
   Juego.setUltimoEstado(d);
   try{ Estado.fromFirebase(d); Tablero.render(Estado.tablero,id=>{}); UI.actualizarPaneles(Estado); }catch(e){}
-  UI.cerrarModal();
+  const ovAbandonoActual=document.getElementById('abandono-oponente-overlay');
+  const modalAbandonoVisible=!!(ovAbandonoActual && ovAbandonoActual.style.display==='flex');
+  if(!modalAbandonoVisible) UI.cerrarModal();
   _ocultarConfirmacionNuevaPartida();
   _ocultarMaxNoNuevaPartida();
   UI.bloquearTablero(true);
   UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
   UI.bloquearBtns(['btn-abandonar'],false);
   const bAb=document.getElementById('btn-abandonar');
-  if(bAb){bAb.disabled=false;bAb.style.opacity='';bAb.style.pointerEvents='auto';}
+  if(bAb){
+    bAb.disabled=false;bAb.style.opacity='';bAb.style.pointerEvents='auto';
+    bAb.dataset.salidaTrasAbandono='1';
+    bAb.onclick=()=>{
+      _salidaTrasAbandono=true;
+      if(window.Juego&&Juego.marcarSalidaTrasAbandono)Juego.marcarSalidaTrasAbandono();
+      if(window.Firebase&&Firebase.salirLocalTrasAbandono)Firebase.salirLocalTrasAbandono();
+    };
+  }
   if(window._abandonoOponenteAvisoVisto!==d.abandono.ts){
+    window._abandonoOponenteAvisoVisto=d.abandono.ts;
     _mostrarModalOponenteAbandono(d.abandono.ts,_rol);
-    _abandonoOponenteAvisoVisto=d.abandono.ts;
   }
   return;
 }
