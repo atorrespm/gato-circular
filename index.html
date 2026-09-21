@@ -1696,7 +1696,7 @@ function _mostrarModalOponenteAbandono(ts, miRol){
     ov.id='abandono-oponente-overlay';
     ov.style.cssText='display:flex;position:fixed;inset:0;background:rgba(0,0,0,.90);z-index:360;align-items:center;justify-content:center;';
     ov.innerHTML=`<div style="background:linear-gradient(135deg,#1a1a1a,#252525);border:3px solid var(--gold);border-radius:14px;padding:28px 36px;text-align:center;min-width:330px;max-width:460px;box-shadow:0 0 50px rgba(224,190,70,.25);">
-<h2 style="font-family:'Orbitron',sans-serif;font-size:18px;color:var(--gold);margin-bottom:12px;">🏆 TU OPONENTE HA ABANDONADO</h2>
+<h2 style="font-family:'Orbitron',sans-serif;font-size:18px;color:var(--gold);margin-bottom:12px;">🚪 TU OPONENTE ACABA DE ABANDONAR EL TABLERO</h2>
 <p id="abandono-oponente-msg" style="font-size:13px;color:#ddd;line-height:1.65;margin-bottom:20px;">Tu oponente ha abandonado la partida.<br><b>El resultado de la partida se conserva tal como quedó registrado.</b><br><br>Si desea volver al tablero y ver las jugadas previas, pulse <b>Volver al Tablero</b>.<br>Si desea salir de la partida, pulse <b>Abandonar Partida</b>.</p>
 <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
 <button id="btn-ab-volver" style="padding:10px 18px;background:linear-gradient(135deg,#6b5200,#c99b16);color:#111;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;">VOLVER AL TABLERO</button>
@@ -1928,6 +1928,8 @@ UI.bloquearBtns(['btn-nueva','btn-sortear'],true);
 // puede repetirse hasta que cambie el turno.
 const reclamoConsumido = d.reclamo_consumido_rol === miRol &&
   Number(d.reclamo_consumido_jugadas ?? -1) === Number(d.jugadas ?? -2);
+const latenciaActiva = !!d.latencia_jugada_activa;
+const esRolLatencia = latenciaActiva && d.latencia_jugada_rol === miRol;
 const puedeReclamar = d.turno === miRol && !reclamoConsumido;
 UI.bloquearBtns(['btn-reclamar','btn-confirmar'],!puedeReclamar);
 UI.bloquearBtns(['btn-abandonar'],false);
@@ -1990,8 +1992,16 @@ UI.bloquearTablero(true);
 return;
 }
 const esMio = d.turno === miRol;
-UI.bloquearTablero(!esMio);
-UI.setMsg(esMio?'¡ES TU TURNO! Haz clic en una casilla.':'Esperando jugada del oponente...');
+if(latenciaActiva){
+  // Durante la latencia post-jugada nadie puede colocar otra ficha.
+  // El jugador que acaba de mover conserva únicamente la posibilidad de
+  // reclamar victoria por la jugada recién realizada.
+  UI.bloquearTablero(true);
+  UI.setMsg(esRolLatencia ? 'Jugada realizada. Tienes unos segundos para reclamar victoria si corresponde.' : 'Esperando la entrega del turno...');
+}else{
+  UI.bloquearTablero(!esMio);
+  UI.setMsg(esMio?'¡ES TU TURNO! Haz clic en una casilla.':'Esperando jugada del oponente...');
+}
 } catch(err){
 console.error('Error en _faseJugando:', err);
 // Failsafe: nunca dejar el tablero bloqueado por un error inesperado
@@ -2411,8 +2421,9 @@ function _calcular() {
 const d = _ultimoD;
 const cfg = MODOS[_modo];
 if(!d || cfg.total === 0) return null; // modo clasico: sin cronometro
-const pausado = !!d.pausa_activa;
-const ahora = Date.now();
+const latenciaActiva = !!d.latencia_jugada_activa && d.latencia_jugada_ts;
+const pausado = !!d.pausa_activa || !!latenciaActiva;
+const ahora = latenciaActiva ? Number(d.latencia_jugada_ts) : Date.now();
 // Tiempo "congelado" acumulado por pausas (se resta del transcurrido)
 const inicioTurno = d.turno_inicio_ts || ahora;
 let transcurrido = (pausado ? (d.pausa_inicio_ts || ahora) : ahora) - inicioTurno;
@@ -2450,7 +2461,7 @@ const bloqX = $('crono-bloque-x'); if(bloqX) bloqX.classList.toggle('urgente', t
 const bloqO = $('crono-bloque-o'); if(bloqO) bloqO.classList.toggle('urgente', totalOActual <= 30 && totalOActual > 0);
 if(bloqX) { bloqX.classList.toggle('mi-turno', turnoActivo==='X'); bloqX.classList.toggle('rival-turno', turnoActivo!=='X'); }
 if(bloqO) { bloqO.classList.toggle('mi-turno', turnoActivo==='O'); bloqO.classList.toggle('rival-turno', turnoActivo!=='O'); }
-if(pausado) return; // no reportar timeouts mientras está en pausa
+if(pausado) return; // no reportar timeouts mientras está en pausa o en latencia post-jugada
 // Solo el jugador ACTIVO reporta su propio timeout (evita doble-reporte)
 if(_miRol === turnoActivo) {
 const claveJugada = turnoActivo + '_' + (_ultimoD.turno_inicio_ts||0);
@@ -2686,6 +2697,7 @@ desconexionesX:0,desconexionesO:0,
 ultimo_sorteo:null,sorteo_id:null,sorteo_usado:false,victoriasX:0,victoriasO:0,empates:0,partidasJugadas:0,
 crono_modo:'clasico', partida_iniciada:false, inicio_partida_ts:null, inicio_propuesto:null, turno_inicio_ts:null, crono_totalX:null, crono_totalO:null,fin_por_desconexion:false,
 nueva_partida_no_count:0, nueva_partida_max_alert:null, nueva_partida_solicitud:null,
+latencia_jugada_activa:false,latencia_jugada_rol:null,latencia_jugada_ts:null,latencia_jugada_ms:3000,
 abandono:null,cancelada_preinicio:null,desconexion_pendiente:null,ultima_reconexion:null,
 pausa_activa:false, pausa_inicio_ts:null,pausa_propuesta:null,reanudar_propuesta:null,
 crono_total_inicio_X:null,crono_total_inicio_O:null
@@ -2764,6 +2776,8 @@ return snap.exists()? snap.val() : null;
 },
 isIniciado(){ return _iniciado; },
 async jugar(id){
+// V32.3.40: tras cada jugada se abre una latencia post-jugada de 3 s para
+// permitir reclamar la victoria antes de entregar el turno al oponente.
 // Evita doble invocación (doble clic accidental / doble listener)
 if(_enviandoJugada) return;
 _enviandoJugada = true;
@@ -2780,9 +2794,12 @@ const ahoraJugada=Date.now();
 let nuevoTotalX=d.crono_totalX,nuevoTotalO=d.crono_totalO;
 if(cfgModo&&cfgModo.total>0&&d.turno_inicio_ts){const elapsed=Math.max(0,(ahoraJugada-d.turno_inicio_ts)/1000);if(_rol==='X')nuevoTotalX=Math.max(0,(d.crono_totalX??cfgModo.total)-elapsed);else nuevoTotalO=Math.max(0,(d.crono_totalO??cfgModo.total)-elapsed);}
 const siguienteRol=_rol==='X'?'O':'X';
-await update(_salaRef,{tablero:t,turno:siguienteRol,fase:'jugando',jugadas:(d.jugadas||0)+1,fichasX:_rol==='X'?(d.fichasX??16)-1:(d.fichasX??16),fichasO:_rol==='O'?(d.fichasO??16)-1:(d.fichasO??16),crono_totalX:nuevoTotalX,crono_totalO:nuevoTotalO,
+const latenciaMs=3000;
+await update(_salaRef,{tablero:t,turno:_rol,fase:'jugando',jugadas:(d.jugadas||0)+1,fichasX:_rol==='X'?(d.fichasX??16)-1:(d.fichasX??16),fichasO:_rol==='O'?(d.fichasO??16)-1:(d.fichasO??16),crono_totalX:nuevoTotalX,crono_totalO:nuevoTotalO,
 reclamo_consumido_rol:null,reclamo_consumido_jugadas:null,
-crono_total_inicio_X:siguienteRol==='X'?ahoraJugada:null,crono_total_inicio_O:siguienteRol==='O'?ahoraJugada:null,turno_inicio_ts:ahoraJugada});
+crono_total_inicio_X:null,crono_total_inicio_O:null,turno_inicio_ts:ahoraJugada,
+latencia_jugada_activa:true,latencia_jugada_rol:_rol,latencia_jugada_ts:ahoraJugada,latencia_jugada_ms:latenciaMs});
+setTimeout(()=>{ Firebase.resolverLatenciaJugada().catch(()=>{}); },latenciaMs+50);
 } finally {
 _enviandoJugada = false;
 }
@@ -2802,6 +2819,7 @@ await update(_salaRef,{fase:'reclamo',reclamante:_rol,
 reclamo_fichas:fichas,reclamo_ts:ahora,fichas_marcadas_reclamo:[],
 reclamo_consumido_rol:_rol,reclamo_consumido_jugadas:Number(d.jugadas||0),
 resultado_reclamo_ack_X:false,resultado_reclamo_ack_O:false,
+latencia_jugada_activa:false,latencia_jugada_rol:null,latencia_jugada_ts:null,
 pausa_activa:true, pausa_inicio_ts:ahora});
 return {ok:true};
 },
@@ -2850,7 +2868,8 @@ fase:'jugando',
 reclamante:null,
 reclamo_fichas:null,
 fichas_marcadas_reclamo:null,
-reclamo_cancelado_ts:Date.now()
+reclamo_cancelado_ts:Date.now(),
+latencia_jugada_activa:false,latencia_jugada_rol:null,latencia_jugada_ts:null
 }, reanudo));
 },
 async aceptarResultadoReclamo(){
@@ -2888,7 +2907,7 @@ reclamo_consumido_rol:reclamoRol,reclamo_consumido_jugadas:reclamoTurnoJugadas
 await update(_salaRef,Object.assign({fase:'jugando',reclamante:null,reclamo_fichas:null,
 fichas_marcadas_reclamo:null, resultado_reclamo:resultado,
 resultado_reclamo_ack_X:false,resultado_reclamo_ack_O:false,
-reclamo_consumido_rol:reclamoRol,reclamo_consumido_jugadas:reclamoTurnoJugadas}, reanudo, pen.cambios));
+reclamo_consumido_rol:reclamoRol,reclamo_consumido_jugadas:reclamoTurnoJugadas,latencia_jugada_activa:false,latencia_jugada_rol:null,latencia_jugada_ts:null}, reanudo, pen.cambios));
 }
 },
 async nuevaPartida(){
@@ -2905,6 +2924,7 @@ victoriasX:d.victoriasX||0,victoriasO:d.victoriasO||0,
 desconexionesX:0,desconexionesO:0,
 crono_modo:d.crono_modo||'clasico', partida_iniciada:false, inicio_partida_ts:null, inicio_propuesto:null, crono_turno_forzado:null,
 turno_inicio_ts:null, crono_totalX:null, crono_totalO:null,crono_total_inicio_X:null,crono_total_inicio_O:null,
+latencia_jugada_activa:false,latencia_jugada_rol:null,latencia_jugada_ts:null,latencia_jugada_ms:3000,
 pausa_activa:false,pausa_solicitada:null,pausa_reanudar:null,pausa_inicio_ts:null,pausa_propuesta:null,reanudar_propuesta:null,
 fin_por_tiempo:false,fin_por_desconexion:false,post_desconexion:null,empate_final_motivo:null,
 tc_decision:null, tc_inicio:null, tc_decision_final:null, tc_resolucion_ts:null, resultado_reclamo:null, resultado_reclamo_ack_X:false,resultado_reclamo_ack_O:false,reclamo_consumido_rol:null,reclamo_consumido_jugadas:null, empate_final_ack_X:false,empate_final_ack_O:false,empate_final_motivo:null,
@@ -2912,6 +2932,7 @@ fichas_timeout_reclamo:null,
 empate_sin_respuesta_inicio:null, empate_sin_respuesta_ack:null,
 prioridad_jugador:null, prioridad_intento:null, prioridad_inicio_ts:null, prioridad_timeout_ts:null, prioridad_aceptado_X:false, prioridad_aceptado_O:false, fichas_timeout_reclamo:null,
 nueva_partida_no_count:0, nueva_partida_max_alert:null, nueva_partida_solicitud:null,
+latencia_jugada_activa:false,latencia_jugada_rol:null,latencia_jugada_ts:null,latencia_jugada_ms:3000,
 abandono:null,cancelada_preinicio:null,desconexion_pendiente:null,ultima_reconexion:null,pausa_propuesta:null,reanudar_propuesta:null,crono_total_inicio_X:null,crono_total_inicio_O:null
 });
 },
@@ -3530,7 +3551,7 @@ crono_modo:null,partida_iniciada:false,inicio_partida_ts:null,inicio_propuesto:n
 tc_decision:null, tc_inicio:null, tc_decision_final:null, resultado_reclamo:null, resultado_reclamo_ack_X:false,resultado_reclamo_ack_O:false,reclamo_consumido_rol:null,reclamo_consumido_jugadas:null,
 empate_final_ack_X:false,empate_final_ack_O:false,
 fichas_timeout_reclamo:null,
-prioridad_jugador:null, prioridad_intento:null, prioridad_inicio_ts:null, prioridad_timeout_ts:null, prioridad_aceptado_X:false, prioridad_aceptado_O:false, nueva_partida_no_count:0, nueva_partida_max_alert:null, nueva_partida_solicitud:null, abandono:null,cancelada_preinicio:null
+prioridad_jugador:null, prioridad_intento:null, prioridad_inicio_ts:null, prioridad_timeout_ts:null, prioridad_aceptado_X:false, prioridad_aceptado_O:false, nueva_partida_no_count:0, nueva_partida_max_alert:null, nueva_partida_solicitud:null, latencia_jugada_activa:false, latencia_jugada_rol:null, latencia_jugada_ts:null, latencia_jugada_ms:3000, abandono:null,cancelada_preinicio:null
 });
 },
 async abandonarPartida(){
@@ -3679,6 +3700,39 @@ const res=await runTransaction(_salaRef,current=>{
 // que puedan pisarse entre sí.
 return res.committed;
 },
+async resolverLatenciaJugada(){
+  if(!_salaRef) return false;
+  const res=await runTransaction(_salaRef,current=>{
+    if(!current || current.terminado || current.fase!=='jugando' || !current.latencia_jugada_activa) return;
+    const ts=Number(current.latencia_jugada_ts||0);
+    const ms=Number(current.latencia_jugada_ms||3000);
+    if(!ts || Date.now()-ts < ms) return;
+    const rol=current.latencia_jugada_rol || current.turno;
+    if(current.turno!==rol) return;
+    const siguiente=rol==='X'?'O':'X';
+    const ahora=Date.now();
+    return Object.assign({},current,{
+      turno:siguiente,
+      latencia_jugada_activa:false,
+      latencia_jugada_rol:null,
+      latencia_jugada_ts:null,
+      latencia_jugada_ms:3000,
+      crono_total_inicio_X:siguiente==='X'?ahora:null,
+      crono_total_inicio_O:siguiente==='O'?ahora:null,
+      turno_inicio_ts:ahora,
+      crono_turno_forzado:ahora
+    });
+  });
+  return !!res.committed;
+},
+async programarLatenciaJugada(d){
+  if(window._latenciaJugadaTimer) clearTimeout(window._latenciaJugadaTimer);
+  if(!d || d.fase!=='jugando' || !d.latencia_jugada_activa) return;
+  const ts=Number(d.latencia_jugada_ts||0);
+  const ms=Number(d.latencia_jugada_ms||3000);
+  const restante=Math.max(0,ms-(Date.now()-ts));
+  window._latenciaJugadaTimer=setTimeout(()=>{window._latenciaJugadaTimer=null;Firebase.resolverLatenciaJugada().catch(()=>{});},restante+50);
+},
 async resolverTurnoDesconectado(){
 if(!_salaRef)return;
 await runTransaction(_salaRef,current=>{
@@ -3821,6 +3875,32 @@ if(_sessionId && ((d.sesionX===_sessionId)||(d.sesionO===_sessionId))) _guardarS
 // V32.3.14: un estado terminal por desconexión se procesa como una
 // transición definitiva y se entrega DIRECTAMENTE al motor terminal.
 // No se permite que el flujo de presencia, turnos o fases de juego lo pise.
+// V32.3.40: ABANDONO POSTERIOR A UNA PARTIDA NORMAL tiene prioridad absoluta.
+// Se procesa directamente aquí para que el aviso no pueda ser pisado por la
+// cola de estados, por el modal de Nueva Partida ni por el renderer terminal.
+// Los finales por desconexión conservan su máquina específica de ACK/resultado.
+if(d.terminado && d.abandono && !d.fin_por_desconexion && d.abandono.abandonador!==_rol){
+  if(!_iniciado){
+    _iniciado=true;
+    try{ Reclamo.init(_rol); }catch(e){}
+    try{ Chat.init(db,_sala,_rol); }catch(e){}
+  }
+  Juego.setUltimoEstado(d);
+  try{ Estado.fromFirebase(d); Tablero.render(Estado.tablero,id=>{}); UI.actualizarPaneles(Estado); }catch(e){}
+  UI.cerrarModal();
+  _ocultarConfirmacionNuevaPartida();
+  _ocultarMaxNoNuevaPartida();
+  UI.bloquearTablero(true);
+  UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+  UI.bloquearBtns(['btn-abandonar'],false);
+  const bAb=document.getElementById('btn-abandonar');
+  if(bAb){bAb.disabled=false;bAb.style.opacity='';bAb.style.pointerEvents='auto';}
+  if(window._abandonoOponenteAvisoVisto!==d.abandono.ts){
+    _mostrarModalOponenteAbandono(d.abandono.ts,_rol);
+    _abandonoOponenteAvisoVisto=d.abandono.ts;
+  }
+  return;
+}
 if(d.terminado && d.fin_por_desconexion){
   // V32.3.17: al retomar una partida ya terminada por desconexión, el cliente
   // podía seguir con _iniciado=false porque este gate terminal retornaba antes
@@ -3903,6 +3983,7 @@ if(_iniciado){
     const rp=d.reanudar_propuesta,key='reanudar_'+rp.ts;
     if(_reanudarPropuestaVisto!==key){_reanudarPropuestaVisto=key;if(rp.por!==_rol&&rp.decisiones&&rp.decisiones[_rol]!==true){const quien=rp.por==='X'?'Jugador 1 (X)':'Jugador 2 (O)';_mostrarModalBilateral('Solicitud de reanudación',quien+' solicita reanudar la partida. ¿Aceptas?',()=>Firebase.responderReanudar(true),()=>Firebase.responderReanudar(false));}}
   }else if(!d.reanudar_propuesta)_reanudarPropuestaVisto=null;
+  if(d.latencia_jugada_activa && d.fase==='jugando') Firebase.programarLatenciaJugada(d).catch(()=>{});
   if(d.partida_iniciada || d.fase==='jugando'){
     // El mismo overlay bilateral también se usa para PAUSA/REANUDACIÓN.
     // Solo debe cerrarse automáticamente para una propuesta de INICIAR PARTIDA;
