@@ -2,6 +2,7 @@
 =======================================================================
 © Junio 2026 - Santiago - Chile
 V32.2 · DESCONEXIÓN/RECONEXIÓN · FIX PRESENCIA
+V42 · MICRO-CIRUGÍA: reclamo inválido bloquea nuevas jugadas hasta cambio de turno
 Desarrollador: Pedro Alejandro Torres Guerrero
 Juego de Estrategia Mental: GATO CIRCULAR
 Todos los derechos reservados.
@@ -1690,26 +1691,11 @@ window._revisarNuevaPartida = _revisarNuevaPartida;
 let _abandonoOponenteAvisoVisto = null;
 let _salidaTrasAbandono = false;
 function _mostrarModalOponenteAbandono(ts, miRol){
-  // V32.3.42 · MICRO-CIRUGÍA: el modal de abandono debe tener prioridad visual.
-  // Antes de mostrarlo, cerramos cualquier capa que pueda quedar por encima
-  // (modal genérico, Nueva Partida, desconexión/reconexión, bilateral, etc.).
-  // NO se toca la lógica de latencia de 3 s, reclamo ni desconexión.
-  try{ UI.cerrarModal(); }catch(e){}
-  try{ _ocultarConfirmacionNuevaPartida(); }catch(e){}
-  try{ _ocultarMaxNoNuevaPartida(); }catch(e){}
-  try{ _ocultarModalDesconexion(); }catch(e){}
-  try{ _ocultarModalReconexion(); }catch(e){}
-  try{ if(window.EmpateFlow){ EmpateFlow.ocultarModalTC(); EmpateFlow.ocultarModalPrioridad(); EmpateFlow.ocultarModalResultado(); } }catch(e){}
-  const bilateral=document.getElementById('bilateral-overlay');
-  if(bilateral) bilateral.style.display='none';
-  const confirmAb=document.getElementById('abandono-confirm-overlay');
-  if(confirmAb) confirmAb.style.display='none';
-
   let ov=document.getElementById('abandono-oponente-overlay');
   if(!ov){
     ov=document.createElement('div');
     ov.id='abandono-oponente-overlay';
-    ov.style.cssText='display:flex;position:fixed;inset:0;background:rgba(0,0,0,.90);z-index:500;align-items:center;justify-content:center;';
+    ov.style.cssText='display:flex;position:fixed;inset:0;background:rgba(0,0,0,.90);z-index:360;align-items:center;justify-content:center;';
     ov.innerHTML=`<div style="background:linear-gradient(135deg,#1a1a1a,#252525);border:3px solid var(--gold);border-radius:14px;padding:28px 36px;text-align:center;min-width:330px;max-width:460px;box-shadow:0 0 50px rgba(224,190,70,.25);">
 <h2 style="font-family:'Orbitron',sans-serif;font-size:18px;color:var(--gold);margin-bottom:12px;">🚪 TU OPONENTE ACABA DE ABANDONAR EL TABLERO</h2>
 <p id="abandono-oponente-msg" style="font-size:13px;color:#ddd;line-height:1.65;margin-bottom:20px;">Tu oponente ha abandonado la partida.<br><b>El resultado de la partida se conserva tal como quedó registrado.</b><br><br>Si desea volver al tablero y ver las jugadas previas, pulse <b>Volver al Tablero</b>.<br>Si desea salir de la partida, pulse <b>Abandonar Partida</b>.</p>
@@ -1752,7 +1738,6 @@ function _mostrarModalOponenteAbandono(ts, miRol){
     });
   }
   ov.style.display='flex';
-  _abandonoOponenteAvisoVisto=ts;
 }
 function _ocultarModalOponenteAbandono(){
   const ov=document.getElementById('abandono-oponente-overlay');
@@ -1946,10 +1931,9 @@ const reclamoConsumido = d.reclamo_consumido_rol === miRol &&
   Number(d.reclamo_consumido_jugadas ?? -1) === Number(d.jugadas ?? -2);
 const latenciaActiva = !!d.latencia_jugada_activa;
 const esRolLatencia = latenciaActiva && d.latencia_jugada_rol === miRol;
-const puedeReclamar = d.turno === miRol && !reclamoConsumido;
-// V32.3.42: si el reclamo de este turno ya fue utilizado e invalidado,
-// la jugada del turno queda consumida: no se puede colocar otra ficha ni reclamar otra vez.
-const turnoBloqueadoPorReclamo = d.turno === miRol && reclamoConsumido;
+const turnoBloqueadoPorReclamoInvalido = d.turno_bloqueado_reclamo_invalido_rol === miRol &&
+  Number(d.turno_bloqueado_reclamo_invalido_jugadas ?? -1) === Number(d.jugadas ?? -2);
+const puedeReclamar = d.turno === miRol && !reclamoConsumido && !turnoBloqueadoPorReclamoInvalido;
 UI.bloquearBtns(['btn-reclamar','btn-confirmar'],!puedeReclamar);
 UI.bloquearBtns(['btn-abandonar'],false);
 // Limpiar amarillos residuales antes de pintar los nuevos
@@ -2011,18 +1995,20 @@ UI.bloquearTablero(true);
 return;
 }
 const esMio = d.turno === miRol;
+const puedeJugar = esMio && !turnoBloqueadoPorReclamoInvalido;
 if(latenciaActiva){
   // Durante la latencia post-jugada nadie puede colocar otra ficha.
   // El jugador que acaba de mover conserva únicamente la posibilidad de
   // reclamar victoria por la jugada recién realizada.
   UI.bloquearTablero(true);
   UI.setMsg(esRolLatencia ? 'Jugada realizada. Tienes unos segundos para reclamar victoria si corresponde.' : 'Esperando la entrega del turno...');
-}else if(turnoBloqueadoPorReclamo){
-  UI.bloquearTablero(true);
-  UI.setMsg('Reclamo invalidado. Debes esperar a que termine tu tiempo para pasar el turno.');
 }else{
-  UI.bloquearTablero(!esMio);
-  UI.setMsg(esMio?'¡ES TU TURNO! Haz clic en una casilla.':'Esperando jugada del oponente...');
+  UI.bloquearTablero(!puedeJugar);
+  UI.setMsg(puedeJugar
+    ? '¡ES TU TURNO! Haz clic en una casilla.'
+    : (turnoBloqueadoPorReclamoInvalido
+      ? 'Reclamo inválido: ya no puedes colocar otra ficha en este turno. Espera al cambio de turno.'
+      : 'Esperando jugada del oponente...'));
 }
 } catch(err){
 console.error('Error en _faseJugando:', err);
@@ -2034,7 +2020,7 @@ function reset(){
     _sorteoVisto=null; _victoriaVista=false; _reclamoKey=null; _partidaInicioVisto=null;
     _prioridadMostrada=null; _empateFinalKey=null; _resultadoReclamoVisto=null;
     _npConfirmacionVista=null; _npMaxAlertVisto=null; _npFinalizacionEnCurso=null; _abandonoVisto=null; _desconexionResultadoVisto=null; _abandonoPostDesconexionVisto=null; // V32.3.11: limpieza de estados terminales
-    _npFinalizacionEnCurso=null; _salidaTrasAbandono=false; _abandonoOponenteAvisoVisto=null; window._abandonoOponenteAvisoVisto=null; _ultimoD=null;
+    _npFinalizacionEnCurso=null; _salidaTrasAbandono=false; _ultimoD=null;
     window._empateYaMostrado=false;
 }
 return {aplicarEstado, encolarEstado, procesarTerminalDesconexion, setUltimoEstado:(d)=>{_ultimoD=d;}, reset, getUltimoEstado:()=>_ultimoD, isSalidaTrasAbandono:()=>_salidaTrasAbandono, marcarSalidaTrasAbandono:()=>{_salidaTrasAbandono=true;}};
@@ -2720,6 +2706,7 @@ ultimo_sorteo:null,sorteo_id:null,sorteo_usado:false,victoriasX:0,victoriasO:0,e
 crono_modo:'clasico', partida_iniciada:false, inicio_partida_ts:null, inicio_propuesto:null, turno_inicio_ts:null, crono_totalX:null, crono_totalO:null,fin_por_desconexion:false,
 nueva_partida_no_count:0, nueva_partida_max_alert:null, nueva_partida_solicitud:null,
 latencia_jugada_activa:false,latencia_jugada_rol:null,latencia_jugada_ts:null,latencia_jugada_ms:3000,
+turno_bloqueado_reclamo_invalido_rol:null,turno_bloqueado_reclamo_invalido_jugadas:null,
 abandono:null,cancelada_preinicio:null,desconexion_pendiente:null,ultima_reconexion:null,
 pausa_activa:false, pausa_inicio_ts:null,pausa_propuesta:null,reanudar_propuesta:null,
 crono_total_inicio_X:null,crono_total_inicio_O:null
@@ -2807,7 +2794,8 @@ try {
 const snap=await get(_salaRef); if(!snap.exists()) return;
 const d=snap.val(), t=Estado.tableroCompleto();
 _guardarSesion();
-if(d.terminado||d.fase!=='jugando'||t[id]!==null||d.turno!==_rol) return;
+const turnoBloqueadoPorReclamoInvalido = d.turno_bloqueado_reclamo_invalido_rol===_rol && Number(d.turno_bloqueado_reclamo_invalido_jugadas ?? -1)===Number(d.jugadas ?? -2);
+if(d.terminado||d.fase!=='jugando'||t[id]!==null||d.turno!==_rol||turnoBloqueadoPorReclamoInvalido) return;
 t[id]=_rol; UI.bloquearTablero(true);
 // Descontar el tiempo realmente transcurrido en este turno del total
 // del jugador que acaba de mover (cronómetro compartido por timestamp)
@@ -2835,6 +2823,10 @@ const yaConsumido = d.reclamo_consumido_rol===_rol &&
   Number(d.reclamo_consumido_jugadas ?? -1)===Number(d.jugadas ?? -2);
 if(yaConsumido){
   return {ok:false,msg:'Ya utilizaste tu reclamo de victoria en este turno.'};
+}
+const turnoBloqueadoPorReclamoInvalido = d.turno_bloqueado_reclamo_invalido_rol===_rol && Number(d.turno_bloqueado_reclamo_invalido_jugadas ?? -1)===Number(d.jugadas ?? -2);
+if(turnoBloqueadoPorReclamoInvalido){
+  return {ok:false,msg:'Tu reclamo fue invalidado. Debes esperar a que termine este turno.'};
 }
 const ahora=Date.now();
 await update(_salaRef,{fase:'reclamo',reclamante:_rol,
@@ -2929,7 +2921,14 @@ reclamo_consumido_rol:reclamoRol,reclamo_consumido_jugadas:reclamoTurnoJugadas
 await update(_salaRef,Object.assign({fase:'jugando',reclamante:null,reclamo_fichas:null,
 fichas_marcadas_reclamo:null, resultado_reclamo:resultado,
 resultado_reclamo_ack_X:false,resultado_reclamo_ack_O:false,
-reclamo_consumido_rol:reclamoRol,reclamo_consumido_jugadas:reclamoTurnoJugadas,latencia_jugada_activa:false,latencia_jugada_rol:null,latencia_jugada_ts:null}, reanudo, pen.cambios));
+reclamo_consumido_rol:reclamoRol,reclamo_consumido_jugadas:reclamoTurnoJugadas,
+// V42 · MICRO-CIRUGÍA: un reclamo inválido consume también el derecho a
+// colocar otra ficha durante el resto del mismo turno. El turno NO cambia aquí;
+// el bloqueo se mantiene hasta que resolverLatenciaJugada/otro cambio de turno
+// entregue el turno al rival.
+turno_bloqueado_reclamo_invalido_rol:reclamoRol,
+turno_bloqueado_reclamo_invalido_jugadas:reclamoTurnoJugadas,
+latencia_jugada_activa:false,latencia_jugada_rol:null,latencia_jugada_ts:null}, reanudo, pen.cambios));
 }
 },
 async nuevaPartida(){
@@ -2947,6 +2946,7 @@ desconexionesX:0,desconexionesO:0,
 crono_modo:d.crono_modo||'clasico', partida_iniciada:false, inicio_partida_ts:null, inicio_propuesto:null, crono_turno_forzado:null,
 turno_inicio_ts:null, crono_totalX:null, crono_totalO:null,crono_total_inicio_X:null,crono_total_inicio_O:null,
 latencia_jugada_activa:false,latencia_jugada_rol:null,latencia_jugada_ts:null,latencia_jugada_ms:3000,
+turno_bloqueado_reclamo_invalido_rol:null,turno_bloqueado_reclamo_invalido_jugadas:null,
 pausa_activa:false,pausa_solicitada:null,pausa_reanudar:null,pausa_inicio_ts:null,pausa_propuesta:null,reanudar_propuesta:null,
 fin_por_tiempo:false,fin_por_desconexion:false,post_desconexion:null,empate_final_motivo:null,
 tc_decision:null, tc_inicio:null, tc_decision_final:null, tc_resolucion_ts:null, resultado_reclamo:null, resultado_reclamo_ack_X:false,resultado_reclamo_ack_O:false,reclamo_consumido_rol:null,reclamo_consumido_jugadas:null, empate_final_ack_X:false,empate_final_ack_O:false,empate_final_motivo:null,
@@ -3739,6 +3739,8 @@ async resolverLatenciaJugada(){
       latencia_jugada_rol:null,
       latencia_jugada_ts:null,
       latencia_jugada_ms:3000,
+      turno_bloqueado_reclamo_invalido_rol:null,
+      turno_bloqueado_reclamo_invalido_jugadas:null,
       crono_total_inicio_X:siguiente==='X'?ahora:null,
       crono_total_inicio_O:siguiente==='O'?ahora:null,
       turno_inicio_ts:ahora,
@@ -3909,27 +3911,17 @@ if(d.terminado && d.abandono && !d.fin_por_desconexion && d.abandono.abandonador
   }
   Juego.setUltimoEstado(d);
   try{ Estado.fromFirebase(d); Tablero.render(Estado.tablero,id=>{}); UI.actualizarPaneles(Estado); }catch(e){}
-  const ovAbandonoActual=document.getElementById('abandono-oponente-overlay');
-  const modalAbandonoVisible=!!(ovAbandonoActual && ovAbandonoActual.style.display==='flex');
-  if(!modalAbandonoVisible) UI.cerrarModal();
+  UI.cerrarModal();
   _ocultarConfirmacionNuevaPartida();
   _ocultarMaxNoNuevaPartida();
   UI.bloquearTablero(true);
   UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
   UI.bloquearBtns(['btn-abandonar'],false);
   const bAb=document.getElementById('btn-abandonar');
-  if(bAb){
-    bAb.disabled=false;bAb.style.opacity='';bAb.style.pointerEvents='auto';
-    bAb.dataset.salidaTrasAbandono='1';
-    bAb.onclick=()=>{
-      _salidaTrasAbandono=true;
-      if(window.Juego&&Juego.marcarSalidaTrasAbandono)Juego.marcarSalidaTrasAbandono();
-      if(window.Firebase&&Firebase.salirLocalTrasAbandono)Firebase.salirLocalTrasAbandono();
-    };
-  }
+  if(bAb){bAb.disabled=false;bAb.style.opacity='';bAb.style.pointerEvents='auto';}
   if(window._abandonoOponenteAvisoVisto!==d.abandono.ts){
-    window._abandonoOponenteAvisoVisto=d.abandono.ts;
     _mostrarModalOponenteAbandono(d.abandono.ts,_rol);
+    _abandonoOponenteAvisoVisto=d.abandono.ts;
   }
   return;
 }
