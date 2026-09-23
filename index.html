@@ -3,6 +3,7 @@
 © Junio 2026 - Santiago - Chile
 V32.2 · DESCONEXIÓN/RECONEXIÓN · FIX PRESENCIA
 V43 · MICRO-CIRUGÍA: distingue reclamo inválido antes/después de jugar
+V46 · MICRO-CIRUGÍA A + INDICADOR VISUAL DE LATENCIA POST-JUGADA
 Desarrollador: Pedro Alejandro Torres Guerrero
 Juego de Estrategia Mental: GATO CIRCULAR
 Todos los derechos reservados.
@@ -107,6 +108,17 @@ M3 · PANELES CSS — Laterales, botones, modal
 #turno-ficha.x{color:var(--red-g);text-shadow:0 0 14px var(--red)}
 #turno-ficha.o{color:var(--blue-g);text-shadow:0 0 14px var(--blue)}
 #turno-msg{font-size:12px;color:#999;letter-spacing:.5px;line-height:1.5}
+/* V46 · Indicador visual de la ventana de latencia post-jugada.
+   Es puramente cosmético: no escribe ni modifica el estado de Firebase. */
+#turno-latencia{display:none;flex-direction:column;align-items:center;justify-content:center;gap:3px;margin-top:7px;}
+#turno-latencia.visible{display:flex;}
+#turno-latencia-row{display:flex;align-items:center;justify-content:center;gap:8px;}
+#turno-latencia-icon{width:34px;height:34px;border:3px solid var(--blue-g);border-radius:50%;position:relative;box-shadow:0 0 10px rgba(68,204,255,.75);flex-shrink:0;}
+#turno-latencia-icon::before{content:'';position:absolute;width:2px;height:9px;background:var(--blue-g);left:50%;top:5px;transform:translateX(-50%);border-radius:2px;box-shadow:0 0 5px var(--blue-g);}
+#turno-latencia-icon::after{content:'';position:absolute;width:8px;height:2px;background:var(--blue-g);left:50%;top:50%;transform:translateY(-50%);border-radius:2px;box-shadow:0 0 5px var(--blue-g);}
+#turno-latencia-tiempo{font-family:'Orbitron',sans-serif;font-size:24px;font-weight:900;color:#00ff33;letter-spacing:1px;font-variant-numeric:tabular-nums;text-shadow:0 0 10px rgba(0,255,51,.55);min-width:78px;text-align:left;}
+#turno-latencia-text{font-size:11px;color:#ffdd00;line-height:1.25;max-width:155px;}
+#turno-latencia-text strong{color:#ffdd00;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:.5px;}
 .how-title{font-family:'Orbitron',sans-serif;font-size:13px;color:var(--red);text-align:center;margin-bottom:6px;letter-spacing:1px}
 .how-sub{font-size:12px;color:#bbb;text-align:center;margin-bottom:8px;line-height:1.4}
 .wtype{display:flex;align-items:center;gap:9px;margin-bottom:7px;padding:5px 7px;background:#1a1a1a;border-radius:5px}
@@ -492,6 +504,13 @@ font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;
 <div class="ptitle">TURNO ACTUAL</div>
 <div id="turno-ficha" class="x">X</div>
 <div id="turno-msg">Conectando...</div>
+<div id="turno-latencia" aria-live="polite">
+  <div id="turno-latencia-row">
+    <span id="turno-latencia-icon" aria-hidden="true"></span>
+    <span id="turno-latencia-tiempo">00:03</span>
+  </div>
+  <div id="turno-latencia-text">Tienes 3 segundos para<br><strong>RECLAMAR VICTORIA</strong><br>si corresponde.</div>
+</div>
 </div>
 </aside>
 <!-- M2 · TABLERO HTML -->
@@ -930,6 +949,26 @@ const tf=$('turno-ficha');
 if(tf){tf.textContent=e.turno; tf.className=e.turno.toLowerCase();}
 }
 function setMsg(msg)    { const el=$('turno-msg'); if(el) el.textContent=msg; }
+// V46: presentación sincronizada con los timestamps compartidos de Firebase.
+function actualizarLatenciaVisual(d){
+  const box=$('turno-latencia'), tiempo=$('turno-latencia-tiempo');
+  if(!box||!tiempo) return;
+  if(!d || d.fase!=='jugando' || !d.latencia_jugada_activa || !d.latencia_jugada_ts){
+    box.classList.remove('visible');
+    return;
+  }
+  const ts=Number(d.latencia_jugada_ts||0);
+  const ms=Number(d.latencia_jugada_ms||3000);
+  const restante=Math.max(0,ms-(Date.now()-ts));
+  const segundos=Math.max(0,Math.ceil(restante/1000));
+  tiempo.textContent='00:'+String(segundos).padStart(2,'0');
+  box.classList.add('visible');
+  
+}
+function ocultarLatenciaVisual(){
+  const box=$('turno-latencia');
+  if(box) box.classList.remove('visible','urgente');
+}
 function setStats(vX,vO){ $('stat-x').textContent=vX; $('stat-o').textContent=vO; }
 let _cb=null;
 function modal(t,b,btn='ACEPTAR',cb=null){
@@ -971,7 +1010,7 @@ $('lp-crear').style.display=p==='crear'?'':'none';
 $('lp-unirse').style.display=p==='unirse'?'':'none';
 }
 function lobbyVisible(v){ const el=$('lobby-overlay'); if(el) el.style.display=v?'flex':'none'; }
-return {actualizarPaneles,setMsg,setStats,modal,cerrarModal,initModal,
+return {actualizarPaneles,setMsg,actualizarLatenciaVisual,ocultarLatenciaVisual,setStats,modal,cerrarModal,initModal,
 bloquearTablero,bloquearBtns,bannerReclamo,indicadorOnline,lobbyPaso,lobbyVisible};
 })();
 /* ═══════════════════════════════════════════════════════
@@ -1353,6 +1392,7 @@ _dispatchFase(d, miRol);
 });
 return;
 }
+UI.actualizarLatenciaVisual(d);
 _dispatchFase(d, miRol);
 if(typeof window._revisarNuevaPartida === 'function') window._revisarNuevaPartida(d, miRol);
 }
@@ -1942,6 +1982,7 @@ const reclamoConsumido = d.reclamo_consumido_rol === miRol &&
   Number(d.reclamo_consumido_jugadas ?? -1) === Number(d.jugadas ?? -2);
 const latenciaActiva = !!d.latencia_jugada_activa;
 const esRolLatencia = latenciaActiva && d.latencia_jugada_rol === miRol;
+UI.actualizarLatenciaVisual(d);
 const turnoBloqueadoPorReclamoInvalido = d.turno_bloqueado_reclamo_invalido_rol === miRol &&
   Number(d.turno_bloqueado_reclamo_invalido_jugadas ?? -1) === Number(d.jugadas ?? -2);
 const reclamoInvalidoSinJugada = d.reclamo_invalido_sin_jugada_rol === miRol &&
@@ -2014,7 +2055,7 @@ if(latenciaActiva){
   // El jugador que acaba de mover conserva únicamente la posibilidad de
   // reclamar victoria por la jugada recién realizada.
   UI.bloquearTablero(true);
-  UI.setMsg(esRolLatencia ? 'Jugada realizada. Tienes unos segundos para reclamar victoria si corresponde.' : 'Esperando la entrega del turno...');
+  UI.setMsg(esRolLatencia ? 'Jugada realizada.' : 'Esperando la entrega del turno...');
 }else{
   UI.bloquearTablero(!puedeJugar);
   UI.setMsg(puedeJugar
@@ -4331,7 +4372,8 @@ if(snapEstado.reclamante !== Firebase.getMiRol()) return;
 if(Reclamo.isActivo()){
 Reclamo.desactivar();
 await Firebase.cancelarReclamo();
-UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+// V46 Microcirugía A: cancelar consume el reclamo. No reactivar RECLAMAR
+// localmente; el snapshot de Firebase decide cuándo vuelve a estar disponible.
 }
 return;
 }else if(snapEstado.fase!=='jugando'){
@@ -4343,7 +4385,7 @@ Reclamo.desactivar();
 if(enPrioridad){ await Firebase.lineaInvalidaPrioridad(); }
 else{
 await Firebase.cancelarReclamo();
-UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+// V46 Microcirugía A: tampoco reactivar RECLAMAR tras cancelar.
 }
 return;
 }
@@ -4354,7 +4396,11 @@ UI.modal('Muy pronto','Aún no tienes suficientes fichas en el tablero.'); retur
 }
 if(!enPrioridad){
   const pub=await Firebase.publicarReclamo(fichasPropias);
-  if(!pub || pub.ok===false){ if(pub?.msg) UI.modal('Reclamo no disponible',pub.msg); return; }
+  if(!pub || pub.ok===false){
+  // V46 Microcirugía A: validación interna intacta; no mostrar el modal
+  // redundante "Reclamo no disponible".
+  return;
+}
 }
 Reclamo.init(miRolActual);
 Reclamo.activar(fichasPropias);
@@ -4388,6 +4434,16 @@ UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
 }
 }
 };
+// V46 · reloj visual local de 3 s. La cuenta se calcula desde el timestamp
+// compartido; no altera Firebase y no participa en la transición de turnos.
+if(!window._turnoLatenciaVisualTimer){
+  window._turnoLatenciaVisualTimer=setInterval(()=>{
+    try{
+      const d=(typeof Juego!=='undefined' && Juego.getUltimoEstado)?Juego.getUltimoEstado():null;
+      UI.actualizarLatenciaVisual(d);
+    }catch(e){}
+  },100);
+}
 // Clic sobre el overlay en modo reclamo (detección geométrica)
 $('tablero-block').addEventListener('click', e=>{
 if(!Reclamo.isActivo()) return;
