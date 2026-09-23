@@ -3,7 +3,7 @@
 © Junio 2026 - Santiago - Chile
 V32.2 · DESCONEXIÓN/RECONEXIÓN · FIX PRESENCIA
 V43 · MICRO-CIRUGÍA: distingue reclamo inválido antes/después de jugar
-V46 · MICRO-CIRUGÍA A + INDICADOR VISUAL DE LATENCIA POST-JUGADA
+V47 · MICRO-CIRUGÍA ABANDONO + PANEL FIJO DE LATENCIA
 Desarrollador: Pedro Alejandro Torres Guerrero
 Juego de Estrategia Mental: GATO CIRCULAR
 Todos los derechos reservados.
@@ -103,22 +103,27 @@ M3 · PANELES CSS — Laterales, botones, modal
 .fichas-lbl{font-size:13px;letter-spacing:1px;color:#aaa;font-weight:700;text-align:center}
 .fichas-n{font-family:'Orbitron',sans-serif;font-size:22px;font-weight:700;text-align:center}
 .fichas-n.x{color:var(--red)}.fichas-n.o{color:var(--blue)}
-#turno-panel{text-align:center}
+#turno-panel{text-align:center;height:190px;min-height:190px;display:flex;flex-direction:column;align-items:center;}
 #turno-ficha{font-family:'Orbitron',sans-serif;font-size:38px;font-weight:900;margin:4px 0;transition:color .3s,text-shadow .3s}
 #turno-ficha.x{color:var(--red-g);text-shadow:0 0 14px var(--red)}
 #turno-ficha.o{color:var(--blue-g);text-shadow:0 0 14px var(--blue)}
-#turno-msg{font-size:12px;color:#999;letter-spacing:.5px;line-height:1.5}
-/* V46 · Indicador visual de la ventana de latencia post-jugada.
-   Es puramente cosmético: no escribe ni modifica el estado de Firebase. */
-#turno-latencia{display:none;flex-direction:column;align-items:center;justify-content:center;gap:3px;margin-top:7px;}
-#turno-latencia.visible{display:flex;}
+#turno-msg{font-size:12px;color:#999;letter-spacing:.5px;line-height:1.5;min-height:18px}
+/* V47 · Panel fijo: la información de latencia siempre ocupa el mismo espacio.
+   Inactivo = neutro; latencia activa = iluminación neón. No modifica Firebase. */
+#turno-latencia{display:flex;visibility:visible;opacity:.72;flex-direction:column;align-items:center;justify-content:center;gap:3px;margin-top:7px;min-height:76px;width:100%;transition:opacity .25s,filter .25s;}
+#turno-latencia.active{opacity:1;filter:brightness(1.08);}
 #turno-latencia-row{display:flex;align-items:center;justify-content:center;gap:8px;}
-#turno-latencia-icon{width:34px;height:34px;border:3px solid var(--blue-g);border-radius:50%;position:relative;box-shadow:0 0 10px rgba(68,204,255,.75);flex-shrink:0;}
-#turno-latencia-icon::before{content:'';position:absolute;width:2px;height:9px;background:var(--blue-g);left:50%;top:5px;transform:translateX(-50%);border-radius:2px;box-shadow:0 0 5px var(--blue-g);}
-#turno-latencia-icon::after{content:'';position:absolute;width:8px;height:2px;background:var(--blue-g);left:50%;top:50%;transform:translateY(-50%);border-radius:2px;box-shadow:0 0 5px var(--blue-g);}
-#turno-latencia-tiempo{font-family:'Orbitron',sans-serif;font-size:24px;font-weight:900;color:#00ff33;letter-spacing:1px;font-variant-numeric:tabular-nums;text-shadow:0 0 10px rgba(0,255,51,.55);min-width:78px;text-align:left;}
-#turno-latencia-text{font-size:11px;color:#ffdd00;line-height:1.25;max-width:155px;}
-#turno-latencia-text strong{color:#ffdd00;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:.5px;}
+#turno-latencia-icon{width:34px;height:34px;border:3px solid #777;border-radius:50%;position:relative;box-shadow:none;flex-shrink:0;transition:border-color .25s,box-shadow .25s,filter .25s;}
+#turno-latencia-icon::before{content:'';position:absolute;width:2px;height:9px;background:#777;left:50%;top:5px;transform:translateX(-50%);border-radius:2px;box-shadow:none;transition:background .25s,box-shadow .25s;}
+#turno-latencia-icon::after{content:'';position:absolute;width:8px;height:2px;background:#777;left:50%;top:50%;transform:translateY(-50%);border-radius:2px;box-shadow:none;transition:background .25s,box-shadow .25s;}
+#turno-latencia-tiempo{font-family:'Orbitron',sans-serif;font-size:24px;font-weight:900;color:#777;letter-spacing:1px;font-variant-numeric:tabular-nums;text-shadow:none;min-width:78px;text-align:left;transition:color .25s,text-shadow .25s;}
+#turno-latencia-text{font-size:11px;color:#bdbdbd;line-height:1.25;max-width:155px;transition:color .25s,text-shadow .25s;}
+#turno-latencia-text strong{color:#bdbdbd;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:.5px;transition:color .25s,text-shadow .25s;}
+#turno-latencia.active #turno-latencia-icon{border-color:var(--blue-g);box-shadow:0 0 10px rgba(68,204,255,.85);filter:brightness(1.08);}
+#turno-latencia.active #turno-latencia-icon::before,#turno-latencia.active #turno-latencia-icon::after{background:var(--blue-g);box-shadow:0 0 5px var(--blue-g);}
+#turno-latencia.active #turno-latencia-tiempo{color:#00ff33;text-shadow:0 0 10px rgba(0,255,51,.7);}
+#turno-latencia.active #turno-latencia-text,#turno-latencia.active #turno-latencia-text strong{color:#ffdd00;text-shadow:0 0 7px rgba(255,221,0,.7);}
+
 .how-title{font-family:'Orbitron',sans-serif;font-size:13px;color:var(--red);text-align:center;margin-bottom:6px;letter-spacing:1px}
 .how-sub{font-size:12px;color:#bbb;text-align:center;margin-bottom:8px;line-height:1.4}
 .wtype{display:flex;align-items:center;gap:9px;margin-bottom:7px;padding:5px 7px;background:#1a1a1a;border-radius:5px}
@@ -953,8 +958,10 @@ function setMsg(msg)    { const el=$('turno-msg'); if(el) el.textContent=msg; }
 function actualizarLatenciaVisual(d){
   const box=$('turno-latencia'), tiempo=$('turno-latencia-tiempo');
   if(!box||!tiempo) return;
-  if(!d || d.fase!=='jugando' || !d.latencia_jugada_activa || !d.latencia_jugada_ts){
-    box.classList.remove('visible');
+  const activa=!!(d && d.fase==='jugando' && d.latencia_jugada_activa && d.latencia_jugada_ts);
+  if(!activa){
+    tiempo.textContent='00:00';
+    box.classList.remove('active');
     return;
   }
   const ts=Number(d.latencia_jugada_ts||0);
@@ -962,12 +969,13 @@ function actualizarLatenciaVisual(d){
   const restante=Math.max(0,ms-(Date.now()-ts));
   const segundos=Math.max(0,Math.ceil(restante/1000));
   tiempo.textContent='00:'+String(segundos).padStart(2,'0');
-  box.classList.add('visible');
-  
+  box.classList.add('active');
 }
 function ocultarLatenciaVisual(){
   const box=$('turno-latencia');
-  if(box) box.classList.remove('visible','urgente');
+  const tiempo=$('turno-latencia-tiempo');
+  if(box) box.classList.remove('active');
+  if(tiempo) tiempo.textContent='00:00';
 }
 function setStats(vX,vO){ $('stat-x').textContent=vX; $('stat-o').textContent=vO; }
 let _cb=null;
@@ -4070,6 +4078,10 @@ if(_sessionId && ((d.sesionX===_sessionId)||(d.sesionO===_sessionId))) _guardarS
 // cola de estados, por el modal de Nueva Partida ni por el renderer terminal.
 // Los finales por desconexión conservan su máquina específica de ACK/resultado.
 if(d.terminado && d.abandono && !d.fin_por_desconexion && d.abandono.abandonador!==_rol){
+  // V47: abandono del oponente es terminal y debe congelar inmediatamente
+  // todos los cronómetros locales. Además, NO cerramos el modal en cada
+  // snapshot posterior: antes podía mostrarse una vez y desaparecer en el
+  // siguiente snapshot mientras el estado de abandono seguía vigente.
   if(!_iniciado){
     _iniciado=true;
     try{ Reclamo.init(_rol); }catch(e){}
@@ -4077,7 +4089,9 @@ if(d.terminado && d.abandono && !d.fin_por_desconexion && d.abandono.abandonador
   }
   Juego.setUltimoEstado(d);
   try{ Estado.fromFirebase(d); Tablero.render(Estado.tablero,id=>{}); UI.actualizarPaneles(Estado); }catch(e){}
-  UI.cerrarModal();
+  try{ Cronometro.detener(); EmpateFlow.detenerCronometroPrioridad(); }catch(e){}
+  if(window._latenciaJugadaTimer){ clearTimeout(window._latenciaJugadaTimer); window._latenciaJugadaTimer=null; }
+  UI.ocultarLatenciaVisual();
   _ocultarConfirmacionNuevaPartida();
   _ocultarMaxNoNuevaPartida();
   UI.bloquearTablero(true);
@@ -4085,7 +4099,14 @@ if(d.terminado && d.abandono && !d.fin_por_desconexion && d.abandono.abandonador
   UI.bloquearBtns(['btn-abandonar'],false);
   const bAb=document.getElementById('btn-abandonar');
   if(bAb){bAb.disabled=false;bAb.style.opacity='';bAb.style.pointerEvents='auto';}
+  UI.setMsg(d.abandono.ganador===_rol
+    ? 'Tu oponente abandonó. Eres el ganador. Puedes estudiar las jugadas o abandonar la partida.'
+    : 'Tu oponente abandonó. El resultado original se conserva. Puedes estudiar las jugadas o abandonar la partida.');
   if(window._abandonoOponenteAvisoVisto!==d.abandono.ts){
+    // Solo el primer snapshot del abandono abre/cierra otros modales.
+    // Los snapshots posteriores dejan intacto el modal visible.
+    UI.cerrarModal();
+    _ocultarModalOponenteAbandono();
     _mostrarModalOponenteAbandono(d.abandono.ts,_rol);
     _abandonoOponenteAvisoVisto=d.abandono.ts;
   }
@@ -4434,7 +4455,7 @@ UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
 }
 }
 };
-// V46 · reloj visual local de 3 s. La cuenta se calcula desde el timestamp
+// V47 · reloj visual local de 3 s. La cuenta se calcula desde el timestamp
 // compartido; no altera Firebase y no participa en la transición de turnos.
 if(!window._turnoLatenciaVisualTimer){
   window._turnoLatenciaVisualTimer=setInterval(()=>{
