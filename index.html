@@ -2,7 +2,7 @@
 =======================================================================
 © Junio 2026 - Santiago - Chile
 V32.2 · DESCONEXIÓN/RECONEXIÓN · FIX PRESENCIA
-V42 · MICRO-CIRUGÍA: reclamo inválido bloquea nuevas jugadas hasta cambio de turno
+V43 · MICRO-CIRUGÍA: distingue reclamo inválido antes/después de jugar
 Desarrollador: Pedro Alejandro Torres Guerrero
 Juego de Estrategia Mental: GATO CIRCULAR
 Todos los derechos reservados.
@@ -1933,7 +1933,9 @@ const latenciaActiva = !!d.latencia_jugada_activa;
 const esRolLatencia = latenciaActiva && d.latencia_jugada_rol === miRol;
 const turnoBloqueadoPorReclamoInvalido = d.turno_bloqueado_reclamo_invalido_rol === miRol &&
   Number(d.turno_bloqueado_reclamo_invalido_jugadas ?? -1) === Number(d.jugadas ?? -2);
-const puedeReclamar = d.turno === miRol && !reclamoConsumido && !turnoBloqueadoPorReclamoInvalido;
+const reclamoInvalidoSinJugada = d.reclamo_invalido_sin_jugada_rol === miRol &&
+  Number(d.reclamo_invalido_sin_jugada_jugadas ?? -1) === Number(d.jugadas ?? -2);
+const puedeReclamar = d.turno === miRol && !reclamoConsumido && !turnoBloqueadoPorReclamoInvalido && !reclamoInvalidoSinJugada;
 UI.bloquearBtns(['btn-reclamar','btn-confirmar'],!puedeReclamar);
 UI.bloquearBtns(['btn-abandonar'],false);
 // Limpiar amarillos residuales antes de pintar los nuevos
@@ -1995,7 +1997,7 @@ UI.bloquearTablero(true);
 return;
 }
 const esMio = d.turno === miRol;
-const puedeJugar = esMio && !turnoBloqueadoPorReclamoInvalido;
+const puedeJugar = esMio && (!turnoBloqueadoPorReclamoInvalido || reclamoInvalidoSinJugada);
 if(latenciaActiva){
   // Durante la latencia post-jugada nadie puede colocar otra ficha.
   // El jugador que acaba de mover conserva únicamente la posibilidad de
@@ -2005,7 +2007,9 @@ if(latenciaActiva){
 }else{
   UI.bloquearTablero(!puedeJugar);
   UI.setMsg(puedeJugar
-    ? '¡ES TU TURNO! Haz clic en una casilla.'
+    ? (reclamoInvalidoSinJugada
+      ? 'Reclamo inválido: todavía puedes realizar tu jugada. Después, el turno pasará al oponente.'
+      : '¡ES TU TURNO! Haz clic en una casilla.')
     : (turnoBloqueadoPorReclamoInvalido
       ? 'Reclamo inválido: ya no puedes colocar otra ficha en este turno. Espera al cambio de turno.'
       : 'Esperando jugada del oponente...'));
@@ -2706,7 +2710,7 @@ ultimo_sorteo:null,sorteo_id:null,sorteo_usado:false,victoriasX:0,victoriasO:0,e
 crono_modo:'clasico', partida_iniciada:false, inicio_partida_ts:null, inicio_propuesto:null, turno_inicio_ts:null, crono_totalX:null, crono_totalO:null,fin_por_desconexion:false,
 nueva_partida_no_count:0, nueva_partida_max_alert:null, nueva_partida_solicitud:null,
 latencia_jugada_activa:false,latencia_jugada_rol:null,latencia_jugada_ts:null,latencia_jugada_ms:3000,
-turno_bloqueado_reclamo_invalido_rol:null,turno_bloqueado_reclamo_invalido_jugadas:null,
+turno_bloqueado_reclamo_invalido_rol:null,turno_bloqueado_reclamo_invalido_jugadas:null,reclamo_invalido_sin_jugada_rol:null,reclamo_invalido_sin_jugada_jugadas:null,
 abandono:null,cancelada_preinicio:null,desconexion_pendiente:null,ultima_reconexion:null,
 pausa_activa:false, pausa_inicio_ts:null,pausa_propuesta:null,reanudar_propuesta:null,
 crono_total_inicio_X:null,crono_total_inicio_O:null
@@ -2795,7 +2799,8 @@ const snap=await get(_salaRef); if(!snap.exists()) return;
 const d=snap.val(), t=Estado.tableroCompleto();
 _guardarSesion();
 const turnoBloqueadoPorReclamoInvalido = d.turno_bloqueado_reclamo_invalido_rol===_rol && Number(d.turno_bloqueado_reclamo_invalido_jugadas ?? -1)===Number(d.jugadas ?? -2);
-if(d.terminado||d.fase!=='jugando'||t[id]!==null||d.turno!==_rol||turnoBloqueadoPorReclamoInvalido) return;
+const reclamoInvalidoPreJugada = d.reclamo_invalido_sin_jugada_rol===_rol && Number(d.reclamo_invalido_sin_jugada_jugadas ?? -1)===Number(d.jugadas ?? -2);
+if(d.terminado||d.fase!=='jugando'||t[id]!==null||d.turno!==_rol||(turnoBloqueadoPorReclamoInvalido && !reclamoInvalidoPreJugada)) return;
 t[id]=_rol; UI.bloquearTablero(true);
 // Descontar el tiempo realmente transcurrido en este turno del total
 // del jugador que acaba de mover (cronómetro compartido por timestamp)
@@ -2805,6 +2810,10 @@ let nuevoTotalX=d.crono_totalX,nuevoTotalO=d.crono_totalO;
 if(cfgModo&&cfgModo.total>0&&d.turno_inicio_ts){const elapsed=Math.max(0,(ahoraJugada-d.turno_inicio_ts)/1000);if(_rol==='X')nuevoTotalX=Math.max(0,(d.crono_totalX??cfgModo.total)-elapsed);else nuevoTotalO=Math.max(0,(d.crono_totalO??cfgModo.total)-elapsed);}
 const siguienteRol=_rol==='X'?'O':'X';
 const latenciaMs=3000;
+if(reclamoInvalidoPreJugada){
+  await update(_salaRef,{tablero:t,turno:siguienteRol,fase:'jugando',jugadas:(d.jugadas||0)+1,fichasX:_rol==='X'?(d.fichasX??16)-1:(d.fichasX??16),fichasO:_rol==='O'?(d.fichasO??16)-1:(d.fichasO??16),crono_totalX:nuevoTotalX,crono_totalO:nuevoTotalO,reclamo_invalido_sin_jugada_rol:null,reclamo_invalido_sin_jugada_jugadas:null,turno_bloqueado_reclamo_invalido_rol:null,turno_bloqueado_reclamo_invalido_jugadas:null,latencia_jugada_activa:false,latencia_jugada_rol:null,latencia_jugada_ts:null,latencia_jugada_ms:latenciaMs,crono_total_inicio_X:siguienteRol==='X'?ahoraJugada:null,crono_total_inicio_O:siguienteRol==='O'?ahoraJugada:null,turno_inicio_ts:ahoraJugada,crono_turno_forzado:ahoraJugada});
+  return;
+}
 await update(_salaRef,{tablero:t,turno:_rol,fase:'jugando',jugadas:(d.jugadas||0)+1,fichasX:_rol==='X'?(d.fichasX??16)-1:(d.fichasX??16),fichasO:_rol==='O'?(d.fichasO??16)-1:(d.fichasO??16),crono_totalX:nuevoTotalX,crono_totalO:nuevoTotalO,
 reclamo_consumido_rol:null,reclamo_consumido_jugadas:null,
 crono_total_inicio_X:null,crono_total_inicio_O:null,turno_inicio_ts:ahoraJugada,
@@ -2825,7 +2834,8 @@ if(yaConsumido){
   return {ok:false,msg:'Ya utilizaste tu reclamo de victoria en este turno.'};
 }
 const turnoBloqueadoPorReclamoInvalido = d.turno_bloqueado_reclamo_invalido_rol===_rol && Number(d.turno_bloqueado_reclamo_invalido_jugadas ?? -1)===Number(d.jugadas ?? -2);
-if(turnoBloqueadoPorReclamoInvalido){
+const reclamoInvalidoPreJugada = d.reclamo_invalido_sin_jugada_rol===_rol && Number(d.reclamo_invalido_sin_jugada_jugadas ?? -1)===Number(d.jugadas ?? -2);
+if(turnoBloqueadoPorReclamoInvalido || reclamoInvalidoPreJugada){
   return {ok:false,msg:'Tu reclamo fue invalidado. Debes esperar a que termine este turno.'};
 }
 const ahora=Date.now();
@@ -2918,17 +2928,22 @@ resultado_reclamo_ack_X:false,resultado_reclamo_ack_O:false,
 reclamo_consumido_rol:reclamoRol,reclamo_consumido_jugadas:reclamoTurnoJugadas
 }, pen.cambios, reanudo));
 } else {
-await update(_salaRef,Object.assign({fase:'jugando',reclamante:null,reclamo_fichas:null,
+const reclamoFueDespuesDeJugada = !!d.latencia_jugada_activa && d.latencia_jugada_rol===reclamoRol;
+const siguienteRol=reclamoRol==='X'?'O':'X';
+const ahoraInvalido=Date.now();
+const cambiosInvalido={fase:'jugando',reclamante:null,reclamo_fichas:null,
 fichas_marcadas_reclamo:null, resultado_reclamo:resultado,
 resultado_reclamo_ack_X:false,resultado_reclamo_ack_O:false,
 reclamo_consumido_rol:reclamoRol,reclamo_consumido_jugadas:reclamoTurnoJugadas,
-// V42 · MICRO-CIRUGÍA: un reclamo inválido consume también el derecho a
-// colocar otra ficha durante el resto del mismo turno. El turno NO cambia aquí;
-// el bloqueo se mantiene hasta que resolverLatenciaJugada/otro cambio de turno
-// entregue el turno al rival.
-turno_bloqueado_reclamo_invalido_rol:reclamoRol,
-turno_bloqueado_reclamo_invalido_jugadas:reclamoTurnoJugadas,
-latencia_jugada_activa:false,latencia_jugada_rol:null,latencia_jugada_ts:null}, reanudo, pen.cambios));
+turno_bloqueado_reclamo_invalido_rol:null,
+turno_bloqueado_reclamo_invalido_jugadas:null,
+reclamo_invalido_sin_jugada_rol:reclamoFueDespuesDeJugada?null:reclamoRol,
+reclamo_invalido_sin_jugada_jugadas:reclamoFueDespuesDeJugada?null:reclamoTurnoJugadas,
+latencia_jugada_activa:false,latencia_jugada_rol:null,latencia_jugada_ts:null};
+if(reclamoFueDespuesDeJugada){
+  Object.assign(cambiosInvalido,{turno:siguienteRol,turno_inicio_ts:ahoraInvalido,crono_turno_forzado:ahoraInvalido,crono_total_inicio_X:siguienteRol==='X'?ahoraInvalido:null,crono_total_inicio_O:siguienteRol==='O'?ahoraInvalido:null});
+}
+await update(_salaRef,Object.assign(cambiosInvalido,reanudo,pen.cambios));
 }
 },
 async nuevaPartida(){
@@ -2946,7 +2961,7 @@ desconexionesX:0,desconexionesO:0,
 crono_modo:d.crono_modo||'clasico', partida_iniciada:false, inicio_partida_ts:null, inicio_propuesto:null, crono_turno_forzado:null,
 turno_inicio_ts:null, crono_totalX:null, crono_totalO:null,crono_total_inicio_X:null,crono_total_inicio_O:null,
 latencia_jugada_activa:false,latencia_jugada_rol:null,latencia_jugada_ts:null,latencia_jugada_ms:3000,
-turno_bloqueado_reclamo_invalido_rol:null,turno_bloqueado_reclamo_invalido_jugadas:null,
+turno_bloqueado_reclamo_invalido_rol:null,turno_bloqueado_reclamo_invalido_jugadas:null,reclamo_invalido_sin_jugada_rol:null,reclamo_invalido_sin_jugada_jugadas:null,
 pausa_activa:false,pausa_solicitada:null,pausa_reanudar:null,pausa_inicio_ts:null,pausa_propuesta:null,reanudar_propuesta:null,
 fin_por_tiempo:false,fin_por_desconexion:false,post_desconexion:null,empate_final_motivo:null,
 tc_decision:null, tc_inicio:null, tc_decision_final:null, tc_resolucion_ts:null, resultado_reclamo:null, resultado_reclamo_ack_X:false,resultado_reclamo_ack_O:false,reclamo_consumido_rol:null,reclamo_consumido_jugadas:null, empate_final_ack_X:false,empate_final_ack_O:false,empate_final_motivo:null,
