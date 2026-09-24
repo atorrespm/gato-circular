@@ -2834,8 +2834,12 @@ const snap=await get(ref(db,'salas/'+ses.sala));
 if(!snap.exists()){_borrarSesion();return {ok:false,msg:'La sala ya no existe.'};}
 const d=snap.val();
 if(d.sesionX!==ses.sessionId && d.sesionO!==ses.sessionId){_borrarSesion();return {ok:false,msg:'Esta sesión ya no corresponde a esa partida.'};}
-// V44: el abandono cierra el vínculo de reconexión de ambos jugadores.
-if(d.abandono){_borrarSesion();return {ok:false,msg:'La partida anterior ya fue cerrada por abandono. Puedes iniciar una nueva partida.'};}
+// V49: un abandono posterior a un resultado definitivo por desconexión
+// no cierra el acceso histórico del jugador que aún conserva su sesión.
+// Ese jugador puede volver al tablero en modo solo lectura y salir limpiamente
+// mediante ABANDONAR, mientras la sesión no haya caducado.
+const abandonoCierraReconexion = !!d.abandono && !(d.terminado===true && d.fin_por_desconexion && d.ganador && d.fin_sesion!==true);
+if(abandonoCierraReconexion){_borrarSesion();return {ok:false,msg:'La partida anterior ya fue cerrada por abandono. Puedes iniciar una nueva partida.'};}
 if(d.fin_sesion===true){_borrarSesion();return {ok:false,msg:'La sesión ya terminó.'};}
 // V32.3.15: una partida terminada NO implica necesariamente el fin de la sesión.
 // Se permite retomar una partida histórica pendiente de sesión, incluso si el
@@ -4260,11 +4264,13 @@ if(_sesionPendienteInicial && _sesionPendienteInicial.sala && _sesionPendienteIn
     const corresponde=d && (d.sesionX===_sesionPendienteInicial.sessionId || d.sesionO===_sesionPendienteInicial.sessionId);
     // V32.3.15: puede existir una partida terminada con resultado, pero la sesión
     // seguir abierta. También puede existir abandono posterior del ganador.
-    // V44: una sala con abandono registrado ya no es una partida reconectable.
-    // Si el navegador se cerró después de que el rival abandonó, conservar la
-    // sesión local provocaba el bucle RETOMAR -> tablero histórico -> sin salida.
-    // Se limpia aquí y el usuario vuelve directamente al lobby limpio.
-    const salaAbandonada=!!(d && d.abandono);
+    // V49: regla histórica de partida terminada por desconexión.
+    // Si la partida ya terminó por desconexión y el oponente abandonó
+    // posteriormente, ese abandono NO elimina el derecho del otro jugador a
+    // regresar al tablero histórico mientras su sesión siga vigente.
+    // En cambio, un abandono que no pertenece a una partida terminal por
+    // desconexión continúa cerrando el vínculo de reconexión.
+    const salaAbandonada=!!(d && d.abandono) && !(d && d.terminado && d.fin_por_desconexion && d.ganador);
     const pendiente=!caducada && corresponde && !salaAbandonada && !d.fin_sesion && (!d.terminado || !!d.ganador);
     if(pendiente){
       if(rb) rb.style.display='block';
