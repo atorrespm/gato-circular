@@ -1166,11 +1166,15 @@ async function procesarTerminalDesconexion(d, miRol){
     // V56: una entrada histórica es estrictamente de solo lectura. No se
     // ofrecen NUEVA PARTIDA ni INICIAR PARTIDA; ABANDONAR es la única salida.
     if(_modoHistoricoDesconexion){
-      if(bn){bn.disabled=true;bn.style.opacity='0.4';bn.style.pointerEvents='none';}
+      // V57: en histórico estos controles no solo deben ser inertes; deben
+      // dejar visualmente claro que esta partida es de SOLO LECTURA.
+      if(bn){bn.disabled=true;bn.style.opacity='0.35';bn.style.pointerEvents='none';bn.style.display='none';}
       if(wrap) wrap.style.display='none';
       const selHistorico=document.getElementById('crono-modo-selector'); if(selHistorico) selHistorico.style.display='none';
       UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar','btn-nueva','btn-iniciar-partida'],true);
       UI.bloquearBtns(['btn-abandonar'],false);
+      const baHistorico=document.getElementById('btn-abandonar');
+      if(baHistorico){baHistorico.disabled=false;baHistorico.style.opacity='';baHistorico.style.pointerEvents='auto';baHistorico.style.display='';baHistorico.dataset.salidaHistorica='1';}
       UI.setMsg('Partida histórica — solo lectura. Puedes revisar la partida y ABANDONAR cuando termines.');
     }
     if(typeof bloquearSelectorModo==='function') bloquearSelectorModo(true);
@@ -1188,6 +1192,18 @@ async function procesarTerminalDesconexion(d, miRol){
     try{ Firebase.salirLocalTrasAbandono(); }catch(e){}
     return;
   }
+
+  // V57: en modo histórico, `abandono` es un REGISTRO HISTÓRICO y no
+  // significa que el oponente siga fuera del tablero. Para saber si el aviso
+  // de abandono corresponde AHORA, usamos exclusivamente la presencia actual.
+  const oponenteActualmenteConectado=!!(
+    d.conexion && d.conexion[otro] && d.conexion[otro].online===true
+  );
+  const abandonoOponenteActual=!!(
+    d.abandono &&
+    d.abandono.abandonador!==miRol &&
+    (!_modoHistoricoDesconexion || !oponenteActualmenteConectado)
+  );
 
   const nombreGanador=d.ganador==='X'?'Jugador 1 (X)':'Jugador 2 (O)';
   const nombreDesconectado=d.ganador==='X'?'Jugador 2 (O)':'Jugador 1 (X)';
@@ -1210,7 +1226,7 @@ async function procesarTerminalDesconexion(d, miRol){
   }
 
   const mostrarAbandonoOponente=()=>{
-    if(d.abandono && d.abandono.abandonador!==miRol && _abandonoOponenteAvisoVisto!==d.abandono.ts){
+    if(abandonoOponenteActual && _abandonoOponenteAvisoVisto!==d.abandono.ts){
       _abandonoOponenteAvisoVisto=d.abandono.ts;
       UI.modal('🚪 TU OPONENTE ACABA DE ABANDONAR EL TABLERO','Tu oponente ya abandonó el tablero. Puedes estudiar las jugadas previas y, cuando termines, pulsar ABANDONAR PARTIDA para volver al lobby.','ACEPTAR',()=>{
         UI.bloquearTablero(true); UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true); UI.bloquearBtns(['btn-abandonar'],false);
@@ -1231,7 +1247,7 @@ async function procesarTerminalDesconexion(d, miRol){
     else tituloResultado='📡 POR DESCONEXIÓN';
     UI.modal(tituloResultado,textoResultado,'ACEPTAR',async()=>{
       try{ await update(_salaRef,{['post_desconexion/resultado_ack/'+miRol]:true}); }catch(e){}
-      if(d.abandono && d.abandono.abandonador!==miRol) setTimeout(()=>mostrarAbandonoOponente(),0);
+      if(abandonoOponenteActual) setTimeout(()=>mostrarAbandonoOponente(),0);
     });
     return;
   }
@@ -1241,7 +1257,7 @@ async function procesarTerminalDesconexion(d, miRol){
   if(!yoAck) return;
 
   // 2) ABANDONO POSTERIOR: siempre tiene prioridad sobre Nueva Partida.
-  if(d.abandono && d.abandono.abandonador!==miRol){ mostrarAbandonoOponente(); return; }
+  if(abandonoOponenteActual){ mostrarAbandonoOponente(); return; }
 
   // V32.3.36 — UNA SOLICITUD DE NUEVA PARTIDA DEBE SER VISIBLE EN AMBOS
   // CLIENTES, INCLUIDO EL JUGADOR QUE REGRESÓ TRAS LA DESCONEXIÓN.
@@ -4440,6 +4456,7 @@ function instalarHandlerAbandonarGeneral(){
     // Salidas históricas o después del abandono del oponente: son salidas
     // locales de solo lectura. No escribimos un segundo abandono.
     const salidaDirecta=!!(
+      (window.Juego&&typeof Juego.isModoHistoricoDesconexion==='function'&&Juego.isModoHistoricoDesconexion()) ||
       (window.Juego&&typeof Juego.isSalidaTrasAbandono==='function'&&Juego.isSalidaTrasAbandono()) ||
       btn.dataset.salidaTrasAbandono==='1' ||
       btn.dataset.salidaHistorica==='1' ||
@@ -4450,7 +4467,10 @@ function instalarHandlerAbandonarGeneral(){
     if(salidaDirecta){
       _ocultarModalOponenteAbandono();
       if(window.Juego&&typeof Juego.marcarSalidaTrasAbandono==='function') Juego.marcarSalidaTrasAbandono();
-      if(window.Firebase&&typeof Firebase.salirLocalTrasAbandono==='function') await Firebase.salirLocalTrasAbandono();
+      if(window.Firebase&&typeof Firebase.salirLocalTrasAbandono==='function'){
+        try{ await Firebase.salirLocalTrasAbandono(); }
+        catch(e){ console.error('[V57] salida histórica local:',e); }
+      }
       return;
     }
 
