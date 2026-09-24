@@ -1369,6 +1369,7 @@ if(window.Firebase && Firebase.revisarTimeoutPrioridad) Firebase.revisarTimeoutP
 if(d.terminado === false){
   _victoriaVista = false; _salidaTrasAbandono=false;
   const b=document.getElementById('btn-abandonar');
+  if(b) delete b.dataset.salidaHistorica;
   if(b){ delete b.dataset.salidaTrasAbandono; }
   // V29: al comenzar una nueva partida se restaura el manejador general
   // instalado al final del documento.
@@ -2851,10 +2852,15 @@ if(d.fin_sesion===true){_borrarSesion();return {ok:false,msg:'La sesión ya term
 // deben poder reconstruirse.
 if(d.terminado===true && !d.fin_por_desconexion && !d.ganador){_borrarSesion();return {ok:false,msg:'No hay una partida pendiente válida para retomar.'};}
 _sala=ses.sala; _rol=d.sesionX===ses.sessionId?'X':'O'; _sessionId=ses.sessionId; _salaRef=ref(db,'salas/'+_sala);
-// V51: toda entrada mediante RETOMAR a una partida ya terminada por desconexión
+// V53: toda entrada mediante RETOMAR a una partida ya terminada por desconexión
 // es una consulta histórica de solo lectura. El jugador puede entrar aunque
 // haya sido quien abandonó anteriormente y debe poder salir limpiamente después.
 _modoHistoricoDesconexion=!!(d.terminado===true && d.fin_por_desconexion===true && d.ganador);
+if(_modoHistoricoDesconexion && window.Juego && typeof Juego.marcarModoHistoricoDesconexion==='function'){
+  Juego.marcarModoHistoricoDesconexion();
+}
+const btnHistorico=document.getElementById('btn-abandonar');
+if(btnHistorico){ btnHistorico.dataset.salidaHistorica='1'; btnHistorico.disabled=false; btnHistorico.style.opacity=''; btnHistorico.style.pointerEvents='auto'; }
 const cambiosRet={['conexion/'+_rol]:{online:true,ts:serverTimestamp()}};
 if(d.terminado===true && d.fin_por_desconexion && d.post_desconexion && !d.fin_sesion){
   cambiosRet['post_desconexion/retorno/'+_rol]=true;
@@ -3813,10 +3819,19 @@ salirLocalTrasAbandono(){
     _recargandoTrasAbandono=true;
     if(_unsubSala){ _unsubSala(); _unsubSala=null; }
     _iniciado=false;
-    // V52: una salida desde el modo histórico NO borra la sesión local.
-    // La partida sigue consultable hasta que caduque la ventana de 60 minutos,
-    // incluso si este mismo jugador ya había abandonado y vuelve a entrar.
-    if(!_modoHistoricoDesconexion) _borrarSesion();
+    // V53: la retención histórica no depende de quién haya pulsado ABANDONAR.
+    // Si el último estado conocido pertenece a una partida TERMINADA POR
+    // DESCONEXIÓN, la sesión local debe sobrevivir al abandono histórico de
+    // cualquiera de los dos jugadores. En una partida activa/normal sí se
+    // borra como antes.
+    const ultimoEstadoHistorico = (window.Juego && typeof Juego.getUltimoEstado==='function')
+      ? Juego.getUltimoEstado() : null;
+    const conservarSesionHistorica = !!(
+      _modoHistoricoDesconexion ||
+      (ultimoEstadoHistorico && ultimoEstadoHistorico.terminado===true &&
+       ultimoEstadoHistorico.fin_por_desconexion===true && ultimoEstadoHistorico.ganador)
+    );
+    if(!conservarSesionHistorica) _borrarSesion();
     if(_unsubConexion){ _unsubConexion(); _unsubConexion=null; }
     UI.cerrarModal();
     if(window.EmpateFlow){
@@ -4367,9 +4382,12 @@ $('btn-abandonar').onclick = ()=>{
     btnAbNow.style.pointerEvents='auto';
   }
 
-  // Si ya estamos en la salida posterior al abandono del oponente, salir
-  // directamente al lobby. No existe una segunda confirmación.
-  if(Juego.isSalidaTrasAbandono() || (btnAbNow && btnAbNow.dataset.salidaTrasAbandono==='1')){
+  // Si ya estamos en la salida posterior al abandono del oponente, o en una
+  // consulta histórica por desconexión, salir directamente al lobby. No existe
+  // una segunda confirmación.
+  if(Juego.isSalidaTrasAbandono() ||
+     (btnAbNow && (btnAbNow.dataset.salidaTrasAbandono==='1' || btnAbNow.dataset.salidaHistorica==='1')) ||
+     (Juego.isModoHistoricoDesconexion && Juego.isModoHistoricoDesconexion())){
     _ocultarModalOponenteAbandono();
     Juego.marcarSalidaTrasAbandono();
     Firebase.salirLocalTrasAbandono();
@@ -4419,7 +4437,7 @@ instalarHandlerAbandonarGeneral();
   btn.dataset.salidaUniversalV50='1';
   btn.addEventListener('click', (ev)=>{
     const snap=(window.Juego&&typeof Juego.getUltimoEstado==='function') ? Juego.getUltimoEstado() : null;
-    const salidaMarcada=btn.dataset.salidaTrasAbandono==='1' ||
+    const salidaMarcada=btn.dataset.salidaTrasAbandono==='1' || btn.dataset.salidaHistorica==='1' ||
       (window.Juego&&typeof Juego.isSalidaTrasAbandono==='function'&&Juego.isSalidaTrasAbandono());
     const abandonoRival=!!(snap && snap.abandono &&
       window.Firebase && typeof Firebase.getMiRol==='function' &&
@@ -4516,14 +4534,17 @@ UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
 }
 }
 };
-// V47 · reloj visual local de 3 s. La cuenta se calcula desde el timestamp
+// V53 · reloj visual local de 3 s. La cuenta se calcula desde el timestamp
 // compartido; no altera Firebase y no participa en la transición de turnos.
+// BUG V52: este bloque usaba `miRol`, variable inexistente en este ámbito;
+// el error quedaba absorbido por el catch y el display se congelaba en 00:03.
 if(!window._turnoLatenciaVisualTimer){
   window._turnoLatenciaVisualTimer=setInterval(()=>{
     try{
       const d=(typeof Juego!=='undefined' && Juego.getUltimoEstado)?Juego.getUltimoEstado():null;
-      UI.actualizarLatenciaVisual(d, miRol);
-    }catch(e){}
+      const rolLocal=(window.Firebase&&typeof Firebase.getMiRol==='function') ? Firebase.getMiRol() : null;
+      UI.actualizarLatenciaVisual(d, rolLocal);
+    }catch(e){ console.warn('[V53] reloj visual de latencia:',e); }
   },100);
 }
 // Clic sobre el overlay en modo reclamo (detección geométrica)
