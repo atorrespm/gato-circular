@@ -3813,7 +3813,10 @@ salirLocalTrasAbandono(){
     _recargandoTrasAbandono=true;
     if(_unsubSala){ _unsubSala(); _unsubSala=null; }
     _iniciado=false;
-    _borrarSesion();
+    // V52: una salida desde el modo histórico NO borra la sesión local.
+    // La partida sigue consultable hasta que caduque la ventana de 60 minutos,
+    // incluso si este mismo jugador ya había abandonado y vuelve a entrar.
+    if(!_modoHistoricoDesconexion) _borrarSesion();
     if(_unsubConexion){ _unsubConexion(); _unsubConexion=null; }
     UI.cerrarModal();
     if(window.EmpateFlow){
@@ -4421,8 +4424,10 @@ instalarHandlerAbandonarGeneral();
     const abandonoRival=!!(snap && snap.abandono &&
       window.Firebase && typeof Firebase.getMiRol==='function' &&
       snap.abandono.abandonador!==Firebase.getMiRol());
-    const salidaHistorica=!!(snap && snap.terminado===true && snap.fin_por_desconexion===true && snap.ganador &&
-      window.Firebase && typeof Firebase.isIniciado==='function' && Firebase.isIniciado());
+    const salidaHistorica=!!(
+      (window.Juego&&typeof Juego.isModoHistoricoDesconexion==='function'&&Juego.isModoHistoricoDesconexion()) ||
+      (snap && snap.terminado===true && snap.fin_por_desconexion===true && snap.ganador)
+    );
     if(!salidaMarcada && !abandonoRival && !salidaHistorica) return;
     ev.preventDefault();
     ev.stopImmediatePropagation();
