@@ -4395,6 +4395,35 @@ $('btn-abandonar').onclick = ()=>{
 };
 }
 instalarHandlerAbandonarGeneral();
+
+// V50 · SALIDA UNIVERSAL DEL TABLERO HISTÓRICO
+// Microcirugía: después de una segunda desconexión, si el rival ya abandonó,
+// el botón ABANDONAR debe seguir siendo una salida local directa incluso si
+// otra rama del renderizador vuelve a instalar su onclick. Usamos un listener
+// de captura permanente para que ningún estado terminal pueda dejar el botón
+// visualmente activo pero funcionalmente mudo.
+(function instalarSalidaUniversalAbandono(){
+  const btn=document.getElementById('btn-abandonar');
+  if(!btn || btn.dataset.salidaUniversalV50==='1') return;
+  btn.dataset.salidaUniversalV50='1';
+  btn.addEventListener('click', (ev)=>{
+    const snap=(window.Juego&&typeof Juego.getUltimoEstado==='function') ? Juego.getUltimoEstado() : null;
+    const salidaMarcada=btn.dataset.salidaTrasAbandono==='1' ||
+      (window.Juego&&typeof Juego.isSalidaTrasAbandono==='function'&&Juego.isSalidaTrasAbandono());
+    const abandonoRival=!!(snap && snap.abandono &&
+      window.Firebase && typeof Firebase.getMiRol==='function' &&
+      snap.abandono.abandonador!==Firebase.getMiRol());
+    if(!salidaMarcada && !abandonoRival) return;
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+    try{
+      _ocultarModalOponenteAbandono();
+      if(window.Juego&&typeof Juego.marcarSalidaTrasAbandono==='function') Juego.marcarSalidaTrasAbandono();
+      if(window.Firebase&&typeof Firebase.salirLocalTrasAbandono==='function') Firebase.salirLocalTrasAbandono();
+    }catch(e){ console.error('[V50] salida universal tras abandono:',e); }
+  }, true);
+})();
+
 $('btn-sortear').onclick=async()=>{if(!Firebase.isIniciado())return;const r=await Firebase.sortear();if(!r.ok)UI.modal('Sorteo',r.msg);};
 $('btn-reclamar').onclick = async ()=>{
 if(!Firebase.isIniciado()) return;
