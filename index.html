@@ -1169,8 +1169,11 @@ async function procesarTerminalDesconexion(d, miRol){
     const ac=document.getElementById('abandono-confirm-overlay'); if(ac) ac.style.display='none';
   }catch(e){ console.warn('[V32.3.24] restauración terminal:',e); }
 
-  // Si este jugador ya abandonó después del resultado, su salida local es inmediata.
-  if(d.abandono && d.abandono.abandonador===miRol){
+  // V51: si el jugador volvió mediante RETOMAR a una partida histórica por
+  // desconexión, NO se lo expulsa por haber sido el abandonador original.
+  // La nueva regla permite que ambos jugadores consulten el tablero dentro
+  // de los 60 minutos y abandonen voluntariamente cuando terminen.
+  if(d.abandono && d.abandono.abandonador===miRol && !_modoHistoricoDesconexion){
     try{ Firebase.salirLocalTrasAbandono(); }catch(e){}
     return;
   }
@@ -2091,10 +2094,10 @@ function reset(){
     _sorteoVisto=null; _victoriaVista=false; _reclamoKey=null; _partidaInicioVisto=null;
     _prioridadMostrada=null; _empateFinalKey=null; _resultadoReclamoVisto=null;
     _npConfirmacionVista=null; _npMaxAlertVisto=null; _npFinalizacionEnCurso=null; _abandonoVisto=null; _desconexionResultadoVisto=null; _abandonoPostDesconexionVisto=null; // V32.3.11: limpieza de estados terminales
-    _npFinalizacionEnCurso=null; _salidaTrasAbandono=false; _ultimoD=null;
+    _npFinalizacionEnCurso=null; _salidaTrasAbandono=false; _ultimoD=null; _modoHistoricoDesconexion=false;
     window._empateYaMostrado=false;
 }
-return {aplicarEstado, encolarEstado, procesarTerminalDesconexion, setUltimoEstado:(d)=>{_ultimoD=d;}, reset, getUltimoEstado:()=>_ultimoD, isSalidaTrasAbandono:()=>_salidaTrasAbandono, marcarSalidaTrasAbandono:()=>{_salidaTrasAbandono=true;}};
+return {aplicarEstado, encolarEstado, procesarTerminalDesconexion, setUltimoEstado:(d)=>{_ultimoD=d;}, reset, getUltimoEstado:()=>_ultimoD, isSalidaTrasAbandono:()=>_salidaTrasAbandono, marcarSalidaTrasAbandono:()=>{_salidaTrasAbandono=true;}, isModoHistoricoDesconexion:()=>_modoHistoricoDesconexion, marcarModoHistoricoDesconexion:()=>{_modoHistoricoDesconexion=true;}};
 })();
 /* ═══════════════════════════════════════════════════════
 M14· CHAT JS — Chat en tiempo real
@@ -2676,6 +2679,7 @@ databaseURL:       "https://gato-circular-default-rtdb.firebaseio.com"
 }));
 /* ── M13 · FIREBASE ─────────────────────────────────── */
 let _salaRef=null, _sala=null, _rol=null, _iniciado=false, _enviandoJugada=false, _unsubSala=null, _tcResolviendo=false, _recargandoTrasAbandono=false;
+let _modoHistoricoDesconexion=false; // V51: retorno histórico de una partida terminada por desconexión; solo lectura y salida local.
 const GC_SESSION_KEY='gc_sesion_v32';
 const GC_SESSION_MAX_INACTIVA_MS=60*60*1000;
 let _sessionExpiryTimer=null;
@@ -2847,6 +2851,10 @@ if(d.fin_sesion===true){_borrarSesion();return {ok:false,msg:'La sesión ya term
 // deben poder reconstruirse.
 if(d.terminado===true && !d.fin_por_desconexion && !d.ganador){_borrarSesion();return {ok:false,msg:'No hay una partida pendiente válida para retomar.'};}
 _sala=ses.sala; _rol=d.sesionX===ses.sessionId?'X':'O'; _sessionId=ses.sessionId; _salaRef=ref(db,'salas/'+_sala);
+// V51: toda entrada mediante RETOMAR a una partida ya terminada por desconexión
+// es una consulta histórica de solo lectura. El jugador puede entrar aunque
+// haya sido quien abandonó anteriormente y debe poder salir limpiamente después.
+_modoHistoricoDesconexion=!!(d.terminado===true && d.fin_por_desconexion===true && d.ganador);
 const cambiosRet={['conexion/'+_rol]:{online:true,ts:serverTimestamp()}};
 if(d.terminado===true && d.fin_por_desconexion && d.post_desconexion && !d.fin_sesion){
   cambiosRet['post_desconexion/retorno/'+_rol]=true;
@@ -4396,12 +4404,12 @@ $('btn-abandonar').onclick = ()=>{
 }
 instalarHandlerAbandonarGeneral();
 
-// V50 · SALIDA UNIVERSAL DEL TABLERO HISTÓRICO
-// Microcirugía: después de una segunda desconexión, si el rival ya abandonó,
-// el botón ABANDONAR debe seguir siendo una salida local directa incluso si
-// otra rama del renderizador vuelve a instalar su onclick. Usamos un listener
-// de captura permanente para que ningún estado terminal pueda dejar el botón
-// visualmente activo pero funcionalmente mudo.
+// V51 · SALIDA UNIVERSAL DEL TABLERO HISTÓRICO
+// Microcirugía: cualquier retorno histórico de una partida terminada por
+// desconexión debe conservar una salida local directa, incluso si el jugador
+// fue quien abandonó originalmente o si otra rama vuelve a instalar onclick.
+// Usamos un listener de captura permanente para que ningún estado terminal
+// pueda dejar el botón visualmente activo pero funcionalmente mudo.
 (function instalarSalidaUniversalAbandono(){
   const btn=document.getElementById('btn-abandonar');
   if(!btn || btn.dataset.salidaUniversalV50==='1') return;
@@ -4413,7 +4421,9 @@ instalarHandlerAbandonarGeneral();
     const abandonoRival=!!(snap && snap.abandono &&
       window.Firebase && typeof Firebase.getMiRol==='function' &&
       snap.abandono.abandonador!==Firebase.getMiRol());
-    if(!salidaMarcada && !abandonoRival) return;
+    const salidaHistorica=!!(snap && snap.terminado===true && snap.fin_por_desconexion===true && snap.ganador &&
+      window.Firebase && typeof Firebase.isIniciado==='function' && Firebase.isIniciado());
+    if(!salidaMarcada && !abandonoRival && !salidaHistorica) return;
     ev.preventDefault();
     ev.stopImmediatePropagation();
     try{
