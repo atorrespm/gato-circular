@@ -103,26 +103,29 @@ M3 · PANELES CSS — Laterales, botones, modal
 .fichas-lbl{font-size:13px;letter-spacing:1px;color:#aaa;font-weight:700;text-align:center}
 .fichas-n{font-family:'Orbitron',sans-serif;font-size:22px;font-weight:700;text-align:center}
 .fichas-n.x{color:var(--red)}.fichas-n.o{color:var(--blue)}
-#turno-panel{text-align:center;height:190px;min-height:190px;display:flex;flex-direction:column;align-items:center;}
-#turno-ficha{font-family:'Orbitron',sans-serif;font-size:38px;font-weight:900;margin:4px 0;transition:color .3s,text-shadow .3s}
+/* V48 · Panel TURNO ACTUAL reconstruido según el diseño propuesto: tamaño fijo,
+   instrucciones siempre visibles y legibles, y latencia activa solo en el
+   cliente del jugador que acaba de realizar la jugada. */
+#turno-panel{text-align:center;height:250px;min-height:250px;display:flex;flex-direction:column;align-items:center;overflow:hidden;}
+#turno-ficha{font-family:'Orbitron',sans-serif;font-size:38px;font-weight:900;margin:4px 0 6px;transition:color .3s,text-shadow .3s;line-height:1}
 #turno-ficha.x{color:var(--red-g);text-shadow:0 0 14px var(--red)}
 #turno-ficha.o{color:var(--blue-g);text-shadow:0 0 14px var(--blue)}
-#turno-msg{font-size:12px;color:#999;letter-spacing:.5px;line-height:1.5;min-height:18px}
-/* V47 · Panel fijo: la información de latencia siempre ocupa el mismo espacio.
-   Inactivo = neutro; latencia activa = iluminación neón. No modifica Firebase. */
-#turno-latencia{display:flex;visibility:visible;opacity:.72;flex-direction:column;align-items:center;justify-content:center;gap:3px;margin-top:7px;min-height:76px;width:100%;transition:opacity .25s,filter .25s;}
-#turno-latencia.active{opacity:1;filter:brightness(1.08);}
-#turno-latencia-row{display:flex;align-items:center;justify-content:center;gap:8px;}
-#turno-latencia-icon{width:34px;height:34px;border:3px solid #777;border-radius:50%;position:relative;box-shadow:none;flex-shrink:0;transition:border-color .25s,box-shadow .25s,filter .25s;}
-#turno-latencia-icon::before{content:'';position:absolute;width:2px;height:9px;background:#777;left:50%;top:5px;transform:translateX(-50%);border-radius:2px;box-shadow:none;transition:background .25s,box-shadow .25s;}
-#turno-latencia-icon::after{content:'';position:absolute;width:8px;height:2px;background:#777;left:50%;top:50%;transform:translateY(-50%);border-radius:2px;box-shadow:none;transition:background .25s,box-shadow .25s;}
-#turno-latencia-tiempo{font-family:'Orbitron',sans-serif;font-size:24px;font-weight:900;color:#777;letter-spacing:1px;font-variant-numeric:tabular-nums;text-shadow:none;min-width:78px;text-align:left;transition:color .25s,text-shadow .25s;}
-#turno-latencia-text{font-size:11px;color:#bdbdbd;line-height:1.25;max-width:155px;transition:color .25s,text-shadow .25s;}
-#turno-latencia-text strong{color:#bdbdbd;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:.5px;transition:color .25s,text-shadow .25s;}
-#turno-latencia.active #turno-latencia-icon{border-color:var(--blue-g);box-shadow:0 0 10px rgba(68,204,255,.85);filter:brightness(1.08);}
-#turno-latencia.active #turno-latencia-icon::before,#turno-latencia.active #turno-latencia-icon::after{background:var(--blue-g);box-shadow:0 0 5px var(--blue-g);}
-#turno-latencia.active #turno-latencia-tiempo{color:#00ff33;text-shadow:0 0 10px rgba(0,255,51,.7);}
-#turno-latencia.active #turno-latencia-text,#turno-latencia.active #turno-latencia-text strong{color:#ffdd00;text-shadow:0 0 7px rgba(255,221,0,.7);}
+/* Las instrucciones del juego permanecen siempre blancas y luminosas. */
+#turno-msg{font-size:14px;color:#f2f2f2;letter-spacing:.25px;line-height:1.15;min-height:34px;max-width:174px;text-shadow:0 0 6px rgba(255,255,255,.42);display:flex;align-items:center;justify-content:center;}
+/* V48 · La zona de latencia nunca desaparece: solo cambia de estado visual. */
+#turno-latencia{display:flex;visibility:visible;opacity:1;flex-direction:column;align-items:center;justify-content:flex-start;gap:6px;margin-top:5px;width:100%;min-height:128px;transition:filter .25s;}
+#turno-latencia.active{filter:brightness(1.08);}
+#turno-latencia-text{font-size:13px;color:#f2f2f2;line-height:1.15;max-width:174px;min-height:47px;display:flex;flex-direction:column;justify-content:center;text-align:center;text-shadow:0 0 6px rgba(255,255,255,.42);transition:color .25s,text-shadow .25s;}
+#turno-latencia-text strong{color:#f2f2f2;font-family:'Orbitron',sans-serif;font-size:12px;letter-spacing:.35px;text-shadow:0 0 6px rgba(255,255,255,.42);transition:color .25s,text-shadow .25s;}
+#turno-latencia-row{display:flex;align-items:center;justify-content:center;gap:10px;height:43px;}
+#turno-latencia-icon{width:40px;height:40px;border:3px solid #c8c8c8;border-radius:50%;position:relative;box-shadow:0 0 6px rgba(255,255,255,.28);flex-shrink:0;transition:border-color .25s,box-shadow .25s,filter .25s;}
+#turno-latencia-icon::before{content:'';position:absolute;width:2px;height:11px;background:#c8c8c8;left:50%;top:5px;transform:translateX(-50%);border-radius:2px;box-shadow:0 0 4px rgba(255,255,255,.3);transition:background .25s,box-shadow .25s;}
+#turno-latencia-icon::after{content:'';position:absolute;width:9px;height:2px;background:#c8c8c8;left:50%;top:50%;transform:translateY(-50%);border-radius:2px;box-shadow:0 0 4px rgba(255,255,255,.3);transition:background .25s,box-shadow .25s;}
+#turno-latencia-tiempo{font-family:'Orbitron',sans-serif;font-size:27px;font-weight:900;color:#d0d0d0;letter-spacing:1px;font-variant-numeric:tabular-nums;text-shadow:0 0 7px rgba(255,255,255,.3);min-width:82px;text-align:left;transition:color .25s,text-shadow .25s;}
+#turno-latencia.active #turno-latencia-icon{border-color:var(--blue-g);box-shadow:0 0 13px rgba(68,204,255,.95);filter:brightness(1.08);}
+#turno-latencia.active #turno-latencia-icon::before,#turno-latencia.active #turno-latencia-icon::after{background:var(--blue-g);box-shadow:0 0 6px var(--blue-g);}
+#turno-latencia.active #turno-latencia-tiempo{color:#00ff33;text-shadow:0 0 11px rgba(0,255,51,.85);}
+#turno-latencia.active #turno-latencia-text,#turno-latencia.active #turno-latencia-text strong{color:#ffef00;text-shadow:0 0 8px rgba(255,238,0,.82);}
 
 .how-title{font-family:'Orbitron',sans-serif;font-size:13px;color:var(--red);text-align:center;margin-bottom:6px;letter-spacing:1px}
 .how-sub{font-size:12px;color:#bbb;text-align:center;margin-bottom:8px;line-height:1.4}
@@ -510,11 +513,11 @@ font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;
 <div id="turno-ficha" class="x">X</div>
 <div id="turno-msg">Conectando...</div>
 <div id="turno-latencia" aria-live="polite">
+  <div id="turno-latencia-text">Tienes 3 segundos para<br><strong>RECLAMAR VICTORIA</strong><br>si corresponde.</div>
   <div id="turno-latencia-row">
     <span id="turno-latencia-icon" aria-hidden="true"></span>
-    <span id="turno-latencia-tiempo">00:03</span>
+    <span id="turno-latencia-tiempo">00:00</span>
   </div>
-  <div id="turno-latencia-text">Tienes 3 segundos para<br><strong>RECLAMAR VICTORIA</strong><br>si corresponde.</div>
 </div>
 </div>
 </aside>
@@ -955,10 +958,14 @@ if(tf){tf.textContent=e.turno; tf.className=e.turno.toLowerCase();}
 }
 function setMsg(msg)    { const el=$('turno-msg'); if(el) el.textContent=msg; }
 // V46: presentación sincronizada con los timestamps compartidos de Firebase.
-function actualizarLatenciaVisual(d){
+function actualizarLatenciaVisual(d, miRol){
   const box=$('turno-latencia'), tiempo=$('turno-latencia-tiempo');
   if(!box||!tiempo) return;
-  const activa=!!(d && d.fase==='jugando' && d.latencia_jugada_activa && d.latencia_jugada_ts);
+  const rolLocal=miRol || (window.Firebase&&typeof Firebase.getMiRol==='function'?Firebase.getMiRol():null);
+  // La iluminación pertenece EXCLUSIVAMENTE al jugador que realizó la
+  // jugada. El oponente conserva el mismo espacio visual, pero en estado neutro.
+  const activa=!!(d && d.fase==='jugando' && d.latencia_jugada_activa && d.latencia_jugada_ts &&
+    (!rolLocal || d.latencia_jugada_rol===rolLocal));
   if(!activa){
     tiempo.textContent='00:00';
     box.classList.remove('active');
@@ -1400,7 +1407,7 @@ _dispatchFase(d, miRol);
 });
 return;
 }
-UI.actualizarLatenciaVisual(d);
+UI.actualizarLatenciaVisual(d, miRol);
 _dispatchFase(d, miRol);
 if(typeof window._revisarNuevaPartida === 'function') window._revisarNuevaPartida(d, miRol);
 }
@@ -1990,7 +1997,7 @@ const reclamoConsumido = d.reclamo_consumido_rol === miRol &&
   Number(d.reclamo_consumido_jugadas ?? -1) === Number(d.jugadas ?? -2);
 const latenciaActiva = !!d.latencia_jugada_activa;
 const esRolLatencia = latenciaActiva && d.latencia_jugada_rol === miRol;
-UI.actualizarLatenciaVisual(d);
+UI.actualizarLatenciaVisual(d, miRol);
 const turnoBloqueadoPorReclamoInvalido = d.turno_bloqueado_reclamo_invalido_rol === miRol &&
   Number(d.turno_bloqueado_reclamo_invalido_jugadas ?? -1) === Number(d.jugadas ?? -2);
 const reclamoInvalidoSinJugada = d.reclamo_invalido_sin_jugada_rol === miRol &&
@@ -4352,6 +4359,17 @@ $('btn-abandonar').onclick = ()=>{
     return;
   }
 
+  // V48: si existe un abandono del oponente en el último estado conocido,
+  // ABANDONAR es una salida LOCAL definitiva y no debe depender de que
+  // _iniciado siga verdadero después de una desconexión terminal.
+  const snap=Juego.getUltimoEstado();
+  if(snap && snap.abandono && snap.abandono.abandonador !== Firebase.getMiRol()){
+    _ocultarModalOponenteAbandono();
+    Juego.marcarSalidaTrasAbandono();
+    if(window.Firebase && Firebase.salirLocalTrasAbandono) Firebase.salirLocalTrasAbandono();
+    return;
+  }
+
   if(!Firebase.isIniciado()) return;
 
   // V32.3.39: si la partida ya terminó pero todavía NO existe abandono,
@@ -4359,13 +4377,6 @@ $('btn-abandonar').onclick = ()=>{
   // Firebase para que el rival reciba inmediatamente el modal de aviso.
   // La propia Firebase.abandonarPartida() ya conserva el resultado y registra
   // el abandono cuando d.terminado === true.
-  const snap=Juego.getUltimoEstado();
-  if(snap && snap.abandono && snap.abandono.abandonador !== Firebase.getMiRol()){
-    _ocultarModalOponenteAbandono();
-    Juego.marcarSalidaTrasAbandono();
-    Firebase.salirLocalTrasAbandono();
-    return;
-  }
 
   // Ruta normal: mostrar inmediatamente el modal. La confirmación ejecutará
   // la escritura Firebase y la salida local.
@@ -4461,7 +4472,7 @@ if(!window._turnoLatenciaVisualTimer){
   window._turnoLatenciaVisualTimer=setInterval(()=>{
     try{
       const d=(typeof Juego!=='undefined' && Juego.getUltimoEstado)?Juego.getUltimoEstado():null;
-      UI.actualizarLatenciaVisual(d);
+      UI.actualizarLatenciaVisual(d, miRol);
     }catch(e){}
   },100);
 }
