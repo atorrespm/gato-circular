@@ -1329,7 +1329,12 @@ if(d.abandono && d.abandono.abandonador !== miRol){
         UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
         UI.bloquearBtns(['btn-abandonar'],false);
         const b=document.getElementById('btn-abandonar');
-        if(b){b.disabled=false;b.style.opacity='';b.style.pointerEvents='auto';b.dataset.salidaTrasAbandono='1';_salidaTrasAbandono=true;b.onclick=()=>{try{_ocultarModalOponenteAbandono();if(window.Juego&&Juego.marcarSalidaTrasAbandono)Juego.marcarSalidaTrasAbandono();if(window.Firebase&&Firebase.salirLocalTrasAbandono)Firebase.salirLocalTrasAbandono();}catch(e){console.error('[V32.3.11] salida tras abandono:',e);}};}
+        if(b){
+          b.disabled=false; b.style.opacity=''; b.style.pointerEvents='auto';
+          b.dataset.salidaTrasAbandono='1';
+          _salidaTrasAbandono=true;
+          // V55: NO instalar onclick aquí. ABANDONAR tiene un único handler central.
+        }
         UI.setMsg('La partida terminó por segunda desconexión. Tu oponente ya abandonó el tablero. Puedes estudiar las jugadas o abandonar.');
       });
     });
@@ -1833,6 +1838,9 @@ if(abandono){
   // El jugador que abandonó sale inmediatamente de la sala.
   // No debe recibir ningún modal posterior de abandono/victoria.
   if(abandono.abandonador === miRol){
+    // V55: no ejecutar Juego.reset() antes de salir. Ese reset borra _ultimoD
+    // y _modoHistoricoDesconexion, y podía hacer que salirLocalTrasAbandono()
+    // creyera que era una salida normal y borrara la sesión histórica local.
     UI.cerrarModal();
     EmpateFlow.ocultarModalTC();
     EmpateFlow.ocultarModalPrioridad();
@@ -1841,9 +1849,6 @@ if(abandono){
     _ocultarMaxNoNuevaPartida();
     const abOv=document.getElementById('abandono-confirm-overlay');
     if(abOv) abOv.style.display='none';
-    Estado.tablero = Estado.tableroVacio();
-    Tablero.render(Estado.tablero, ()=>{});
-    Juego.reset();
     Firebase.salirLocalTrasAbandono();
     return;
   }
@@ -3807,25 +3812,45 @@ async abandonarPartida(){
     this.salirLocalTrasAbandono();
 },
 salirLocalAlLobbyNormal(){if(_unsubSala){_unsubSala();_unsubSala=null;}_iniciado=false;_borrarSesion();if(_unsubConexion){_unsubConexion();_unsubConexion=null;}_ocultarModalDesconexion();_ocultarModalReconexion();UI.cerrarModal();UI.bloquearTablero(true);UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar','btn-abandonar'],true);const wrap=document.getElementById('inicio-partida-wrap');if(wrap)wrap.style.display='none';UI.lobbyPaso('inicio');UI.lobbyVisible(true);setTimeout(()=>{try{window.location.reload();}catch(e){console.error('[V32.3] no se pudo volver al lobby',e);}},120);},
-salirLocalTrasAbandono(){
+async salirLocalTrasAbandono(){
     if(_recargandoTrasAbandono) return;
     _recargandoTrasAbandono=true;
+
+    // V55: la decisión de conservar la sesión histórica se toma con el estado
+    // REAL de Firebase, antes de desmontar listeners o ejecutar cualquier reset
+    // local. Así, Juego.reset() u otra rama visual no puede borrar por accidente
+    // la única evidencia que necesitamos para permitir RETOMAR durante 60 min.
+    let estadoActual=null;
+    try{
+      if(_salaRef){
+        const snapActual=await get(_salaRef);
+        estadoActual=snapActual.exists()?snapActual.val():null;
+      }
+    }catch(e){
+      console.warn('[V55] no se pudo leer el estado antes de la salida:',e);
+    }
+
+    const estadoHistoricoFirebase=!!(
+      estadoActual &&
+      estadoActual.terminado===true &&
+      estadoActual.fin_por_desconexion===true &&
+      estadoActual.ganador
+    );
+    const estadoHistoricoLocal=!!(
+      _modoHistoricoDesconexion ||
+      ((window.Juego&&typeof Juego.getUltimoEstado==='function') &&
+       (Juego.getUltimoEstado()||{}).terminado===true &&
+       (Juego.getUltimoEstado()||{}).fin_por_desconexion===true &&
+       (Juego.getUltimoEstado()||{}).ganador)
+    );
+    const conservarSesionHistorica=estadoHistoricoFirebase || estadoHistoricoLocal;
+
+    // V55: ahora sí desmontamos la sesión. La decisión anterior ya quedó fijada.
     if(_unsubSala){ _unsubSala(); _unsubSala=null; }
     _iniciado=false;
-    // V53: la retención histórica no depende de quién haya pulsado ABANDONAR.
-    // Si el último estado conocido pertenece a una partida TERMINADA POR
-    // DESCONEXIÓN, la sesión local debe sobrevivir al abandono histórico de
-    // cualquiera de los dos jugadores. En una partida activa/normal sí se
-    // borra como antes.
-    const ultimoEstadoHistorico = (window.Juego && typeof Juego.getUltimoEstado==='function')
-      ? Juego.getUltimoEstado() : null;
-    const conservarSesionHistorica = !!(
-      _modoHistoricoDesconexion ||
-      (ultimoEstadoHistorico && ultimoEstadoHistorico.terminado===true &&
-       ultimoEstadoHistorico.fin_por_desconexion===true && ultimoEstadoHistorico.ganador)
-    );
     if(!conservarSesionHistorica) _borrarSesion();
     if(_unsubConexion){ _unsubConexion(); _unsubConexion=null; }
+
     UI.cerrarModal();
     if(window.EmpateFlow){
       EmpateFlow.ocultarModalTC();
@@ -3837,15 +3862,11 @@ salirLocalTrasAbandono(){
     UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar','btn-abandonar'],true);
     UI.lobbyPaso('inicio');
     UI.lobbyVisible(true);
-    // V32: reinicio completo de la aplicación después de CUALQUIER salida
-    // por abandono. El abandono ya fue escrito en Firebase antes de llegar
-    // aquí cuando corresponde; ahora se descarta todo el estado JS en memoria
-    // (listeners, cierres, banderas y handlers) y se vuelve al lobby limpio.
-    // El pequeño retardo permite que el estado visual de salida se pinte antes
-    // del reload y evita carreras con el cierre del listener local.
+
+    // V55: recarga solo después de haber decidido y aplicado la retención local.
     setTimeout(()=>{
       try { window.location.reload(); }
-      catch(e){ console.error('[V32] no se pudo recargar la página:', e); }
+      catch(e){ console.error('[V55] no se pudo recargar la página:', e); }
     },120);
 },
 programarDesconexionDetectada(rol){
