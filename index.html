@@ -1166,7 +1166,7 @@ async function procesarTerminalDesconexion(d, miRol){
     // V56: una entrada histórica es estrictamente de solo lectura. No se
     // ofrecen NUEVA PARTIDA ni INICIAR PARTIDA; ABANDONAR es la única salida.
     if(_modoHistoricoDesconexion){
-      // V57: en histórico estos controles no solo deben ser inertes; deben
+      // V58: en histórico estos controles no solo deben ser inertes; deben
       // dejar visualmente claro que esta partida es de SOLO LECTURA.
       if(bn){bn.disabled=true;bn.style.opacity='0.35';bn.style.pointerEvents='none';bn.style.display='none';}
       if(wrap) wrap.style.display='none';
@@ -1306,11 +1306,17 @@ async function procesarTerminalDesconexion(d, miRol){
 
 async function aplicarEstado(d, miRol) {
 if(!d) return;
+// V58: los finales por desconexión tienen una máquina terminal propia.
+// Si un snapshot terminal quedara en la cola normal, no permitimos que
+// aplicarEstado() lo procese como abandono genérico ni que pise la UI histórica.
+if(d.terminado && d.fin_por_desconexion) return;
 console.debug('[FLOW-V22] aplicarEstado', {fase:d.fase, terminado:!!d.terminado, abandono:d.abandono||null, tc:d.tc_decision||null, prioridad:d.prioridad_jugador||null});
 // V22: el abandono del oponente puede ocurrir DESPUÉS de que ya se haya
 // renderizado la victoria normal. Se detecta aquí, antes de cualquier
 // render/dispatch, y no solamente dentro de _faseTerminado().
-if(d.abandono && d.abandono.abandonador !== miRol){
+if(d.abandono && !d.fin_por_desconexion && d.abandono.abandonador !== miRol){
+  // V58: un estado terminal por desconexión tiene prioridad absoluta sobre
+  // el registro histórico `abandono`. Nunca debe entrar aquí.
   // V27: el abandono del oponente es un ESTADO DE PRIORIDAD ABSOLUTA.
   // Se procesa aquí y se retorna inmediatamente para impedir que
   // _faseTerminado(), _revisarNuevaPartida() u otro resolver vuelva a
@@ -1721,7 +1727,9 @@ function _ocultarMaxNoNuevaPartida(){
 }
 function _revisarNuevaPartida(d, miRol){
   // V22: abandono tiene precedencia absoluta sobre Nueva Partida.
-  if(d.abandono && d.abandono.abandonador !== miRol){
+  if(d.abandono && !d.fin_por_desconexion && d.abandono.abandonador !== miRol){
+    // V58: `abandono` dentro de un final por desconexión es histórico.
+    // No puede bloquear/alterar la máquina de Nueva Partida del terminal.
     _ocultarConfirmacionNuevaPartida();
     _ocultarMaxNoNuevaPartida();
     UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
