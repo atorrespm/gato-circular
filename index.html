@@ -47,7 +47,7 @@ M20· ESTADISTICAS  Historial y estadísticas avanzadas
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gato Circular</title>
+<title>Gato Circular V62</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@500;700&display=swap');
 /* ═══════════════════════════════════════════════════════
@@ -150,6 +150,7 @@ M3 · PANELES CSS — Laterales, botones, modal
 #btn-reclamar{background:linear-gradient(135deg,#005500,#009933);color:#fff}
 #btn-confirmar{background:linear-gradient(135deg,#003070,#0055bb);color:#fff}
 #btn-abandonar{background:linear-gradient(135deg,#4a0000,#7a0000);color:#fff}
+#btn-abandonar-historico{background:linear-gradient(135deg,#4a0000,#7a0000);color:#fff}
 #inicio-partida-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;width:100%;margin:6px 0 2px;}
 #btn-iniciar-partida{width:84px;height:84px;min-width:84px;padding:0;border-radius:50%;background:radial-gradient(circle at 35% 30%,#f4f5df,#d9ddbf 62%,#c3c8aa);color:#20231d;border:3px solid #ecefd7;box-shadow:0 0 0 2px #555,0 0 16px rgba(220,225,190,.28),inset 0 0 8px rgba(0,0,0,.18);justify-content:center;text-align:center;line-height:1.05;font-size:10px;letter-spacing:.7px;}
 #btn-iniciar-partida:hover{filter:brightness(1.06);transform:translateY(-1px);box-shadow:0 0 0 2px #666,0 0 22px rgba(220,225,190,.42),inset 0 0 8px rgba(0,0,0,.18);}
@@ -619,6 +620,7 @@ font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;
 <button class="btn" id="btn-reclamar">🏆 RECLAMAR VICTORIA</button>
 <button class="btn" id="btn-confirmar">✔ CONFIRMAR</button>
 <button class="btn" id="btn-abandonar">🚪 ABANDONAR PARTIDA</button>
+<button class="btn" id="btn-abandonar-historico" style="display:none;">🚪 ABANDONAR PARTIDA</button>
 </div>
 <!-- V14 · EMPATE SIN RESPUESTA -->
 <div id="empate-sin-respuesta-overlay">
@@ -1093,6 +1095,29 @@ function limpiarMarcasReclamoVisuales(){
 /* ═══════════════════════════════════════════════════════
 M12· JUEGO — Orquestador principal · V17
 ═══════════════════════════════════════════════════════ */
+// V62 · FRONTERA EXPLÍCITA ENTRE PARTIDA NORMAL Y PARTIDA HISTÓRICA.
+// Son dos controles físicos distintos aunque visualmente ocupen el mismo lugar.
+// Nunca se reutiliza el handler del botón normal para el estado histórico.
+function _setModoAbandonoUI(modo){
+  const normal=document.getElementById('btn-abandonar');
+  const historico=document.getElementById('btn-abandonar-historico');
+  const esHistorico=modo==='historico';
+  if(normal){
+    normal.style.display=esHistorico?'none':'';
+    normal.disabled=false;
+    normal.style.opacity='';
+    normal.style.pointerEvents=esHistorico?'none':'auto';
+  }
+  if(historico){
+    historico.style.display=esHistorico?'':'none';
+    historico.disabled=!esHistorico;
+    historico.style.opacity=esHistorico?'':'0.4';
+    historico.style.pointerEvents=esHistorico?'auto':'none';
+  }
+}
+window._setModoAbandonoUI=_setModoAbandonoUI;
+_setModoAbandonoUI('normal');
+
 const Juego = (() => {
 const $ = id => document.getElementById(id);
 let _sorteoVisto=null, _victoriaVista=false, _reclamoKey=null, _turnoAnterior=null, _reclamoCanceladoVisto=null, _ultimoD=null, _partidaInicioVisto=null;
@@ -1183,8 +1208,8 @@ async function procesarTerminalDesconexion(d, miRol){
       if(selHistorico){ selHistorico.style.display='flex'; }
       UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar','btn-nueva','btn-iniciar-partida'],true);
       UI.bloquearBtns(['btn-abandonar'],false);
-      const baHistorico=document.getElementById('btn-abandonar');
-      if(baHistorico){baHistorico.disabled=false;baHistorico.style.opacity='';baHistorico.style.pointerEvents='auto';baHistorico.style.display='';baHistorico.dataset.salidaHistorica='1';}
+      const baHistorico=document.getElementById('btn-abandonar-historico');
+      if(baHistorico){baHistorico.disabled=false;baHistorico.style.opacity='';baHistorico.style.pointerEvents='auto';baHistorico.style.display='';}
       UI.setMsg('Partida histórica — solo lectura. Puedes revisar la partida y ABANDONAR cuando termines.');
     }
     if(typeof bloquearSelectorModo==='function') bloquearSelectorModo(true);
@@ -1277,8 +1302,8 @@ async function procesarTerminalDesconexion(d, miRol){
     UI.bloquearTablero(true);
     UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar','btn-iniciar-partida'],true);
     UI.bloquearBtns(['btn-abandonar'],false);
-    const baHistorico2=document.getElementById('btn-abandonar');
-    if(baHistorico2){baHistorico2.disabled=false;baHistorico2.style.opacity='';baHistorico2.style.pointerEvents='auto';baHistorico2.style.display='';baHistorico2.dataset.salidaHistorica='1';}
+    const baHistorico2=document.getElementById('btn-abandonar-historico');
+    if(baHistorico2){baHistorico2.disabled=false;baHistorico2.style.opacity='';baHistorico2.style.pointerEvents='auto';baHistorico2.style.display='';}
     UI.setMsg('Partida histórica — solo lectura. Puedes revisar la partida y ABANDONAR cuando termines.');
     return;
   }
@@ -1333,6 +1358,7 @@ async function procesarTerminalDesconexion(d, miRol){
 
 async function aplicarEstado(d, miRol) {
 if(!d) return;
+if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
 // V58: los finales por desconexión tienen una máquina terminal propia.
 // Si un snapshot terminal quedara en la cola normal, no permitimos que
 // aplicarEstado() lo procese como abandono genérico ni que pise la UI histórica.
@@ -1391,7 +1417,6 @@ if(d.abandono && !d.fin_por_desconexion && d.abandono.abandonador !== miRol){
         const b=document.getElementById('btn-abandonar');
         if(b){
           b.disabled=false; b.style.opacity=''; b.style.pointerEvents='auto';
-          b.dataset.salidaTrasAbandono='1';
           _salidaTrasAbandono=true;
           // V55: NO instalar onclick aquí. ABANDONAR tiene un único handler central.
         }
@@ -1432,13 +1457,13 @@ if(window.Firebase && Firebase.revisarTimeoutPrioridad) Firebase.revisarTimeoutP
 // apenas Firebase confirma que la partida ya no está terminada
 // (nueva partida), sin depender de quién haya pulsado el botón
 if(d.terminado === false){
+  if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
   _victoriaVista = false; _salidaTrasAbandono=false;
   const b=document.getElementById('btn-abandonar');
-  if(b) delete b.dataset.salidaHistorica;
-  if(b){ delete b.dataset.salidaTrasAbandono; }
+  if(b){ delete b.dataset.salidaHistorica; delete b.dataset.salidaTrasAbandono; }
   // V29: al comenzar una nueva partida se restaura el manejador general
   // instalado al final del documento.
-  if(typeof instalarHandlerAbandonarGeneral==='function') instalarHandlerAbandonarGeneral();
+  if(typeof instalarHandlersAbandonoSeparados==='function') instalarHandlersAbandonoSeparados();
 }
 // V17 · RESOLUTOR CENTRAL REAL DEL EMPATE.
 // Mientras el estado siga en tablero_completo y ya existan ambas decisiones,
@@ -1829,9 +1854,9 @@ let _salidaTrasAbandono = false;
 function _instalarSalidaDirectaTrasAbandono(){
   const b=document.getElementById('btn-abandonar');
   if(!b) return;
+  // V62: esta es una ruta NORMAL terminal. No convierte el botón normal
+  // en un botón histórico ni escribe flags históricos en su DOM.
   b.disabled=false; b.style.opacity=''; b.style.pointerEvents='auto';
-  // V54: no reemplazar el handler central del botón. Solo marcar la ruta.
-  b.dataset.salidaTrasAbandono='1';
   _salidaTrasAbandono=true;
 }
 
@@ -2151,6 +2176,49 @@ console.error('Error en _faseJugando:', err);
 UI.bloquearTablero(d.turno !== miRol);
 }
 }
+function procesarPartidaHistorica(d, miRol){
+  if(!d || !d.terminado) return;
+  _modoHistoricoDesconexion=true;
+  _ultimoD=d;
+  try{
+    if(Reclamo.isActivo()) Reclamo.desactivar();
+    Estado.fromFirebase(d);
+    Tablero.render(Estado.tablero,id=>{});
+    UI.actualizarPaneles(Estado);
+    UI.setStats(Number(d.victoriasX||0),Number(d.victoriasO||0));
+    if(d.crono_modo&&Cronometro.configurarModo) Cronometro.configurarModo(d.crono_modo);
+    if(typeof marcarModoActivo==='function') marcarModoActivo(d.crono_modo||'clasico');
+    Cronometro.detener();
+    EmpateFlow.detenerCronometroPrioridad();
+    UI.ocultarLatenciaVisual();
+    UI.bloquearTablero(true);
+    UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar','btn-iniciar-partida'],true);
+    const wrap=document.getElementById('inicio-partida-wrap');
+    if(wrap) wrap.style.display='flex';
+    const bi=document.getElementById('btn-iniciar-partida');
+    const st=document.getElementById('inicio-partida-status');
+    if(bi){bi.disabled=true;bi.style.opacity='0.35';bi.style.pointerEvents='none';bi.style.display='';}
+    if(st) st.textContent='Partida histórica — solo lectura';
+    const sel=document.getElementById('crono-modo-selector');
+    if(sel) sel.style.display='flex';
+    if(typeof bloquearSelectorModo==='function') bloquearSelectorModo(true);
+    _ocultarModalDesconexion();
+    _ocultarModalReconexion();
+    _ocultarConfirmacionNuevaPartida();
+    _ocultarMaxNoNuevaPartida();
+    const ovB=document.getElementById('bilateral-overlay'); if(ovB) ovB.style.display='none';
+    const ovA=document.getElementById('abandono-confirm-overlay'); if(ovA) ovA.style.display='none';
+    if(window.EmpateFlow){
+      EmpateFlow.ocultarModalTC();
+      EmpateFlow.ocultarModalSinRespuesta();
+      EmpateFlow.ocultarModalPrioridad();
+      EmpateFlow.ocultarModalResultado();
+    }
+    _setModoAbandonoUI('historico');
+    UI.setMsg('Partida histórica — solo lectura. Puedes revisar y estudiar las jugadas y, cuando termines, pulsar ABANDONAR PARTIDA.');
+  }catch(e){ console.error('[V62] no pudo reconstruir partida histórica:',e); }
+}
+
 function reset(){
     _sorteoVisto=null; _victoriaVista=false; _reclamoKey=null; _partidaInicioVisto=null;
     _prioridadMostrada=null; _empateFinalKey=null; _resultadoReclamoVisto=null;
@@ -2158,7 +2226,7 @@ function reset(){
     _npFinalizacionEnCurso=null; _salidaTrasAbandono=false; _ultimoD=null; _modoHistoricoDesconexion=false; _historicoInicioTs=null;
     window._empateYaMostrado=false;
 }
-return {aplicarEstado, encolarEstado, procesarTerminalDesconexion, setUltimoEstado:(d)=>{_ultimoD=d;}, reset, getUltimoEstado:()=>_ultimoD, isSalidaTrasAbandono:()=>_salidaTrasAbandono, marcarSalidaTrasAbandono:()=>{_salidaTrasAbandono=true;}, isModoHistoricoDesconexion:()=>_modoHistoricoDesconexion, marcarModoHistoricoDesconexion:()=>{_modoHistoricoDesconexion=true;}};
+return {aplicarEstado, encolarEstado, procesarTerminalDesconexion, procesarPartidaHistorica, setUltimoEstado:(d)=>{_ultimoD=d;}, reset, getUltimoEstado:()=>_ultimoD, isSalidaTrasAbandono:()=>_salidaTrasAbandono, marcarSalidaTrasAbandono:()=>{_salidaTrasAbandono=true;}, isModoHistoricoDesconexion:()=>_modoHistoricoDesconexion, marcarModoHistoricoDesconexion:()=>{_modoHistoricoDesconexion=true;}, isModoHistorico:()=>_modoHistoricoDesconexion, marcarModoHistorico:()=>{_modoHistoricoDesconexion=true;}};
 })();
 // V59: el módulo Firebase necesita acceder al orquestador Juego mediante
 // window.Juego. Juego es una const del script clásico y, sin este puente,
@@ -2747,7 +2815,7 @@ databaseURL:       "https://gato-circular-default-rtdb.firebaseio.com"
 }));
 /* ── M13 · FIREBASE ─────────────────────────────────── */
 let _salaRef=null, _sala=null, _rol=null, _iniciado=false, _enviandoJugada=false, _unsubSala=null, _tcResolviendo=false, _recargandoTrasAbandono=false;
-let _modoHistoricoDesconexion=false; // V51: retorno histórico de una partida terminada por desconexión; solo lectura y salida local.
+let _modoHistoricoDesconexion=false; // V62: estado histórico de solo lectura, independiente de la partida normal.
 let _historicoInicioTs=null; // V56: inicio real de la ventana histórica (60 min desde el cierre de la partida).
 const GC_SESSION_KEY='gc_sesion_v32';
 const GC_SESSION_MAX_INACTIVA_MS=60*60*1000;
@@ -2907,27 +2975,22 @@ const snap=await get(ref(db,'salas/'+ses.sala));
 if(!snap.exists()){_borrarSesion();return {ok:false,msg:'La sala ya no existe.'};}
 const d=snap.val();
 if(d.sesionX!==ses.sessionId && d.sesionO!==ses.sessionId){_borrarSesion();return {ok:false,msg:'Esta sesión ya no corresponde a esa partida.'};}
-// V49: un abandono posterior a un resultado definitivo por desconexión
-// no cierra el acceso histórico del jugador que aún conserva su sesión.
-// Ese jugador puede volver al tablero en modo solo lectura y salir limpiamente
-// mediante ABANDONAR, mientras la sesión no haya caducado.
-const abandonoCierraReconexion = !!d.abandono && !(d.terminado===true && d.fin_por_desconexion && d.ganador && d.fin_sesion!==true);
-if(abandonoCierraReconexion){_borrarSesion();return {ok:false,msg:'La partida anterior ya fue cerrada por abandono. Puedes iniciar una nueva partida.'};}
-if(d.fin_sesion===true){_borrarSesion();return {ok:false,msg:'La sesión ya terminó.'};}
-// V32.3.15: una partida terminada NO implica necesariamente el fin de la sesión.
-// Se permite retomar una partida histórica pendiente de sesión, incluso si el
-// oponente abandonó después del resultado; el tablero y los modales informativos
-// deben poder reconstruirse.
-if(d.terminado===true && !d.fin_por_desconexion && !d.ganador){_borrarSesion();return {ok:false,msg:'No hay una partida pendiente válida para retomar.'};}
+// V62: RETOMAR solo abre el estado histórico cuando la partida ya terminó
+// por una de las rutas terminales que deben conservarse para estudio:
+// abandono o segunda/desconexión terminal. El estado normal nunca entra aquí.
+const esHistoricoTerminal=!!(
+  d.terminado===true &&
+  (d.fin_por_desconexion===true || !!d.abandono) &&
+  d.ganador
+);
+if(d.terminado===true && !esHistoricoTerminal){_borrarSesion();return {ok:false,msg:'No hay una partida histórica válida para retomar.'};}
+// V62: incluso si fin_sesion===true, el registro terminal sigue siendo
+// históricamente consultable durante la ventana de 60 minutos.
 _sala=ses.sala; _rol=d.sesionX===ses.sessionId?'X':'O'; _sessionId=ses.sessionId; _salaRef=ref(db,'salas/'+_sala);
-// V53: toda entrada mediante RETOMAR a una partida ya terminada por desconexión
-// es una consulta histórica de solo lectura. El jugador puede entrar aunque
-// haya sido quien abandonó anteriormente y debe poder salir limpiamente después.
-_modoHistoricoDesconexion=!!(d.terminado===true && d.fin_por_desconexion===true && d.ganador);
-_historicoInicioTs=_modoHistoricoDesconexion ? Number(d.historico_inicio_ts||0) : null;
+_modoHistoricoDesconexion=esHistoricoTerminal;
+_historicoInicioTs=_modoHistoricoDesconexion ? Number(d.historico_inicio_ts||d.abandono?.ts||Date.now()) : null;
 if(_modoHistoricoDesconexion){
-  if(!_historicoInicioTs){
-    _historicoInicioTs=Date.now();
+  if(!d.historico_inicio_ts){
     try{ await update(_salaRef,{historico_inicio_ts:_historicoInicioTs}); }catch(e){}
   }
   if(Date.now()-_historicoInicioTs>=GC_SESSION_MAX_INACTIVA_MS){
@@ -2935,31 +2998,23 @@ if(_modoHistoricoDesconexion){
     return {ok:false,msg:'La ventana histórica de 60 minutos ya expiró.'};
   }
 }
-if(_modoHistoricoDesconexion && window.Juego && typeof Juego.marcarModoHistoricoDesconexion==='function'){
-  Juego.marcarModoHistoricoDesconexion();
+if(_modoHistoricoDesconexion && window.Juego && typeof Juego.marcarModoHistorico==='function'){
+  Juego.marcarModoHistorico();
   const ov=document.getElementById('bilateral-overlay'); if(ov) ov.style.display='none';
   const ab=document.getElementById('abandono-confirm-overlay'); if(ab) ab.style.display='none';
+  if(window._setModoAbandonoUI) window._setModoAbandonoUI('historico');
 }
-const btnHistorico=document.getElementById('btn-abandonar');
-if(btnHistorico){ btnHistorico.dataset.salidaHistorica='1'; btnHistorico.disabled=false; btnHistorico.style.opacity=''; btnHistorico.style.pointerEvents='auto'; }
-const cambiosRet={['conexion/'+_rol]:{online:true,ts:serverTimestamp()}};
-if(d.terminado===true && d.fin_por_desconexion && d.post_desconexion && !d.fin_sesion){
-  cambiosRet['post_desconexion/retorno/'+_rol]=true;
-  cambiosRet['post_desconexion/ultimo_retorno_rol']=_rol;
-  cambiosRet['post_desconexion/ultimo_retorno_ts']=Date.now();
+// V62: entrar por RETOMAR NO es reconectarse a una partida viva.
+// En histórico no se toca conexion/, post_desconexion ni presencia_terminal.
+if(!_modoHistoricoDesconexion){
+  if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
+  await update(_salaRef,{['conexion/'+_rol]:{online:true,ts:serverTimestamp()}});
+  _guardarSesion(); _escuchar();
+  Firebase._registrarPresencia();
+}else{
+  _guardarSesion();
+  _escuchar();
 }
-// V45: una partida terminada sigue teniendo presencia/reconexión visible para
-// el rival. Si este jugador era el desconectado de un evento terminal, marcar
-// explícitamente su regreso para que el otro cliente reciba el aviso.
-if(d.terminado===true && !d.abandono && d.presencia_terminal && d.presencia_terminal.desconectado===_rol){
-  cambiosRet['presencia_terminal/retorno_ts']=Date.now();
-  cambiosRet['presencia_terminal/ultimo_retorno_rol']=_rol;
-}
-await update(_salaRef,cambiosRet);
-_guardarSesion(); _escuchar();
-// V61: el histórico no instala presencia de partida viva ni reabre la máquina
-// de desconexión/reconexión; conserva únicamente la sesión histórica local.
-if(!_modoHistoricoDesconexion) Firebase._registrarPresencia();
 return {ok:true,reconectada:true,rol:_rol};
 },
 _registrarPresencia(){
@@ -3007,6 +3062,8 @@ const snap=await get(_salaRef);
 return snap.exists()? snap.val() : null;
 },
 isIniciado(){ return _iniciado; },
+isModoHistorico(){ return _modoHistoricoDesconexion; },
+marcarModoHistorico(){ _modoHistoricoDesconexion=true; if(window._setModoAbandonoUI) window._setModoAbandonoUI('historico'); },
 async jugar(id){
 // V32.3.40: tras cada jugada se abre una latencia post-jugada de 3 s para
 // permitir reclamar la victoria antes de entregar el turno al oponente.
@@ -3879,6 +3936,7 @@ async abandonarPartida(){
           penaliza_abandonador:false,
           salida_ganador:false
         },
+        historico_inicio_ts:Date.now(),
         nueva_partida_solicitud:null,
         nueva_partida_max_alert:null,
         presencia_terminal:null
@@ -3896,13 +3954,14 @@ async abandonarPartida(){
       terminado:true,ganador,fase:'terminado',
       victoriasX:vX,victoriasO:vO,partidasJugadas:jugadas,fin_sesion:finSesion,
       abandono:{abandonador:_rol,ganador,ts:Date.now(),penaliza_abandonador:true,salida_ganador:false},
+      historico_inicio_ts:Date.now(),
       nueva_partida_solicitud:null,nueva_partida_max_alert:null,presencia_terminal:null
     });
     // El jugador que abandona sale de su propia sala inmediatamente.
     // No dependemos del listener remoto para desmontar su interfaz local.
     this.salirLocalTrasAbandono();
 },
-salirLocalAlLobbyNormal(){if(_unsubSala){_unsubSala();_unsubSala=null;}_iniciado=false;_borrarSesion();if(_unsubConexion){_unsubConexion();_unsubConexion=null;}_ocultarModalDesconexion();_ocultarModalReconexion();UI.cerrarModal();UI.bloquearTablero(true);UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar','btn-abandonar'],true);const wrap=document.getElementById('inicio-partida-wrap');if(wrap)wrap.style.display='none';UI.lobbyPaso('inicio');UI.lobbyVisible(true);setTimeout(()=>{try{window.location.reload();}catch(e){console.error('[V32.3] no se pudo volver al lobby',e);}},120);},
+salirLocalAlLobbyNormal(){if(_unsubSala){_unsubSala();_unsubSala=null;}_iniciado=false;_borrarSesion();if(_unsubConexion){_unsubConexion();_unsubConexion=null;}_ocultarModalDesconexion();_ocultarModalReconexion();UI.cerrarModal();UI.bloquearTablero(true);UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar','btn-abandonar'],true);if(window._setModoAbandonoUI) window._setModoAbandonoUI('none');const wrap=document.getElementById('inicio-partida-wrap');if(wrap)wrap.style.display='none';UI.lobbyPaso('inicio');UI.lobbyVisible(true);setTimeout(()=>{try{window.location.reload();}catch(e){console.error('[V32.3] no se pudo volver al lobby',e);}},120);},
 async salirLocalTrasAbandono(){
     if(_recargandoTrasAbandono) return;
     _recargandoTrasAbandono=true;
@@ -3924,22 +3983,32 @@ async salirLocalTrasAbandono(){
     const estadoHistoricoFirebase=!!(
       estadoActual &&
       estadoActual.terminado===true &&
-      estadoActual.fin_por_desconexion===true &&
+      (estadoActual.fin_por_desconexion===true || !!estadoActual.abandono) &&
       estadoActual.ganador
     );
     const estadoHistoricoLocal=!!(
       _modoHistoricoDesconexion ||
       ((window.Juego&&typeof Juego.getUltimoEstado==='function') &&
        (Juego.getUltimoEstado()||{}).terminado===true &&
-       (Juego.getUltimoEstado()||{}).fin_por_desconexion===true &&
+       ((Juego.getUltimoEstado()||{}).fin_por_desconexion===true || !!(Juego.getUltimoEstado()||{}).abandono) &&
        (Juego.getUltimoEstado()||{}).ganador)
     );
     const conservarSesionHistorica=estadoHistoricoFirebase || estadoHistoricoLocal;
+    const tsHistoricoSalida=conservarSesionHistorica
+      ? Number(estadoActual?.historico_inicio_ts || estadoActual?.abandono?.ts || _historicoInicioTs || Date.now())
+      : null;
 
-    // V55: ahora sí desmontamos la sesión. La decisión anterior ya quedó fijada.
+    // V62: una salida desde una partida terminal conserva la sesión local como
+    // RETOMAR HISTÓRICO. La ventana de 60 minutos nace en el cierre terminal,
+    // no en la última actividad posterior.
     if(_unsubSala){ _unsubSala(); _unsubSala=null; }
     _iniciado=false;
-    if(!conservarSesionHistorica) _borrarSesion();
+    if(conservarSesionHistorica){
+      try{
+        localStorage.setItem(GC_SESSION_KEY,JSON.stringify({sala:_sala,rol:_rol,sessionId:_sessionId,ts:tsHistoricoSalida}));
+        _programarCaducidadSesionLocal();
+      }catch(e){ console.warn('[V62] no se pudo conservar sesión histórica:',e); }
+    }else _borrarSesion();
     if(_unsubConexion){ _unsubConexion(); _unsubConexion=null; }
 
     UI.cerrarModal();
@@ -4209,6 +4278,19 @@ _unsubSala = onValue(_salaRef, snap=>{
 if(!snap.exists()) return;
 const d=snap.val();
 if(typeof Juego!=='undefined' && Juego.setUltimoEstado) Juego.setUltimoEstado(d);
+// V62: HISTÓRICO ES UN ESTADO AISLADO. Desde este punto no se ejecuta ninguna
+// máquina de presencia, desconexión, reconexión, turno ni Nueva Partida.
+if(_modoHistoricoDesconexion){
+  if(!_iniciado){
+    _iniciado=true;
+    try{ Reclamo.init(_rol); }catch(e){}
+    try{ Chat.init(db,_sala,_rol); }catch(e){}
+  }
+  if(typeof Juego!=='undefined' && Juego.procesarPartidaHistorica){
+    Juego.procesarPartidaHistorica(d,_rol);
+  }
+  return;
+}
 // V32.3.15: mientras este navegador siga recibiendo estado de su sesión,
 // renovamos la marca local de actividad. Si permanece realmente inactiva,
 // el marcador caduca a la hora y ya no se podrá retomar desde este navegador.
@@ -4277,6 +4359,7 @@ if(d.terminado && !d.fin_por_desconexion && !d.abandono){
   }
 }
 if(d.terminado && d.fin_por_desconexion){
+  if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
   // V61: asegurar que ABANDONAR no quede físicamente disabled por un estado previo.
   const btnAbTerminal=document.getElementById('btn-abandonar');
   if(btnAbTerminal){btnAbTerminal.disabled=false;btnAbTerminal.style.pointerEvents='auto';btnAbTerminal.style.opacity='';btnAbTerminal.style.display='';}
@@ -4322,6 +4405,7 @@ if(d.terminado && d.fin_por_desconexion){
   return;
 }
 if(!_iniciado&&d.j1==='online'&&d.j2==='online'){
+if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
 _iniciado=true;
 UI.lobbyVisible(false);
 UI.indicadorOnline(_sala,_rol);
@@ -4406,8 +4490,8 @@ if(_sesionPendienteInicial && _sesionPendienteInicial.sala && _sesionPendienteIn
     // regresar al tablero histórico mientras su sesión siga vigente.
     // En cambio, un abandono que no pertenece a una partida terminal por
     // desconexión continúa cerrando el vínculo de reconexión.
-    const salaAbandonada=!!(d && d.abandono) && !(d && d.terminado && d.fin_por_desconexion && d.ganador);
-    const pendiente=!caducada && corresponde && !salaAbandonada && !d.fin_sesion && (!d.terminado || !!d.ganador);
+    const historicoTerminal=!!(d && d.terminado && (d.fin_por_desconexion===true || !!d.abandono) && d.ganador);
+    const pendiente=!caducada && corresponde && (historicoTerminal || (!d.terminado && !d.abandono));
     if(pendiente){
       if(rb) rb.style.display='block';
       if(rs){rs.style.display='block';rs.textContent='Hay una partida pendiente asociada a este navegador.';}
@@ -4482,38 +4566,58 @@ function _mostrarConfirmacionAbandono(cb, yaGanoPorAbandono=false, partidaYaTerm
   }
   ov.style.display='flex';
 }
-let _abandonoGeneralHandlerInstalado=false;
-function instalarHandlerAbandonarGeneral(){
-  if(_abandonoGeneralHandlerInstalado) return;
-  _abandonoGeneralHandlerInstalado=true;
-  const b=document.getElementById('btn-abandonar');
-  if(!b) return;
-  // V61: un único handler directo, instalado una sola vez. No hay onclick
-  // secundarios ni listeners acumulativos sobre el mismo botón.
-  b.onclick=async()=>{
-    b.disabled=false; b.style.opacity=''; b.style.pointerEvents='auto';
-    const snap=(window.Juego&&typeof Juego.getUltimoEstado==='function')?Juego.getUltimoEstado():null;
-    const miRol=(window.Firebase&&typeof Firebase.getMiRol==='function')?Firebase.getMiRol():null;
-    const historico=!!((window.Juego&&typeof Juego.isModoHistoricoDesconexion==='function'&&Juego.isModoHistoricoDesconexion())||b.dataset.salidaHistorica==='1'||(snap&&snap.terminado===true&&snap.fin_por_desconexion===true&&snap.ganador));
-    if(historico){
-      _ocultarModalOponenteAbandono();
-      if(window.Juego&&typeof Juego.marcarSalidaTrasAbandono==='function') Juego.marcarSalidaTrasAbandono();
-      if(window.Firebase&&typeof Firebase.salirLocalTrasAbandono==='function'){try{await Firebase.salirLocalTrasAbandono();}catch(e){console.error('[V61] salida histórica:',e);}}
-      return;
-    }
-    const salidaDirecta=!!((window.Juego&&typeof Juego.isSalidaTrasAbandono==='function'&&Juego.isSalidaTrasAbandono())||b.dataset.salidaTrasAbandono==='1'||(snap&&snap.abandono&&miRol&&snap.abandono.abandonador!==miRol));
-    if(salidaDirecta){
-      _ocultarModalOponenteAbandono();
-      if(window.Juego&&typeof Juego.marcarSalidaTrasAbandono==='function') Juego.marcarSalidaTrasAbandono();
-      if(window.Firebase&&typeof Firebase.salirLocalTrasAbandono==='function'){try{await Firebase.salirLocalTrasAbandono();}catch(e){console.error('[V61] salida tras abandono:',e);}}
-      return;
-    }
-    if(!window.Firebase||typeof Firebase.abandonarPartida!=='function') return;
-    const partidaYaTerminada=!!(snap&&snap.terminado);
-    _mostrarConfirmacionAbandono(async()=>{await Firebase.abandonarPartida();},false,partidaYaTerminada);
-  };
+function instalarHandlersAbandonoSeparados(){
+  const normal=document.getElementById('btn-abandonar');
+  const historico=document.getElementById('btn-abandonar-historico');
+
+  if(normal && normal.dataset.handlerV62!=='1'){
+    normal.dataset.handlerV62='1';
+    normal.addEventListener('click', async (ev)=>{
+      ev.preventDefault();
+      ev.stopPropagation();
+      if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
+      normal.disabled=false; normal.style.pointerEvents='auto'; normal.style.opacity='';
+
+      const snap=(window.Juego&&typeof Juego.getUltimoEstado==='function') ? Juego.getUltimoEstado() : null;
+      const miRol=(window.Firebase&&typeof Firebase.getMiRol==='function') ? Firebase.getMiRol() : null;
+
+      // Partida normal/terminal: si el rival ya abandonó, esta pulsación es
+      // simplemente nuestra salida local. No modifica el resultado.
+      if(snap && snap.abandono && snap.abandono.abandonador!==miRol){
+        _ocultarModalOponenteAbandono();
+        if(window.Juego&&typeof Juego.marcarSalidaTrasAbandono==='function') Juego.marcarSalidaTrasAbandono();
+        if(window.Firebase&&typeof Firebase.salirLocalTrasAbandono==='function'){
+          try{ await Firebase.salirLocalTrasAbandono(); }catch(e){ console.error('[V62] salida normal tras abandono:',e); }
+        }
+        return;
+      }
+
+      // PARTIDA NORMAL: esta ruta no conoce ni consulta el estado histórico.
+      if(!window.Firebase || typeof Firebase.abandonarPartida!=='function') return;
+      const partidaYaTerminada=!!(snap&&snap.terminado);
+      _mostrarConfirmacionAbandono(
+        async ()=>{ await Firebase.abandonarPartida(); },
+        false,
+        partidaYaTerminada
+      );
+    });
+  }
+
+  if(historico && historico.dataset.handlerV62!=='1'){
+    historico.dataset.handlerV62='1';
+    historico.addEventListener('click', async (ev)=>{
+      ev.preventDefault();
+      ev.stopPropagation();
+      if(!window.Firebase || typeof Firebase.salirLocalTrasAbandono!=='function') return;
+      // ÚNICA responsabilidad del botón histórico: abandonar la vista histórica.
+      // Nunca escribe el resultado de la partida ni entra a abandonarPartida().
+      try{
+        await Firebase.salirLocalTrasAbandono();
+      }catch(e){ console.error('[V62] salida histórica:',e); }
+    });
+  }
 }
-instalarHandlerAbandonarGeneral();
+instalarHandlersAbandonoSeparados();
 
 $('btn-sortear').onclick=async()=>{if(!Firebase.isIniciado())return;const r=await Firebase.sortear();if(!r.ok)UI.modal('Sorteo',r.msg);};
 $('btn-reclamar').onclick = async ()=>{
