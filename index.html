@@ -5,7 +5,7 @@ V32.2 · DESCONEXIÓN/RECONEXIÓN · FIX PRESENCIA
 V43 · MICRO-CIRUGÍA: distingue reclamo inválido antes/después de jugar
 V47 · MICRO-CIRUGÍA ABANDONO + PANEL FIJO DE LATENCIA
 V56 · MICRO-CIRUGÍA: HISTÓRICO DE DESCONEXIÓN COMO MODO SOLO LECTURA
-V59 · FIX: puente window.Juego para modo histórico y salida ABANDONAR
+V60 · AUDITORÍA: salida histórica única + selector de modos visible
 Desarrollador: Pedro Alejandro Torres Guerrero
 Juego de Estrategia Mental: GATO CIRCULAR
 Todos los derechos reservados.
@@ -1171,7 +1171,12 @@ async function procesarTerminalDesconexion(d, miRol){
       // dejar visualmente claro que esta partida es de SOLO LECTURA.
       if(bn){bn.disabled=true;bn.style.opacity='0.35';bn.style.pointerEvents='none';bn.style.display='none';}
       if(wrap) wrap.style.display='none';
-      const selHistorico=document.getElementById('crono-modo-selector'); if(selHistorico) selHistorico.style.display='none';
+      // V60: el histórico es de SOLO LECTURA, pero no debe ocultar información.
+      // El selector de modos permanece visible para que el jugador pueda ver
+      // claramente el modo en que se disputó la partida. Los botones siguen
+      // bloqueados y el selector se mantiene no editable.
+      const selHistorico=document.getElementById('crono-modo-selector');
+      if(selHistorico){ selHistorico.style.display='flex'; }
       UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar','btn-nueva','btn-iniciar-partida'],true);
       UI.bloquearBtns(['btn-abandonar'],false);
       const baHistorico=document.getElementById('btn-abandonar');
@@ -4447,62 +4452,60 @@ function _mostrarConfirmacionAbandono(cb, yaGanoPorAbandono=false, partidaYaTerm
   }
   ov.style.display='flex';
 }
+let _abandonoGeneralHandlerInstalado=false;
 function instalarHandlerAbandonarGeneral(){
-  const btn=document.getElementById('btn-abandonar');
-  if(!btn) return;
+  // V60: el problema no era solamente `onclick`. Las versiones anteriores
+  // acumulaban listeners sobre el botón cada vez que se reconstruía una
+  // partida. Además, un listener ligado directamente al botón es frágil si
+  // otra ruta reemplaza/reconstruye el nodo. Usamos UN ÚNICO listener de
+  // captura sobre document, que identifica siempre al botón actual.
+  if(_abandonoGeneralHandlerInstalado) return;
+  _abandonoGeneralHandlerInstalado=true;
 
-  // V54: el botón ABANDONAR tiene UN SOLO punto de entrada real.
-  // Las versiones anteriores acumulaban onclick + listener de captura +
-  // handlers instalados por distintas rutas históricas. El botón podía verse
-  // activo y, sin embargo, quedar funcionalmente mudo según la ruta que había
-  // reconstruido el tablero.
-  btn.onclick=null;
-  btn.addEventListener('click', async (ev)=>{
+  document.addEventListener('click', async (ev)=>{
+    const target=ev.target && ev.target.closest ? ev.target.closest('#btn-abandonar') : null;
+    if(!target) return;
     ev.preventDefault();
-    ev.stopImmediatePropagation();
-    btn.disabled=false;
-    btn.style.opacity='';
-    btn.style.pointerEvents='auto';
+    ev.stopPropagation();
+
+    target.disabled=false;
+    target.style.opacity='';
+    target.style.pointerEvents='auto';
 
     const snap=(window.Juego&&typeof Juego.getUltimoEstado==='function')
       ? Juego.getUltimoEstado() : null;
     const miRol=(window.Firebase&&typeof Firebase.getMiRol==='function')
       ? Firebase.getMiRol() : null;
 
-    // Salidas históricas o después del abandono del oponente: son salidas
-    // locales de solo lectura. No escribimos un segundo abandono.
-    const salidaDirecta=!!(
+    const historico=!!(
       (window.Juego&&typeof Juego.isModoHistoricoDesconexion==='function'&&Juego.isModoHistoricoDesconexion()) ||
+      target.dataset.salidaHistorica==='1' ||
+      (snap&&snap.terminado===true&&snap.fin_por_desconexion===true&&snap.ganador)
+    );
+    const salidaDirecta=historico || !!(
       (window.Juego&&typeof Juego.isSalidaTrasAbandono==='function'&&Juego.isSalidaTrasAbandono()) ||
-      btn.dataset.salidaTrasAbandono==='1' ||
-      btn.dataset.salidaHistorica==='1' ||
-      (window.Juego&&typeof Juego.isModoHistoricoDesconexion==='function'&&Juego.isModoHistoricoDesconexion()) ||
-      (snap&&snap.terminado===true&&snap.fin_por_desconexion===true&&snap.ganador) ||
+      target.dataset.salidaTrasAbandono==='1' ||
       (snap&&snap.abandono&&miRol&&snap.abandono.abandonador!==miRol)
     );
+
     if(salidaDirecta){
       _ocultarModalOponenteAbandono();
       if(window.Juego&&typeof Juego.marcarSalidaTrasAbandono==='function') Juego.marcarSalidaTrasAbandono();
       if(window.Firebase&&typeof Firebase.salirLocalTrasAbandono==='function'){
         try{ await Firebase.salirLocalTrasAbandono(); }
-        catch(e){ console.error('[V57] salida histórica local:',e); }
+        catch(e){ console.error('[V60] salida local histórica:',e); }
       }
       return;
     }
 
-    // Ruta normal: no dependemos de Firebase.isIniciado(). El estado local
-    // puede estar reconstruido desde RETOMAR y, aun así, _iniciado puede haber
-    // sido reinicializado por una transición terminal. Si existe la sala y el
-    // método de abandono, la operación es válida.
     if(!window.Firebase || typeof Firebase.abandonarPartida!=='function') return;
-
     const partidaYaTerminada=!!(snap&&snap.terminado);
     _mostrarConfirmacionAbandono(
       async ()=>{ await Firebase.abandonarPartida(); },
       false,
       partidaYaTerminada
     );
-  }, false);
+  }, true);
 }
 instalarHandlerAbandonarGeneral();
 
