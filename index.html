@@ -5,6 +5,7 @@ V32.2 · DESCONEXIÓN/RECONEXIÓN · FIX PRESENCIA
 V43 · MICRO-CIRUGÍA: distingue reclamo inválido antes/después de jugar
 V47 · MICRO-CIRUGÍA ABANDONO + PANEL FIJO DE LATENCIA
 V56 · MICRO-CIRUGÍA: HISTÓRICO DE DESCONEXIÓN COMO MODO SOLO LECTURA
+V59 · FIX: puente window.Juego para modo histórico y salida ABANDONAR
 Desarrollador: Pedro Alejandro Torres Guerrero
 Juego de Estrategia Mental: GATO CIRCULAR
 Todos los derechos reservados.
@@ -2133,6 +2134,13 @@ function reset(){
 }
 return {aplicarEstado, encolarEstado, procesarTerminalDesconexion, setUltimoEstado:(d)=>{_ultimoD=d;}, reset, getUltimoEstado:()=>_ultimoD, isSalidaTrasAbandono:()=>_salidaTrasAbandono, marcarSalidaTrasAbandono:()=>{_salidaTrasAbandono=true;}, isModoHistoricoDesconexion:()=>_modoHistoricoDesconexion, marcarModoHistoricoDesconexion:()=>{_modoHistoricoDesconexion=true;}};
 })();
+// V59: el módulo Firebase necesita acceder al orquestador Juego mediante
+// window.Juego. Juego es una const del script clásico y, sin este puente,
+// las comprobaciones `window.Juego` dentro del módulo daban false. Eso hacía
+// que RETOMAR marcara el histórico en Firebase pero NO activara el modo
+// histórico interno de Juego: NUEVA PARTIDA/INICIAR quedaban visibles y la
+// ruta histórica de ABANDONAR no se reconocía de forma determinista.
+window.Juego = Juego;
 /* ═══════════════════════════════════════════════════════
 M14· CHAT JS — Chat en tiempo real
 ═══════════════════════════════════════════════════════ */
