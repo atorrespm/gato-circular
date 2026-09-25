@@ -47,7 +47,7 @@ M20· ESTADISTICAS  Historial y estadísticas avanzadas
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gato Circular V62</title>
+<title>Gato Circular V63</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@500;700&display=swap');
 /* ═══════════════════════════════════════════════════════
@@ -108,18 +108,19 @@ M3 · PANELES CSS — Laterales, botones, modal
 /* V48 · Panel TURNO ACTUAL reconstruido según el diseño propuesto: tamaño fijo,
    instrucciones siempre visibles y legibles, y latencia activa solo en el
    cliente del jugador que acaba de realizar la jugada. */
-#turno-panel{text-align:center;height:250px;min-height:250px;display:flex;flex-direction:column;align-items:center;overflow:hidden;}
-#turno-ficha{font-family:'Orbitron',sans-serif;font-size:38px;font-weight:900;margin:4px 0 6px;transition:color .3s,text-shadow .3s;line-height:1}
+/* V63: panel TURNO ACTUAL ampliado; las leyendas ganan separación sin mover el reloj. */
+#turno-panel{text-align:center;height:286px;min-height:286px;display:flex;flex-direction:column;align-items:center;overflow:hidden;position:relative;}
+#turno-ficha{font-family:'Orbitron',sans-serif;font-size:38px;font-weight:900;margin:10px 0 9px;transition:color .3s,text-shadow .3s;line-height:1}
 #turno-ficha.x{color:var(--red-g);text-shadow:0 0 14px var(--red)}
 #turno-ficha.o{color:var(--blue-g);text-shadow:0 0 14px var(--blue)}
 /* Las instrucciones del juego permanecen siempre blancas y luminosas. */
-#turno-msg{font-size:14px;color:#f2f2f2;letter-spacing:.25px;line-height:1.15;min-height:34px;max-width:174px;text-shadow:0 0 6px rgba(255,255,255,.42);display:flex;align-items:center;justify-content:center;}
+#turno-msg{font-size:14px;color:#f2f2f2;letter-spacing:.25px;line-height:1.15;min-height:40px;max-width:174px;margin-top:2px;text-shadow:0 0 6px rgba(255,255,255,.42);display:flex;align-items:center;justify-content:center;}
 /* V48 · La zona de latencia nunca desaparece: solo cambia de estado visual. */
-#turno-latencia{display:flex;visibility:visible;opacity:1;flex-direction:column;align-items:center;justify-content:flex-start;gap:6px;margin-top:5px;width:100%;min-height:128px;transition:filter .25s;}
+#turno-latencia{display:block;visibility:visible;opacity:1;position:relative;margin-top:7px;width:100%;height:150px;min-height:150px;transition:filter .25s;}
 #turno-latencia.active{filter:brightness(1.08);}
-#turno-latencia-text{font-size:13px;color:#f2f2f2;line-height:1.15;max-width:174px;min-height:47px;display:flex;flex-direction:column;justify-content:center;text-align:center;text-shadow:0 0 6px rgba(255,255,255,.42);transition:color .25s,text-shadow .25s;}
+#turno-latencia-text{font-size:13px;color:#f2f2f2;line-height:1.15;position:absolute;top:14px;left:50%;transform:translateX(-50%);width:174px;min-height:58px;display:flex;flex-direction:column;justify-content:center;text-align:center;text-shadow:0 0 6px rgba(255,255,255,.42);transition:color .25s,text-shadow .25s;}
 #turno-latencia-text strong{color:#f2f2f2;font-family:'Orbitron',sans-serif;font-size:12px;letter-spacing:.35px;text-shadow:0 0 6px rgba(255,255,255,.42);transition:color .25s,text-shadow .25s;}
-#turno-latencia-row{display:flex;align-items:center;justify-content:center;gap:10px;height:43px;}
+#turno-latencia-row{display:flex;align-items:center;justify-content:center;gap:10px;height:43px;position:absolute;top:83px;left:50%;transform:translateX(-50%);width:100%;}
 #turno-latencia-icon{width:40px;height:40px;border:3px solid #c8c8c8;border-radius:50%;position:relative;box-shadow:0 0 6px rgba(255,255,255,.28);flex-shrink:0;transition:border-color .25s,box-shadow .25s,filter .25s;}
 #turno-latencia-icon::before{content:'';position:absolute;width:2px;height:11px;background:#c8c8c8;left:50%;top:5px;transform:translateX(-50%);border-radius:2px;box-shadow:0 0 4px rgba(255,255,255,.3);transition:background .25s,box-shadow .25s;}
 #turno-latencia-icon::after{content:'';position:absolute;width:9px;height:2px;background:#c8c8c8;left:50%;top:50%;transform:translateY(-50%);border-radius:2px;box-shadow:0 0 4px rgba(255,255,255,.3);transition:background .25s,box-shadow .25s;}
@@ -1095,7 +1096,7 @@ function limpiarMarcasReclamoVisuales(){
 /* ═══════════════════════════════════════════════════════
 M12· JUEGO — Orquestador principal · V17
 ═══════════════════════════════════════════════════════ */
-// V62 · FRONTERA EXPLÍCITA ENTRE PARTIDA NORMAL Y PARTIDA HISTÓRICA.
+// V63 · FRONTERA EXPLÍCITA ENTRE PARTIDA NORMAL Y PARTIDA HISTÓRICA.
 // Son dos controles físicos distintos aunque visualmente ocupen el mismo lugar.
 // Nunca se reutiliza el handler del botón normal para el estado histórico.
 function _setModoAbandonoUI(modo){
@@ -1231,13 +1232,12 @@ async function procesarTerminalDesconexion(d, miRol){
   // V57: en modo histórico, `abandono` es un REGISTRO HISTÓRICO y no
   // significa que el oponente siga fuera del tablero. Para saber si el aviso
   // de abandono corresponde AHORA, usamos exclusivamente la presencia actual.
-  const oponenteActualmenteConectado=!!(
-    d.conexion && d.conexion[otro] && d.conexion[otro].online===true
-  );
+  // V63: el registro `abandono` es la fuente de verdad del abandono.
+  // La presencia online no decide este modal: el rival puede estar ya en el
+  // lobby y su bandera de presencia puede conservarse temporalmente.
   const abandonoOponenteActual=!!(
     d.abandono &&
-    d.abandono.abandonador!==miRol &&
-    (!_modoHistoricoDesconexion || !oponenteActualmenteConectado)
+    d.abandono.abandonador!==miRol
   );
 
   const nombreGanador=d.ganador==='X'?'Jugador 1 (X)':'Jugador 2 (O)';
@@ -1363,6 +1363,29 @@ if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
 // Si un snapshot terminal quedara en la cola normal, no permitimos que
 // aplicarEstado() lo procese como abandono genérico ni que pise la UI histórica.
 if(d.terminado && d.fin_por_desconexion) return;
+// V63: abandono remoto normal tiene una ruta terminal propia, antes de
+// _faseTerminado(), para garantizar la secuencia de avisos al rival.
+if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.abandono.abandonador!==miRol){
+  Estado.fromFirebase(d); _ultimoD=d;
+  try{
+    Tablero.render(Estado.tablero,id=>{});
+    UI.actualizarPaneles(Estado);
+    UI.setStats(d.victoriasX||0,d.victoriasO||0);
+    if(d.crono_modo&&Cronometro.configurarModo) Cronometro.configurarModo(d.crono_modo);
+    if(typeof marcarModoActivo==='function') marcarModoActivo(d.crono_modo||'clasico');
+    Cronometro.detener();
+    UI.bloquearTablero(true);
+    UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+    if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
+    UI.bloquearBtns(['btn-abandonar'],false);
+    const keyAb='normal-abandono|'+String(d.abandono.ts||'')+'|'+String(d.partidasJugadas||0)+'|'+String(miRol);
+    if(_abandonoOponenteAvisoVisto!==keyAb){
+      _abandonoOponenteAvisoVisto=keyAb;
+      _mostrarModalOponenteAbandono(d.abandono.ts,miRol);
+    }
+  }catch(e){ console.warn('[V63] no pudo procesar abandono remoto normal:',e); }
+  return;
+}
 console.debug('[FLOW-V22] aplicarEstado', {fase:d.fase, terminado:!!d.terminado, abandono:d.abandono||null, tc:d.tc_decision||null, prioridad:d.prioridad_jugador||null});
 // V22: el abandono del oponente puede ocurrir DESPUÉS de que ya se haya
 // renderizado la victoria normal. Se detecta aquí, antes de cualquier
@@ -1884,7 +1907,21 @@ function _mostrarModalOponenteAbandono(ts, miRol){
         _instalarSalidaDirectaTrasAbandono();
       }
       const soyGanador = !!(_ultimoD && _ultimoD.abandono && _ultimoD.abandono.ganador === miRol);
-      UI.setMsg(soyGanador ? 'Tu oponente abandonó. Eres el ganador. Puedes estudiar las jugadas o abandonar la partida.' : 'Tu oponente abandonó. El resultado original se conserva. Puedes estudiar las jugadas o abandonar la partida.');
+      if(soyGanador){
+        const nombreAbandonador=_ultimoD.abandono.abandonador==='X'?'Jugador 1 (X)':'Jugador 2 (O)';
+        UI.modal('🏆 VICTORIA POR ABANDONO',
+          'Has ganado la partida porque '+nombreAbandonador+' abandonó la partida. Puedes quedarte a revisar y estudiar las jugadas y, cuando termines, pulsar ABANDONAR PARTIDA para volver al lobby.',
+          'ACEPTAR',
+          ()=>{
+            UI.bloquearTablero(true);
+            UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+            UI.bloquearBtns(['btn-abandonar'],false);
+            _instalarSalidaDirectaTrasAbandono();
+            UI.setMsg('Tu oponente abandonó. Eres el ganador. Puedes estudiar las jugadas o abandonar la partida.');
+          });
+      }else{
+        UI.setMsg('Tu oponente abandonó. El resultado original se conserva. Puedes estudiar las jugadas o abandonar la partida.');
+      }
     });
     document.getElementById('btn-ab-salir')?.addEventListener('click',()=>{
       ov.style.display='none';
@@ -3339,7 +3376,7 @@ async solicitarNuevaPartida(){
       if(!ambosRegresaron){
         // Solo el ganador que permaneció conectado puede quedar esperando.
         if(soyGanador){
-          UI.modal('⏳ ESPERA POR DESCONEXIÓN','La partida terminó por desconexión de tu oponente. Mientras tanto, puedes regresar al tablero y esperar a que se reconecte (se te notificará) o puedes Abandonar la partida.','ACEPTAR');
+          UI.modal('⏳ ESPERA POR DESCONEXIÓN','La partida terminó por desconexión de tu oponente. Puedes esperar a que se reconecte (se te notificará) o puedes Abandonar la partida.','ACEPTAR');
         }
         return;
       }
@@ -4578,8 +4615,16 @@ function instalarHandlersAbandonoSeparados(){
       if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
       normal.disabled=false; normal.style.pointerEvents='auto'; normal.style.opacity='';
 
-      const snap=(window.Juego&&typeof Juego.getUltimoEstado==='function') ? Juego.getUltimoEstado() : null;
+      let snap=(window.Juego&&typeof Juego.getUltimoEstado==='function') ? Juego.getUltimoEstado() : null;
       const miRol=(window.Firebase&&typeof Firebase.getMiRol==='function') ? Firebase.getMiRol() : null;
+      // V63: al pulsar se consulta Firebase para no depender del último
+      // snapshot visual cuando el rival acaba de abandonar y salir al lobby.
+      try{
+        if(window.Firebase&&typeof Firebase.snapshotFase==='function'){
+          const snapLive=await Firebase.snapshotFase();
+          if(snapLive) snap=snapLive;
+        }
+      }catch(e){ console.warn('[V63] no se pudo refrescar estado al pulsar ABANDONAR:',e); }
 
       // Partida normal/terminal: si el rival ya abandonó, esta pulsación es
       // simplemente nuestra salida local. No modifica el resultado.
