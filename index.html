@@ -1122,7 +1122,8 @@ _setModoAbandonoUI('normal');
 const Juego = (() => {
 const $ = id => document.getElementById(id);
 let _sorteoVisto=null, _victoriaVista=false, _reclamoKey=null, _turnoAnterior=null, _reclamoCanceladoVisto=null, _ultimoD=null, _partidaInicioVisto=null;
-let _resultadoReclamoVisto=null, _abandonoVisto=null, _desconexionResultadoVisto=null, _abandonoPostDesconexionVisto=null;   // V32.3.11: control de modales terminales de desconexión
+let _resultadoReclamoVisto=null, _abandonoVisto=null, _desconexionResultadoVisto=null, _abandonoPostDesconexionVisto=null;
+let _modoContinuableTerminal=false; // V64: partida terminada, pero la sesión aún puede continuar   // V32.3.11: control de modales terminales de desconexión
 // V17 · SERIALIZADOR DEL ESTADO: onValue puede entregar snapshots mientras
 // el snapshot anterior todavía está esperando una transacción. No permitimos
 // que dos aplicarEstado() pinten fases diferentes simultáneamente.
@@ -1151,6 +1152,8 @@ function encolarEstado(d, miRol){
 async function procesarTerminalDesconexion(d, miRol){
   if(!d || !d.terminado || !d.fin_por_desconexion) return;
   _ultimoD=d;
+  _modoContinuableTerminal=!!(d.terminado===true && d.fin_por_desconexion===true && !d.abandono && d.ganador && d.fin_sesion!==true);
+  if(!_modoContinuableTerminal && d.abandono) _modoContinuableTerminal=false;
   Estado.fromFirebase(d);
   if(typeof Sesion!=='undefined') Sesion.fromFirebase(d);
 
@@ -1187,9 +1190,39 @@ async function procesarTerminalDesconexion(d, miRol){
     UI.bloquearTablero(true);
     UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar'],true);
     const bn=document.getElementById('btn-nueva'), ba=document.getElementById('btn-abandonar');
-    if(bn){bn.disabled=!!d.fin_sesion;bn.style.opacity=d.fin_sesion?'0.4':'';bn.style.pointerEvents=d.fin_sesion?'none':'auto';}
+    if(bn){
+      const sesionContinuable=!!(d.terminado===true&&d.fin_por_desconexion===true&&!d.abandono&&d.ganador&&d.fin_sesion!==true);
+      const retorno=post.retorno||{};
+      const ambosRetornaron=retorno.X===true&&retorno.O===true;
+      const bloquearNueva=!!d.fin_sesion || (sesionContinuable && !ambosRetornaron);
+      bn.disabled=bloquearNueva;bn.style.opacity=bloquearNueva?'0.4':'';bn.style.pointerEvents=bloquearNueva?'none':'auto';
+    }
     if(ba){ba.disabled=false;ba.style.opacity='';ba.style.pointerEvents='auto';}
     const wrap=document.getElementById('inicio-partida-wrap'); if(wrap) wrap.style.display='flex';
+    // V64: PARTIDA TERMINADA / SESIÓN CONTINUABLE. La partida ya terminó y
+    // su resultado es definitivo, pero si aún quedan partidas de la sesión,
+    // ambos jugadores pueden regresar y continuar el mejor-de-N. No es
+    // histórico puro y no se habilita NUEVA PARTIDA hasta que ambos regresen.
+    if(_modoContinuableTerminal && !_modoHistoricoDesconexion){
+      if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
+      const selCont=document.getElementById('crono-modo-selector');
+      if(selCont) selCont.style.display='flex';
+      if(typeof bloquearSelectorModo==='function') bloquearSelectorModo(true);
+      const retornoCont=d.post_desconexion&&d.post_desconexion.retorno||{};
+      const ambosCont=retornoCont.X===true&&retornoCont.O===true;
+      UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar','btn-iniciar-partida'],true);
+      UI.bloquearBtns(['btn-abandonar'],false);
+      const baCont=document.getElementById('btn-abandonar');
+      if(baCont){baCont.disabled=false;baCont.style.opacity='';baCont.style.pointerEvents='auto';baCont.style.display='';}
+      if(!ambosCont){
+        UI.bloquearBtns(['btn-nueva'],true);
+        UI.setMsg('Partida terminada. La sesión puede continuar cuando ambos jugadores hayan regresado.');
+      }else{
+        UI.bloquearBtns(['btn-nueva'],false);
+        UI.setMsg('Ambos jugadores han regresado. Ya pueden iniciar la siguiente partida.');
+      }
+    }
+
     // V56: una entrada histórica es estrictamente de solo lectura. No se
     // ofrecen NUEVA PARTIDA ni INICIAR PARTIDA; ABANDONAR es la única salida.
     if(_modoHistoricoDesconexion){
@@ -1305,6 +1338,33 @@ async function procesarTerminalDesconexion(d, miRol){
     const baHistorico2=document.getElementById('btn-abandonar-historico');
     if(baHistorico2){baHistorico2.disabled=false;baHistorico2.style.opacity='';baHistorico2.style.pointerEvents='auto';baHistorico2.style.display='';}
     UI.setMsg('Partida histórica — solo lectura. Puedes revisar la partida y ABANDONAR cuando termines.');
+    return;
+  }
+
+  // V64: sesión continuable. Mientras falte uno de los retornos, ambos
+  // clientes permanecen en el mismo estado terminal-continuable y NUEVA
+  // PARTIDA queda bloqueada. Cuando ambos regresan, la siguiente partida
+  // vuelve a utilizar el flujo bilateral normal.
+  if(_modoContinuableTerminal){
+    const retornoCont=d.post_desconexion&&d.post_desconexion.retorno||{};
+    const ambosCont=retornoCont.X===true&&retornoCont.O===true;
+    if(!ambosCont){
+      UI.bloquearBtns(['btn-nueva'],true);
+      if(!esGanador) UI.setMsg('Has regresado. Tu oponente aún está en el tablero. Cuando ambos estén disponibles podrán continuar la sesión.');
+      return;
+    }
+    UI.bloquearBtns(['btn-nueva'],false);
+    if(d.nueva_partida_solicitud && typeof window._revisarNuevaPartida==='function'){
+      window._revisarNuevaPartida(d,miRol);
+      return;
+    }
+    // El ganador recibe una sola notificación de retorno del rival; después
+    // de aceptarla, NUEVA PARTIDA queda disponible para ambos.
+    if(esGanador && yoAck && otroRet && post.ultimo_retorno_rol===otro && Number(post.ultimo_retorno_ts||0)>0 && rac[miRol]!==true && post.reconexion_mostrada_para!==miRol && window._terminalReconexionAvisoPendiente!==String(post.ultimo_retorno_ts)){
+      window._terminalReconexionAvisoPendiente=String(post.ultimo_retorno_ts);
+      try{ await update(_salaRef,{['post_desconexion/reconexion_ack/'+miRol]:true,['post_desconexion/reconexion_mostrada_para']:miRol}); }catch(e){}
+      UI.modal('📡 OPONENTE RECONectado','Tu oponente ha regresado. Ya pueden solicitar una Nueva Partida para continuar la sesión.','ACEPTAR',null);
+    }
     return;
   }
 
@@ -2260,10 +2320,10 @@ function reset(){
     _sorteoVisto=null; _victoriaVista=false; _reclamoKey=null; _partidaInicioVisto=null;
     _prioridadMostrada=null; _empateFinalKey=null; _resultadoReclamoVisto=null;
     _npConfirmacionVista=null; _npMaxAlertVisto=null; _npFinalizacionEnCurso=null; _abandonoVisto=null; _desconexionResultadoVisto=null; _abandonoPostDesconexionVisto=null; // V32.3.11: limpieza de estados terminales
-    _npFinalizacionEnCurso=null; _salidaTrasAbandono=false; _ultimoD=null; _modoHistoricoDesconexion=false; _historicoInicioTs=null;
+    _npFinalizacionEnCurso=null; _salidaTrasAbandono=false; _ultimoD=null; _modoHistoricoDesconexion=false; _modoContinuableTerminal=false; _historicoInicioTs=null;
     window._empateYaMostrado=false;
 }
-return {aplicarEstado, encolarEstado, procesarTerminalDesconexion, procesarPartidaHistorica, setUltimoEstado:(d)=>{_ultimoD=d;}, reset, getUltimoEstado:()=>_ultimoD, isSalidaTrasAbandono:()=>_salidaTrasAbandono, marcarSalidaTrasAbandono:()=>{_salidaTrasAbandono=true;}, isModoHistoricoDesconexion:()=>_modoHistoricoDesconexion, marcarModoHistoricoDesconexion:()=>{_modoHistoricoDesconexion=true;}, isModoHistorico:()=>_modoHistoricoDesconexion, marcarModoHistorico:()=>{_modoHistoricoDesconexion=true;}};
+return {aplicarEstado, encolarEstado, procesarTerminalDesconexion, procesarPartidaHistorica, setUltimoEstado:(d)=>{_ultimoD=d;}, reset, getUltimoEstado:()=>_ultimoD, isSalidaTrasAbandono:()=>_salidaTrasAbandono, marcarSalidaTrasAbandono:()=>{_salidaTrasAbandono=true;}, isModoHistoricoDesconexion:()=>_modoHistoricoDesconexion, marcarModoHistoricoDesconexion:()=>{_modoHistoricoDesconexion=true;_modoContinuableTerminal=false;}, isModoContinuableTerminal:()=>_modoContinuableTerminal, marcarModoContinuableTerminal:()=>{_modoContinuableTerminal=true;_modoHistoricoDesconexion=false;}, isModoHistorico:()=>_modoHistoricoDesconexion, marcarModoHistorico:()=>{_modoHistoricoDesconexion=true;_modoContinuableTerminal=false;}};
 })();
 // V59: el módulo Firebase necesita acceder al orquestador Juego mediante
 // window.Juego. Juego es una const del script clásico y, sin este puente,
@@ -3015,16 +3075,21 @@ if(d.sesionX!==ses.sessionId && d.sesionO!==ses.sessionId){_borrarSesion();retur
 // V62: RETOMAR solo abre el estado histórico cuando la partida ya terminó
 // por una de las rutas terminales que deben conservarse para estudio:
 // abandono o segunda/desconexión terminal. El estado normal nunca entra aquí.
+const esContinuableTerminal=!!(
+  d.terminado===true && d.fin_por_desconexion===true && !d.abandono &&
+  d.ganador && d.fin_sesion!==true
+);
 const esHistoricoTerminal=!!(
   d.terminado===true &&
   (d.fin_por_desconexion===true || !!d.abandono) &&
-  d.ganador
+  d.ganador && !esContinuableTerminal
 );
-if(d.terminado===true && !esHistoricoTerminal){_borrarSesion();return {ok:false,msg:'No hay una partida histórica válida para retomar.'};}
+if(d.terminado===true && !esHistoricoTerminal && !esContinuableTerminal){_borrarSesion();return {ok:false,msg:'No hay una partida terminal válida para retomar.'};}
 // V62: incluso si fin_sesion===true, el registro terminal sigue siendo
 // históricamente consultable durante la ventana de 60 minutos.
 _sala=ses.sala; _rol=d.sesionX===ses.sessionId?'X':'O'; _sessionId=ses.sessionId; _salaRef=ref(db,'salas/'+_sala);
 _modoHistoricoDesconexion=esHistoricoTerminal;
+_modoContinuableTerminal=esContinuableTerminal;
 _historicoInicioTs=_modoHistoricoDesconexion ? Number(d.historico_inicio_ts||d.abandono?.ts||Date.now()) : null;
 if(_modoHistoricoDesconexion){
   if(!d.historico_inicio_ts){
@@ -3041,11 +3106,22 @@ if(_modoHistoricoDesconexion && window.Juego && typeof Juego.marcarModoHistorico
   const ab=document.getElementById('abandono-confirm-overlay'); if(ab) ab.style.display='none';
   if(window._setModoAbandonoUI) window._setModoAbandonoUI('historico');
 }
-// V62: entrar por RETOMAR NO es reconectarse a una partida viva.
-// En histórico no se toca conexion/, post_desconexion ni presencia_terminal.
+if(_modoContinuableTerminal && window.Juego && typeof Juego.marcarModoContinuableTerminal==='function'){
+  Juego.marcarModoContinuableTerminal();
+  if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
+}
+// V64: RETOMAR de una sesión continuable sí es un retorno válido a la sesión,
+// pero NO convierte la partida terminada en una partida viva. Solo registra
+// el regreso persistente para que ambos puedan continuar cuando corresponda.
 if(!_modoHistoricoDesconexion){
   if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
-  await update(_salaRef,{['conexion/'+_rol]:{online:true,ts:serverTimestamp()}});
+  const cambiosRet={['conexion/'+_rol]:{online:true,ts:serverTimestamp()}};
+  if(_modoContinuableTerminal && d.post_desconexion){
+    cambiosRet['post_desconexion/retorno/'+_rol]=true;
+    cambiosRet['post_desconexion/ultimo_retorno_rol']=_rol;
+    cambiosRet['post_desconexion/ultimo_retorno_ts']=Date.now();
+  }
+  await update(_salaRef,cambiosRet);
   _guardarSesion(); _escuchar();
   Firebase._registrarPresencia();
 }else{
@@ -4116,6 +4192,7 @@ const res=await runTransaction(_salaRef,current=>{
       desconexion_pendiente:null,[campo]:n,victoriasX:vX,victoriasO:vO,
       partidasJugadas,fin_sesion:totalPartidas>0&&partidasJugadas>=totalPartidas,
       desconexion_numero:n,
+      sesion_continuable:totalPartidas>0&&partidasJugadas<totalPartidas,
       desconexion_motivo:(n>=2?'segunda_desconexion':'modo_sin_gracia'),
       post_desconexion:{estado:'resultado_pendiente',desconectado:rol,ganador,ts:Date.now(),retorno:{X:ganador==='X',O:ganador==='O'},resultado_ack:{X:false,O:false},reconexion_ack:{X:false,O:false},ultimo_retorno_rol:null,ultimo_retorno_ts:null},
       nueva_partida_solicitud:null,turno_inicio_ts:null,
@@ -4317,7 +4394,7 @@ const d=snap.val();
 if(typeof Juego!=='undefined' && Juego.setUltimoEstado) Juego.setUltimoEstado(d);
 // V62: HISTÓRICO ES UN ESTADO AISLADO. Desde este punto no se ejecuta ninguna
 // máquina de presencia, desconexión, reconexión, turno ni Nueva Partida.
-if(_modoHistoricoDesconexion){
+if(_modoHistoricoDesconexion && !(d.terminado===true && d.fin_por_desconexion===true && d.post_desconexion)){
   if(!_iniciado){
     _iniciado=true;
     try{ Reclamo.init(_rol); }catch(e){}
