@@ -3089,7 +3089,6 @@ if(d.terminado===true && !esHistoricoTerminal && !esContinuableTerminal){_borrar
 // históricamente consultable durante la ventana de 60 minutos.
 _sala=ses.sala; _rol=d.sesionX===ses.sessionId?'X':'O'; _sessionId=ses.sessionId; _salaRef=ref(db,'salas/'+_sala);
 _modoHistoricoDesconexion=esHistoricoTerminal;
-_modoContinuableTerminal=esContinuableTerminal;
 _historicoInicioTs=_modoHistoricoDesconexion ? Number(d.historico_inicio_ts||d.abandono?.ts||Date.now()) : null;
 if(_modoHistoricoDesconexion){
   if(!d.historico_inicio_ts){
@@ -3106,7 +3105,7 @@ if(_modoHistoricoDesconexion && window.Juego && typeof Juego.marcarModoHistorico
   const ab=document.getElementById('abandono-confirm-overlay'); if(ab) ab.style.display='none';
   if(window._setModoAbandonoUI) window._setModoAbandonoUI('historico');
 }
-if(_modoContinuableTerminal && window.Juego && typeof Juego.marcarModoContinuableTerminal==='function'){
+if(esContinuableTerminal && window.Juego && typeof Juego.marcarModoContinuableTerminal==='function'){
   Juego.marcarModoContinuableTerminal();
   if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
 }
@@ -3116,7 +3115,7 @@ if(_modoContinuableTerminal && window.Juego && typeof Juego.marcarModoContinuabl
 if(!_modoHistoricoDesconexion){
   if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
   const cambiosRet={['conexion/'+_rol]:{online:true,ts:serverTimestamp()}};
-  if(_modoContinuableTerminal && d.post_desconexion){
+  if(esContinuableTerminal && d.post_desconexion){
     cambiosRet['post_desconexion/retorno/'+_rol]=true;
     cambiosRet['post_desconexion/ultimo_retorno_rol']=_rol;
     cambiosRet['post_desconexion/ultimo_retorno_ts']=Date.now();
