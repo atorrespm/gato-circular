@@ -1456,7 +1456,16 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.abandono.aban
       _ocultarModalOponenteAbandono();
       _mostrarModalOponenteAbandono(d.abandono.ts,miRol);
     }
-  }catch(e){ console.warn('[V63] no pudo procesar abandono remoto normal:',e); }
+    // V64.7: una partida terminada por abandono puede seguir perteneciendo a
+    // una SESIÓN continuable. Si ambos jugadores ya regresaron y uno de ellos
+    // acaba de proponer NUEVA PARTIDA, este snapshot no puede terminar aquí:
+    // debemos entregar también la solicitud bilateral al jugador que quedó en
+    // la sala. Antes el return de esta rama de abandono se tragaba la solicitud
+    // y J2 nunca veía el modal de NUEVA PARTIDA.
+    if(puedeContinuar && d.nueva_partida_solicitud && typeof window._revisarNuevaPartida==='function'){
+      window._revisarNuevaPartida(d,miRol);
+    }
+  }catch(e){ console.warn('[V64.7] no pudo procesar abandono remoto normal:',e); }
   return;
 }
 console.debug('[FLOW-V22] aplicarEstado', {fase:d.fase, terminado:!!d.terminado, abandono:d.abandono||null, tc:d.tc_decision||null, prioridad:d.prioridad_jugador||null});
@@ -1908,8 +1917,22 @@ function _ocultarMaxNoNuevaPartida(){
   if(overlay) overlay.style.display='none';
 }
 function _revisarNuevaPartida(d, miRol){
-  // V22: abandono tiene precedencia absoluta sobre Nueva Partida.
-  if(d.abandono && !d.fin_por_desconexion && d.abandono.abandonador !== miRol){
+  // V22/V64.7: el abandono tiene precedencia absoluta mientras la sesión no
+  // pueda continuar. Pero un abandono NORMAL que pertenece a una sesión
+  // continuable deja de bloquear NUEVA PARTIDA cuando ambos jugadores ya
+  // regresaron y están conectados. En ese caso la solicitud bilateral debe
+  // llegar a ambos clientes, exactamente como ocurre tras una desconexión.
+  const paContinuidad = d.post_abandono||{};
+  const retContinuidad = paContinuidad.retorno||{};
+  const conContinuidad = d.conexion||{};
+  const abandonoContinuableAhora = !!(
+    d.abandono && !d.fin_por_desconexion && d.fin_sesion!==true &&
+    d.post_abandono &&
+    retContinuidad.X===true && retContinuidad.O===true &&
+    conContinuidad.X && conContinuidad.O &&
+    conContinuidad.X.online===true && conContinuidad.O.online===true
+  );
+  if(d.abandono && !d.fin_por_desconexion && d.abandono.abandonador !== miRol && !abandonoContinuableAhora){
     // V58: `abandono` dentro de un final por desconexión es histórico.
     // No puede bloquear/alterar la máquina de Nueva Partida del terminal.
     _ocultarConfirmacionNuevaPartida();
@@ -3556,6 +3579,9 @@ async solicitarNuevaPartida(){
     const solicitudNueva={por:_rol,ts:tsNueva,estado:'pendiente',decisiones:{X:'pendiente',O:'pendiente'}};
     solicitudNueva.decisiones[_rol]=true;
     await update(_salaRef,{nueva_partida_solicitud:solicitudNueva});
+    // V64.7: el snapshot posterior será entregado también al rival aunque
+    // persista `abandono`, porque la sesión ya quedó continuable con ambos
+    // jugadores retornados.
     // V32.3.35: el proponente pinta su propio modal inmediatamente.
     if(typeof window._revisarNuevaPartida==='function'){ const sp=await get(_salaRef); if(sp.exists()) window._revisarNuevaPartida(sp.val(),_rol); }
 },
