@@ -3102,7 +3102,11 @@ if(rolRecon){
 }
 if(d.j2!=='espera') return {ok:false,msg:'Sala ya está llena.'};
 _sala=cod; _rol='O'; _sessionId=_nuevoSessionId(); _salaRef=refSala;
-await update(_salaRef,{j2:'online',j1:'online',sesionO:_sessionId,['conexion/O']:{online:true,ts:serverTimestamp()}});
+// V64.6: al entrar como J2 solo escribimos los campos que corresponden a J2.
+// J1 ya quedó marcado como online al crear la sala. Reescribir j1 desde el
+// cliente de J2 era innecesario y podía hacer que Firebase rechazara/retardara
+// el update bajo reglas que separan la presencia de cada jugador.
+await update(_salaRef,{j2:'online',sesionO:_sessionId,['conexion/O']:{online:true,ts:serverTimestamp()}});
 _guardarSesion();
 _escuchar(); Firebase._registrarPresencia();
 return {ok:true};
@@ -4667,9 +4671,14 @@ $('lbtn-conectar').onclick = async ()=>{
 const cod=$('lobby-input').value.trim().toUpperCase();
 if(cod.length!==4){ $('lst-unirse').textContent='Código de 4 caracteres.'; return; }
 $('lst-unirse').textContent='Conectando...';
-const r=await Firebase.unirseASala(cod);
-if(!r.ok) $('lst-unirse').textContent=r.msg;
-else { const rb=$('lbtn-retomar'), rs=$('lst-retomar'); if(rb) rb.style.display='none'; if(rs) rs.style.display='none'; }
+try{
+  const r=await Firebase.unirseASala(cod);
+  if(!r.ok) $('lst-unirse').textContent=r.msg;
+  else { const rb=$('lbtn-retomar'), rs=$('lst-retomar'); if(rb) rb.style.display='none'; if(rs) rs.style.display='none'; }
+}catch(e){
+  console.error('[V64.6] error al unirse a la sala:',e);
+  $('lst-unirse').textContent='No se pudo conectar a la partida. Inténtalo nuevamente.';
+}
 };
 $('btn-nueva').onclick = async ()=>{
     if(Firebase.isModoHistoricoDesconexion && Firebase.isModoHistoricoDesconexion()) return;
