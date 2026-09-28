@@ -4659,6 +4659,20 @@ function instalarHandlersAbandonoSeparados(){
       if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
       normal.disabled=false; normal.style.pointerEvents='auto'; normal.style.opacity='';
 
+      // V64.3: si el jugador acaba de pulsar VOLVER AL TABLERO en el modal
+      // de abandono del oponente, ya sabemos que esta partida es terminal y
+      // que ABANDONAR significa simplemente salir a RETOMAR/HISTÓRICO.
+      // No volvemos a depender de un snapshot ni de la fase visual para esta
+      // salida. El flag fue activado por _instalarSalidaDirectaTrasAbandono().
+      if(window.Juego&&typeof Juego.isSalidaTrasAbandono==='function'&&Juego.isSalidaTrasAbandono()){
+        _ocultarModalOponenteAbandono();
+        if(window.Juego&&typeof Juego.marcarSalidaTrasAbandono==='function') Juego.marcarSalidaTrasAbandono();
+        if(window.Firebase&&typeof Firebase.salirLocalTrasAbandono==='function'){
+          try{ await Firebase.salirLocalTrasAbandono(); }catch(e){ console.error('[V64.3] salida directa tras VOLVER AL TABLERO:',e); }
+        }
+        return;
+      }
+
       let snap=(window.Juego&&typeof Juego.getUltimoEstado==='function') ? Juego.getUltimoEstado() : null;
       const miRol=(window.Firebase&&typeof Firebase.getMiRol==='function') ? Firebase.getMiRol() : null;
       // V63: al pulsar se consulta Firebase para no depender del último
