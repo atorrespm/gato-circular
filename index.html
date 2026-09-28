@@ -1438,9 +1438,12 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.abandono.aban
     UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
     if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
     UI.bloquearBtns(['btn-abandonar'],false);
+    _instalarSalidaDirectaTrasAbandono();
     const keyAb='normal-abandono|'+String(d.abandono.ts||'')+'|'+String(d.partidasJugadas||0)+'|'+String(miRol);
     if(_abandonoOponenteAvisoVisto!==keyAb){
       _abandonoOponenteAvisoVisto=keyAb;
+      UI.cerrarModal();
+      _ocultarModalOponenteAbandono();
       _mostrarModalOponenteAbandono(d.abandono.ts,miRol);
     }
   }catch(e){ console.warn('[V63] no pudo procesar abandono remoto normal:',e); }
@@ -4411,45 +4414,10 @@ if(_sessionId && ((d.sesionX===_sessionId)||(d.sesionO===_sessionId))) _guardarS
 // V32.3.14: un estado terminal por desconexión se procesa como una
 // transición definitiva y se entrega DIRECTAMENTE al motor terminal.
 // No se permite que el flujo de presencia, turnos o fases de juego lo pise.
-// V32.3.40: ABANDONO POSTERIOR A UNA PARTIDA NORMAL tiene prioridad absoluta.
-// Se procesa directamente aquí para que el aviso no pueda ser pisado por la
-// cola de estados, por el modal de Nueva Partida ni por el renderer terminal.
-// Los finales por desconexión conservan su máquina específica de ACK/resultado.
-if(d.terminado && d.abandono && !d.fin_por_desconexion && d.abandono.abandonador!==_rol){
-  // V47: abandono del oponente es terminal y debe congelar inmediatamente
-  // todos los cronómetros locales. Además, NO cerramos el modal en cada
-  // snapshot posterior: antes podía mostrarse una vez y desaparecer en el
-  // siguiente snapshot mientras el estado de abandono seguía vigente.
-  if(!_iniciado){
-    _iniciado=true;
-    try{ Reclamo.init(_rol); }catch(e){}
-    try{ Chat.init(db,_sala,_rol); }catch(e){}
-  }
-  Juego.setUltimoEstado(d);
-  try{ Estado.fromFirebase(d); Tablero.render(Estado.tablero,id=>{}); UI.actualizarPaneles(Estado); }catch(e){}
-  try{ Cronometro.detener(); EmpateFlow.detenerCronometroPrioridad(); }catch(e){}
-  if(window._latenciaJugadaTimer){ clearTimeout(window._latenciaJugadaTimer); window._latenciaJugadaTimer=null; }
-  UI.ocultarLatenciaVisual();
-  _ocultarConfirmacionNuevaPartida();
-  _ocultarMaxNoNuevaPartida();
-  UI.bloquearTablero(true);
-  UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
-  UI.bloquearBtns(['btn-abandonar'],false);
-  const bAb=document.getElementById('btn-abandonar');
-  if(bAb){bAb.disabled=false;bAb.style.opacity='';bAb.style.pointerEvents='auto';}
-  UI.setMsg(d.abandono.ganador===_rol
-    ? 'Tu oponente abandonó. Eres el ganador. Puedes estudiar las jugadas o abandonar la partida.'
-    : 'Tu oponente abandonó. El resultado original se conserva. Puedes estudiar las jugadas o abandonar la partida.');
-  if(window._abandonoOponenteAvisoVisto!==d.abandono.ts){
-    // Solo el primer snapshot del abandono abre/cierra otros modales.
-    // Los snapshots posteriores dejan intacto el modal visible.
-    UI.cerrarModal();
-    _ocultarModalOponenteAbandono();
-    _mostrarModalOponenteAbandono(d.abandono.ts,_rol);
-    _abandonoOponenteAvisoVisto=d.abandono.ts;
-  }
-  return;
-}
+// V64.2: abandono normal remoto se procesa exclusivamente por la cola central
+// de Juego.aplicarEstado(). Evitamos dos consumidores visuales independientes
+// del mismo snapshot, que podían dejar el tablero bloqueado sin entregar el
+// modal ni la salida normal al jugador que permanecía conectado.
 if(d.terminado && !d.fin_por_desconexion && !d.abandono){
   const rivalTerminal=_rol==='X'?'O':'X';
   const conRivalTerminal=d.conexion&&d.conexion[rivalTerminal];
