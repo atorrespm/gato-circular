@@ -1435,10 +1435,20 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.abandono.aban
     if(typeof marcarModoActivo==='function') marcarModoActivo(d.crono_modo||'clasico');
     Cronometro.detener();
     UI.bloquearTablero(true);
-    UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+    UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar'],true);
     if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
     UI.bloquearBtns(['btn-abandonar'],false);
     _instalarSalidaDirectaTrasAbandono();
+    const pa=d.post_abandono||{};
+    const retA=pa.retorno||{};
+    const conA=d.conexion||{};
+    const ambosRetornaron=retA.X===true&&retA.O===true;
+    const ambosConectados=conA.X&&conA.O&&conA.X.online===true&&conA.O.online===true;
+    const puedeContinuar=!!d.post_abandono && d.fin_sesion!==true && ambosRetornaron && ambosConectados;
+    UI.bloquearBtns(['btn-nueva'],!puedeContinuar);
+    const wrapAb=document.getElementById('inicio-partida-wrap'); if(wrapAb) wrapAb.style.display='flex';
+    const selAb=document.getElementById('crono-modo-selector'); if(selAb) selAb.style.display='flex';
+    if(typeof bloquearSelectorModo==='function') bloquearSelectorModo(true);
     const keyAb='normal-abandono|'+String(d.abandono.ts||'')+'|'+String(d.partidasJugadas||0)+'|'+String(miRol);
     if(_abandonoOponenteAvisoVisto!==keyAb){
       _abandonoOponenteAvisoVisto=keyAb;
@@ -1450,6 +1460,40 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.abandono.aban
   return;
 }
 console.debug('[FLOW-V22] aplicarEstado', {fase:d.fase, terminado:!!d.terminado, abandono:d.abandono||null, tc:d.tc_decision||null, prioridad:d.prioridad_jugador||null});
+// V64.5: el propio abandonador puede RETOMAR una sesión todavía abierta.
+// Sigue viendo la partida terminada en modo de estudio, pero ya no queda
+// atrapado en el histórico puro: si ambos están conectados, NUEVA PARTIDA
+// vuelve a estar disponible para continuar el mejor-N.
+if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.abandono.abandonador===miRol && _modoContinuableTerminal){
+  Estado.fromFirebase(d); _ultimoD=d;
+  try{
+    if(Reclamo.isActivo()) Reclamo.desactivar();
+    Tablero.render(Estado.tablero,id=>{});
+    UI.actualizarPaneles(Estado);
+    UI.setStats(d.victoriasX||0,d.victoriasO||0);
+    if(d.crono_modo&&Cronometro.configurarModo) Cronometro.configurarModo(d.crono_modo||'clasico');
+    if(typeof marcarModoActivo==='function') marcarModoActivo(d.crono_modo||'clasico');
+    Cronometro.detener();
+    UI.bloquearTablero(true);
+    UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar','btn-iniciar-partida'],true);
+    UI.bloquearBtns(['btn-abandonar'],false);
+    _instalarSalidaDirectaTrasAbandono();
+    const pa=d.post_abandono||{};
+    const retA=pa.retorno||{};
+    const conA=d.conexion||{};
+    const ambosRetornaron=retA.X===true&&retA.O===true;
+    const ambosConectados=conA.X&&conA.O&&conA.X.online===true&&conA.O.online===true;
+    const puedeContinuar=ambosRetornaron&&ambosConectados&&d.fin_sesion!==true;
+    UI.bloquearBtns(['btn-nueva'],!puedeContinuar);
+    const wrapA=document.getElementById('inicio-partida-wrap'); if(wrapA) wrapA.style.display='flex';
+    const selA=document.getElementById('crono-modo-selector'); if(selA) selA.style.display='flex';
+    if(typeof bloquearSelectorModo==='function') bloquearSelectorModo(true);
+    UI.setMsg(puedeContinuar
+      ? 'Ambos jugadores han regresado. Pueden solicitar una Nueva Partida para continuar la sesión.'
+      : 'Partida histórica — solo lectura. Puedes revisar y estudiar las jugadas. La sesión podrá continuar cuando ambos jugadores estén de regreso.');
+  }catch(e){ console.warn('[V64.5] no pudo restaurar abandono continuable:',e); }
+  return;
+}
 // V22: el abandono del oponente puede ocurrir DESPUÉS de que ya se haya
 // renderizado la victoria normal. Se detecta aquí, antes de cualquier
 // render/dispatch, y no solamente dentro de _faseTerminado().
@@ -1961,7 +2005,7 @@ function _mostrarModalOponenteAbandono(ts, miRol){
     ov.style.cssText='display:flex;position:fixed;inset:0;background:rgba(0,0,0,.90);z-index:500;align-items:center;justify-content:center;';
     ov.innerHTML=`<div style="background:linear-gradient(135deg,#1a1a1a,#252525);border:3px solid var(--gold);border-radius:14px;padding:28px 36px;text-align:center;min-width:330px;max-width:460px;box-shadow:0 0 50px rgba(224,190,70,.25);">
 <h2 style="font-family:'Orbitron',sans-serif;font-size:18px;color:var(--gold);margin-bottom:12px;">🚪 TU OPONENTE ACABA DE ABANDONAR EL TABLERO</h2>
-<p id="abandono-oponente-msg" style="font-size:13px;color:#ddd;line-height:1.65;margin-bottom:20px;">Tu oponente ha abandonado la partida.<br><b>El resultado de la partida se conserva tal como quedó registrado.</b><br><br>Si desea volver al tablero y ver las jugadas previas, pulse <b>Volver al Tablero</b>.<br>Si desea salir de la partida, pulse <b>Abandonar Partida</b>.</p>
+<p id="abandono-oponente-msg" style="font-size:13px;color:#ddd;line-height:1.65;margin-bottom:20px;"><span style="font-size:16px;color:#fff;">VICTORIA POR ABANDONO</span><br><span style="color:#ff6666;">Has ganado la partida porque <b id="abandono-oponente-ganador-txt">tu oponente</b> abandonó el tablero.</span><br><br><b>El resultado de la partida se conserva tal como quedó registrado.</b><br><br>Si desea volver al tablero y ver las jugadas previas, pulse <b>Volver al Tablero</b>.<br>Si desea salir de la partida, pulse <b>Abandonar Partida</b> para volver al lobby.</p>
 <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
 <button id="btn-ab-volver" style="padding:10px 18px;background:linear-gradient(135deg,#6b5200,#c99b16);color:#111;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;">VOLVER AL TABLERO</button>
 <button id="btn-ab-salir" style="padding:10px 18px;background:linear-gradient(135deg,#7a0000,#cc2200);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;">ABANDONAR PARTIDA</button>
@@ -1976,22 +2020,7 @@ function _mostrarModalOponenteAbandono(ts, miRol){
       if(b){
         _instalarSalidaDirectaTrasAbandono();
       }
-      const soyGanador = !!(_ultimoD && _ultimoD.abandono && _ultimoD.abandono.ganador === miRol);
-      if(soyGanador){
-        const nombreAbandonador=_ultimoD.abandono.abandonador==='X'?'Jugador 1 (X)':'Jugador 2 (O)';
-        UI.modal('🏆 VICTORIA POR ABANDONO',
-          'Has ganado la partida porque '+nombreAbandonador+' abandonó la partida. Puedes quedarte a revisar y estudiar las jugadas y, cuando termines, pulsar ABANDONAR PARTIDA para volver al lobby.',
-          'ACEPTAR',
-          ()=>{
-            UI.bloquearTablero(true);
-            UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
-            UI.bloquearBtns(['btn-abandonar'],false);
-            _instalarSalidaDirectaTrasAbandono();
-            UI.setMsg('Tu oponente abandonó. Eres el ganador. Puedes estudiar las jugadas o abandonar la partida.');
-          });
-      }else{
-        UI.setMsg('Tu oponente abandonó. El resultado original se conserva. Puedes estudiar las jugadas o abandonar la partida.');
-      }
+      UI.setMsg('Tu oponente abandonó. Has ganado la partida por abandono. Puedes estudiar las jugadas o abandonar la partida.');
     });
     document.getElementById('btn-ab-salir')?.addEventListener('click',()=>{
       ov.style.display='none';
@@ -1999,6 +2028,9 @@ function _mostrarModalOponenteAbandono(ts, miRol){
       Firebase.salirLocalTrasAbandono();
     });
   }
+  const nombreAbandonador = (_ultimoD && _ultimoD.abandono && _ultimoD.abandono.abandonador==='X') ? 'Jugador 1 (X)' : 'Jugador 2 (O)';
+  const txtAbandonador=document.getElementById('abandono-oponente-ganador-txt');
+  if(txtAbandonador) txtAbandonador.textContent=nombreAbandonador;
   ov.style.display='flex';
 }
 function _ocultarModalOponenteAbandono(){
@@ -3085,10 +3117,15 @@ if(d.sesionX!==ses.sessionId && d.sesionO!==ses.sessionId){_borrarSesion();retur
 // V62: RETOMAR solo abre el estado histórico cuando la partida ya terminó
 // por una de las rutas terminales que deben conservarse para estudio:
 // abandono o segunda/desconexión terminal. El estado normal nunca entra aquí.
-const esContinuableTerminal=!!(
+const esContinuableDesconexion=!!(
   d.terminado===true && d.fin_por_desconexion===true && !d.abandono &&
   d.ganador && d.fin_sesion!==true
 );
+const esContinuableAbandono=!!(
+  d.terminado===true && !!d.abandono && !!d.post_abandono &&
+  d.ganador && d.fin_sesion!==true
+);
+const esContinuableTerminal=esContinuableDesconexion || esContinuableAbandono;
 const esHistoricoTerminal=!!(
   d.terminado===true &&
   (d.fin_por_desconexion===true || !!d.abandono) &&
@@ -3119,16 +3156,23 @@ if(esContinuableTerminal && window.Juego && typeof Juego.marcarModoContinuableTe
   Juego.marcarModoContinuableTerminal();
   if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
 }
-// V64: RETOMAR de una sesión continuable sí es un retorno válido a la sesión,
-// pero NO convierte la partida terminada en una partida viva. Solo registra
-// el regreso persistente para que ambos puedan continuar cuando corresponda.
+// V64.5: RETOMAR de una partida por abandono puede reabrir la continuidad
+// de la SESIÓN, pero la partida terminada sigue siendo solo de lectura.
+// El jugador que abandonó marca aquí su retorno; el rival ya había quedado
+// marcado como retornado al permanecer en la sala. La siguiente partida solo
+// podrá solicitarse cuando ambos estén realmente conectados.
 if(!_modoHistoricoDesconexion){
   if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
   const cambiosRet={['conexion/'+_rol]:{online:true,ts:serverTimestamp()}};
-  if(esContinuableTerminal && d.post_desconexion){
+  if(esContinuableDesconexion && d.post_desconexion){
     cambiosRet['post_desconexion/retorno/'+_rol]=true;
     cambiosRet['post_desconexion/ultimo_retorno_rol']=_rol;
     cambiosRet['post_desconexion/ultimo_retorno_ts']=Date.now();
+  }
+  if(esContinuableAbandono && d.post_abandono){
+    cambiosRet['post_abandono/retorno/'+_rol]=true;
+    cambiosRet['post_abandono/ultimo_retorno_rol']=_rol;
+    cambiosRet['post_abandono/ultimo_retorno_ts']=Date.now();
   }
   await update(_salaRef,cambiosRet);
   _guardarSesion(); _escuchar();
@@ -3402,6 +3446,7 @@ fichas_timeout_reclamo:null,
 empate_sin_respuesta_inicio:null, empate_sin_respuesta_ack:null,
 prioridad_jugador:null, prioridad_intento:null, prioridad_inicio_ts:null, prioridad_timeout_ts:null, prioridad_aceptado_X:false, prioridad_aceptado_O:false, fichas_timeout_reclamo:null,
 nueva_partida_no_count:0, nueva_partida_max_alert:null, nueva_partida_solicitud:null,
+sesion_continuable:false,post_abandono:null,
 latencia_jugada_activa:false,latencia_jugada_rol:null,latencia_jugada_ts:null,latencia_jugada_ms:3000,
 abandono:null,cancelada_preinicio:null,desconexion_pendiente:null,ultima_reconexion:null,presencia_terminal:null,pausa_propuesta:null,reanudar_propuesta:null,crono_total_inicio_X:null,crono_total_inicio_O:null
 });
@@ -3426,12 +3471,20 @@ async solicitarNuevaPartida(){
     let snap=await get(_salaRef); let d=snap.val();
     if(!d || !(d.fase==='empate_final' || d.terminado===true)) return;
     if(d.fin_sesion) return;
-    if(d.abandono){
-      UI.modal('🚪 OPONENTE YA ABANDONÓ LA PARTIDA','Tu oponente ya abandonó la partida. Puedes regresar al tablero para su revisión, y después ABANDONAR la partida.','ACEPTAR');
+
+    const otro=_rol==='X'?'O':'X';
+    const postAbandono=d.post_abandono||null;
+    const retornoAbandono=postAbandono&&postAbandono.retorno||{};
+    const conAbandono=d.conexion||{};
+    const abandonoContinuable=!!(d.abandono && postAbandono &&
+      retornoAbandono.X===true && retornoAbandono.O===true &&
+      conAbandono.X && conAbandono.O &&
+      conAbandono.X.online===true && conAbandono.O.online===true);
+    if(d.abandono && !abandonoContinuable){
+      UI.modal('🚪 OPONENTE NO DISPONIBLE','La partida terminó por abandono. Para continuar la sesión, ambos jugadores deben regresar a la sala mediante RETOMAR PARTIDA.','ACEPTAR');
       return;
     }
 
-    const otro=_rol==='X'?'O':'X';
 
     // V32.3.35 — POST-DESCONEXIÓN: no usamos conexion.online para decidir
     // si el rival regresó. post_desconexion.retorno es la fuente de verdad.
@@ -4072,11 +4125,26 @@ async abandonarPartida(){
     const jugadas=(d.partidasJugadas||0)+1;
     const total=d.totalPartidas||0;
     const finSesion=total>0&&jugadas>=total;
+    const ahoraAbandono=Date.now();
+    const rival=_rol==='X'?'O':'X';
     await update(_salaRef,{
       terminado:true,ganador,fase:'terminado',
       victoriasX:vX,victoriasO:vO,partidasJugadas:jugadas,fin_sesion:finSesion,
-      abandono:{abandonador:_rol,ganador,ts:Date.now(),penaliza_abandonador:true,salida_ganador:false},
-      historico_inicio_ts:Date.now(),
+      sesion_continuable:!finSesion,
+      abandono:{abandonador:_rol,ganador,ts:ahoraAbandono,penaliza_abandonador:true,salida_ganador:false},
+      // V64.5: una partida por abandono puede quedar terminada sin cerrar
+      // unilateralmente una sesión de mejor-N. El jugador que permaneció en
+      // la sala ya cuenta como retornado; el abandonador lo marca al RETOMAR.
+      post_abandono:{
+        estado:'resultado_pendiente',
+        abandonador:_rol,
+        ganador,
+        ts:ahoraAbandono,
+        retorno:{X:(_rol==='X'?false:true),O:(_rol==='O'?false:true)},
+        ultimo_retorno_rol:null,
+        ultimo_retorno_ts:null
+      },
+      historico_inicio_ts:ahoraAbandono,
       nueva_partida_solicitud:null,nueva_partida_max_alert:null,presencia_terminal:null
     });
     // El jugador que abandona sale de su propia sala inmediatamente.
