@@ -1943,7 +1943,14 @@ function _instalarSalidaDirectaTrasAbandono(){
   // V62: esta es una ruta NORMAL terminal. No convierte el botón normal
   // en un botón histórico ni escribe flags históricos en su DOM.
   b.disabled=false; b.style.opacity=''; b.style.pointerEvents='auto';
+  // V64.4: marcar la salida en el mismo ámbito que consume el handler.
+  // _salidaTrasAbandono existe también dentro de Juego, por lo que el flag
+  // local de esta capa no basta para activar Juego.isSalidaTrasAbandono().
+  b.dataset.salidaTrasAbandono='1';
   _salidaTrasAbandono=true;
+  if(window.Juego && typeof Juego.marcarSalidaTrasAbandono==='function') {
+    Juego.marcarSalidaTrasAbandono();
+  }
 }
 
 function _mostrarModalOponenteAbandono(ts, miRol){
@@ -4664,7 +4671,11 @@ function instalarHandlersAbandonoSeparados(){
       // que ABANDONAR significa simplemente salir a RETOMAR/HISTÓRICO.
       // No volvemos a depender de un snapshot ni de la fase visual para esta
       // salida. El flag fue activado por _instalarSalidaDirectaTrasAbandono().
-      if(window.Juego&&typeof Juego.isSalidaTrasAbandono==='function'&&Juego.isSalidaTrasAbandono()){
+      const salidaDirecta =
+        normal.dataset.salidaTrasAbandono==='1' ||
+        (window.Juego&&typeof Juego.isSalidaTrasAbandono==='function'&&Juego.isSalidaTrasAbandono());
+      if(salidaDirecta){
+        delete normal.dataset.salidaTrasAbandono;
         _ocultarModalOponenteAbandono();
         if(window.Juego&&typeof Juego.marcarSalidaTrasAbandono==='function') Juego.marcarSalidaTrasAbandono();
         if(window.Firebase&&typeof Firebase.salirLocalTrasAbandono==='function'){
