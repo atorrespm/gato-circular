@@ -1891,13 +1891,15 @@ function _mostrarConfirmacionNuevaPartida(miRol, solicitud=null){
   // antes de mostrar la confirmación bilateral. Así el modal de Nueva Partida
   // no queda oculto detrás del modal de resultado en ninguno de los dos clientes.
   UI.cerrarModal();
+  _ocultarModalOponenteAbandono();
+  _ocultarMaxNoNuevaPartida();
   const key = solicitud && solicitud.ts ? 'np_' + solicitud.ts : 'np_local';
   _npConfirmacionVista = key;
   let overlay = document.getElementById('np-confirm-overlay');
   if(!overlay){
     overlay = document.createElement('div');
     overlay.id = 'np-confirm-overlay';
-    overlay.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:300;align-items:center;justify-content:center;';
+    overlay.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:600;align-items:center;justify-content:center;';
     overlay.innerHTML = `
 <div style="background:linear-gradient(135deg,#1a1a1a,#252525);border:3px solid var(--gold);border-radius:14px;padding:28px 36px;text-align:center;min-width:320px;max-width:420px;">
 <h2 style="font-family:'Orbitron',sans-serif;font-size:18px;color:var(--gold);margin-bottom:10px;">¿NUEVA PARTIDA?</h2>
@@ -2135,6 +2137,8 @@ function _mostrarModalOponenteAbandono(ts, miRol){
       try{ await Firebase.abandonarPartida(); }catch(e){ console.error('[V65.0] salida desde modal:',e); }
     });
   }
+  _ocultarConfirmacionNuevaPartida();
+  _ocultarMaxNoNuevaPartida();
   const nombreAbandonador = (_ultimoD && _ultimoD.abandono && _ultimoD.abandono.abandonador==='X') ? 'Jugador 1 (X)' : 'Jugador 2 (O)';
   const txtAbandonador=document.getElementById('abandono-oponente-ganador-txt');
   if(txtAbandonador) txtAbandonador.textContent=nombreAbandonador;
@@ -4655,6 +4659,8 @@ if(!_modoHistoricoDesconexion && _iniciado &&
     _ocultarModalOponenteAbandono();
     _mostrarModalOponenteAbandono(d.abandono.ts,_rol);
     update(_salaRef,{['post_abandono/abandono_aviso_visto/'+_rol]:true}).catch(()=>{});
+    // V65.2: el snapshot ya fue consumido por el aviso inmediato.
+    return;
   }
 }
 // V62: HISTÓRICO ES UN ESTADO AISLADO. Desde este punto no se ejecuta ninguna
