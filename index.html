@@ -1467,7 +1467,17 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.post_abandono
       return;
     }
 
-    // 2) EL JUGADOR QUE RETOMA RECIBE SU PROPIO AVISO DE PRESENCIA.
+    // 2) UNA SOLA VEZ: una solicitud bilateral ACTUAL tiene prioridad absoluta
+    // sobre cualquier aviso secundario de retorno. Esto es deliberado: si un
+    // jugador solicita NUEVA PARTIDA mientras todavía queda pendiente un
+    // snapshot que quería mostrar 'OPONENTE PRESENTE', la solicitud nueva es
+    // el evento más reciente y debe ganar.
+    if(puedeContinuar && d.nueva_partida_solicitud && typeof window._revisarNuevaPartida==='function'){
+      window._revisarNuevaPartida(d,miRol);
+      return;
+    }
+
+    // 3) EL JUGADOR QUE RETOMA RECIBE SU PROPIO AVISO DE PRESENCIA.
     // Este evento es distinto del aviso que recibe el rival. Se consume una
     // sola vez por jugador y nunca vuelve a interpretar el abandono original.
     const retornoPropio=ret||{};
@@ -1482,14 +1492,6 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.post_abandono
           : 'Tu oponente no está presente en el tablero en este momento. Puedes revisar la partida histórica. No podrás iniciar una Nueva Partida hasta que ambos jugadores estén presentes.',
         'ACEPTAR',null
       );
-      return;
-    }
-
-    // 3) UNA SOLA VEZ: una solicitud bilateral actual tiene prioridad sobre
-    // cualquier aviso secundario de retorno. Los dos clientes reciben el mismo
-    // flujo de Nueva Partida y el abandono original no vuelve a aparecer.
-    if(puedeContinuar && d.nueva_partida_solicitud && typeof window._revisarNuevaPartida==='function'){
-      window._revisarNuevaPartida(d,miRol);
       return;
     }
 
@@ -1531,7 +1533,7 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.post_abandono
   return;
 }
 console.debug('[FLOW-V22] aplicarEstado', {fase:d.fase, terminado:!!d.terminado, abandono:d.abandono||null, tc:d.tc_decision||null, prioridad:d.prioridad_jugador||null});
-// V65.3: el estado continuable por abandono tiene un único dueño arriba.
+// V65.4: el estado continuable por abandono tiene un único dueño arriba.
 // La antigua rama especial del propio abandonador queda retirada para evitar
 // que RETOMAR entre por una segunda máquina con prioridades diferentes.
 // V22: el abandono del oponente puede ocurrir DESPUÉS de que ya se haya
@@ -2052,7 +2054,7 @@ function _instalarSalidaDirectaTrasAbandono(){
   if(window.Juego && typeof Juego.marcarSalidaTrasAbandono==='function') {
     Juego.marcarSalidaTrasAbandono();
   }
-  // V65.3: NO reemplazamos onclick. El botón tiene un único listener central
+  // V65.4: NO reemplazamos onclick. El botón tiene un único listener central
   // (instalarHandlersAbandonoSeparados). Esta función solo declara el contexto.
 }
 
@@ -2094,7 +2096,7 @@ function _mostrarModalOponenteAbandono(ts, miRol){
             : 'Tu oponente no está presente en el tablero. No es posible iniciar una Nueva Partida hasta que ambos jugadores estén presentes.');
         }
       }catch(e){}
-      // V65.3: el listener de sala ya está activo; no se reinstala aquí.
+      // V65.4: el listener de sala ya está activo; no se reinstala aquí.
     });
     document.getElementById('btn-ab-salir')?.addEventListener('click',async()=>{
       ov.style.display='none';
@@ -3640,8 +3642,16 @@ async solicitarNuevaPartida(){
     // porque Firebase RTDB elimina hijos cuyo valor sea null. Usamos una cadena
     // explícita y solo escribimos false cuando un jugador pulsa NO.
     const solicitudNueva={por:_rol,ts:tsNueva,estado:'pendiente',decisiones:{X:'pendiente',O:'pendiente'}};
-    solicitudNueva.decisiones[_rol]=true;
-    await update(_salaRef,{nueva_partida_solicitud:solicitudNueva});
+    // V65.4 microcirugía: pulsar NUEVA PARTIDA es una SOLICITUD, no una
+    // aceptación. El modal bilateral debe quedar operativo en ambos clientes,
+    // incluido el proponente, para que SÍ/NO tengan una decisión real que
+    // registrar. Además consumimos atómicamente el aviso de retorno pendiente:
+    // desde que existe una solicitud, ningún cliente debe volver a mostrar
+    // 'OPONENTE PRESENTE EN EL TABLERO' por ese mismo retorno.
+    await update(_salaRef,Object.assign({nueva_partida_solicitud:solicitudNueva},{
+      'post_abandono/retorno_info_visto/X':true,
+      'post_abandono/retorno_info_visto/O':true
+    }));
     // V64.7: el snapshot posterior será entregado también al rival aunque
     // persista `abandono`, porque la sesión ya quedó continuable con ambos
     // jugadores retornados.
@@ -4607,14 +4617,14 @@ _unsubSala = onValue(_salaRef, snap=>{
 if(!snap.exists()) return;
 const d=snap.val();
 if(typeof Juego!=='undefined' && Juego.setUltimoEstado) Juego.setUltimoEstado(d);
-// V65.3 — ÚNICO CONSUMIDOR DEL ABANDONO NORMAL CONTINUABLE.
+// V65.4 — ÚNICO CONSUMIDOR DEL ABANDONO NORMAL CONTINUABLE.
 // No mostramos ni bloqueamos nada aquí. Este listener entrega el snapshot
 // completo a Juego.aplicarEstado(), que es el único dueño de esta máquina.
 // Así evitamos que _escuchar() y aplicarEstado() compitan por el mismo evento.
 if(!_modoHistoricoDesconexion && _iniciado &&
    d.terminado===true && !d.fin_por_desconexion && d.sesion_continuable===true &&
    d.abandono && d.post_abandono){
-  Juego.aplicarEstado(d,_rol).catch(e=>console.error('[V65.3] abandono continuable:',e));
+  Juego.aplicarEstado(d,_rol).catch(e=>console.error('[V65.4] abandono continuable:',e));
   return;
 }
 // V62: HISTÓRICO ES UN ESTADO AISLADO. Desde este punto no se ejecuta ninguna
@@ -4900,7 +4910,7 @@ function instalarHandlersAbandonoSeparados(){
         _ocultarModalOponenteAbandono();
         if(window.Juego&&typeof Juego.marcarSalidaTrasAbandono==='function') Juego.marcarSalidaTrasAbandono();
         if(window.Firebase&&typeof Firebase.abandonarPartida==='function'){
-          try{ await Firebase.abandonarPartida(); }catch(e){ console.error('[V65.3] salida posterior tras VOLVER AL TABLERO:',e); }
+          try{ await Firebase.abandonarPartida(); }catch(e){ console.error('[V65.4] salida posterior tras VOLVER AL TABLERO:',e); }
         }
         return;
       }
@@ -4916,12 +4926,12 @@ function instalarHandlersAbandonoSeparados(){
         }
       }catch(e){ console.warn('[V63] no se pudo refrescar estado al pulsar ABANDONAR:',e); }
 
-      // V65.3: si existe una sesión continuable por abandono, el botón inferior
+      // V65.4: si existe una sesión continuable por abandono, el botón inferior
       // es una salida de PRESENCIA POSTERIOR. Nunca usa la salida histórica pura.
       if(snap && snap.terminado===true && snap.sesion_continuable===true && snap.abandono && snap.post_abandono){
         _ocultarModalOponenteAbandono();
         if(window.Firebase&&typeof Firebase.abandonarPartida==='function'){
-          try{ await Firebase.abandonarPartida(); }catch(e){ console.error('[V65.3] salida posterior normal:',e); }
+          try{ await Firebase.abandonarPartida(); }catch(e){ console.error('[V65.4] salida posterior normal:',e); }
         }
         return;
       }
@@ -5065,6 +5075,6 @@ const id=Tablero.casillaMasCercana(sx,sy,perm);
 if(id) Reclamo.seleccionar(id);
 });
 </script>
-<!-- V65.3: abandono continuable unificado; resultado, presencia y Nueva Partida separados. -->
+<!-- V65.4: abandono continuable unificado; resultado, presencia y Nueva Partida separados. -->
 </body>
 </html>
