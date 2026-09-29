@@ -152,7 +152,7 @@ M3 · PANELES CSS — Laterales, botones, modal
 #btn-reclamar{background:linear-gradient(135deg,#005500,#009933);color:#fff}
 #btn-confirmar{background:linear-gradient(135deg,#003070,#0055bb);color:#fff}
 #btn-abandonar{background:linear-gradient(135deg,#4a0000,#7a0000);color:#fff}
-#btn-abandonar-historico{background:linear-gradient(135deg,#4a0000,#7a0000);color:#fff}
+#btn-abandonar-historico{background:linear-gradient(135deg,#4a0000,#7a0000);color:#fff;position:relative;z-index:1000}
 #inicio-partida-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;width:100%;margin:6px 0 2px;}
 #btn-iniciar-partida{width:84px;height:84px;min-width:84px;padding:0;border-radius:50%;background:radial-gradient(circle at 35% 30%,#f4f5df,#d9ddbf 62%,#c3c8aa);color:#20231d;border:3px solid #ecefd7;box-shadow:0 0 0 2px #555,0 0 16px rgba(220,225,190,.28),inset 0 0 8px rgba(0,0,0,.18);justify-content:center;text-align:center;line-height:1.05;font-size:10px;letter-spacing:.7px;}
 #btn-iniciar-partida:hover{filter:brightness(1.06);transform:translateY(-1px);box-shadow:0 0 0 2px #666,0 0 22px rgba(220,225,190,.42),inset 0 0 8px rgba(0,0,0,.18);}
@@ -1100,14 +1100,35 @@ M12· JUEGO — Orquestador principal · V17
 // V63 · FRONTERA EXPLÍCITA ENTRE PARTIDA NORMAL Y PARTIDA HISTÓRICA.
 // Son dos controles físicos distintos aunque visualmente ocupen el mismo lugar.
 // Nunca se reutiliza el handler del botón normal para el estado histórico.
-window._salirHistoricoV657 = async function(ev){
+window._salirHistoricoV658 = async function(ev){
   if(ev){ ev.preventDefault(); ev.stopPropagation(); }
   const historico=document.getElementById('btn-abandonar-historico');
-  if(historico){ historico.disabled=false; historico.style.pointerEvents='auto'; historico.style.opacity=''; }
+  if(historico){
+    historico.disabled=false;
+    historico.style.display='';
+    historico.style.pointerEvents='auto';
+    historico.style.opacity='';
+    historico.style.position='relative';
+    historico.style.zIndex='1000';
+  }
   if(!window.Firebase || typeof Firebase.salirLocalTrasAbandono!=='function') return;
   try{ await Firebase.salirLocalTrasAbandono(true); }
-  catch(e){ console.error('[V65.7] salida histórica:',e); }
+  catch(e){ console.error('[V65.8] salida histórica:',e); }
 };
+// V65.8 · Segunda barrera: captura documental específica para el botón histórico.
+// No toca el botón normal ni ninguna otra acción. Si alguna transición dejó
+// otro listener asociado al botón, esta captura sigue llevando exclusivamente
+// el clic histórico a su salida local.
+if(!window._capturaHistoricoV658){
+  window._capturaHistoricoV658=true;
+  document.addEventListener('click',function(ev){
+    const b=ev.target && ev.target.closest ? ev.target.closest('#btn-abandonar-historico') : null;
+    if(!b || b.disabled || b.style.display==='none') return;
+    if(window._modoHistoricoDesconexion===true || b.offsetParent!==null){
+      window._salirHistoricoV658(ev);
+    }
+  },true);
+}
 
 function _setModoAbandonoUI(modo){
   const normal=document.getElementById('btn-abandonar');
@@ -1126,8 +1147,13 @@ function _setModoAbandonoUI(modo){
     historico.style.pointerEvents=esHistorico?'auto':'none';
     // V65.7 · Reforzamos el handler cada vez que entramos en modo histórico.
     // No dependemos de que una transición anterior haya conservado el binding.
-    if(esHistorico && typeof window._salirHistoricoV657==='function') {
-      historico.onclick=window._salirHistoricoV657;
+    if(esHistorico && typeof window._salirHistoricoV658==='function') {
+      historico.onclick=window._salirHistoricoV658;
+      historico.disabled=false;
+      historico.style.display='';
+      historico.style.pointerEvents='auto';
+      historico.style.position='relative';
+      historico.style.zIndex='1000';
     }
   }
 }
@@ -4987,7 +5013,7 @@ function instalarHandlersAbandonoSeparados(){
   if(historico && historico.dataset.handlerV62!=='1'){
     historico.dataset.handlerV62='1';
     // V65.6 · El botón histórico también usa entrada directa.
-    historico.onclick = window._salirHistoricoV657;
+    historico.onclick = window._salirHistoricoV658;
   }
 }
 instalarHandlersAbandonoSeparados();
