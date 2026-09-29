@@ -4212,7 +4212,7 @@ async abandonarPartida(){
         'post_abandono/ultimo_salida_rol':_rol,
         'post_abandono/ultimo_salida_ts':tsSalida2,
         'post_abandono/ultimo_salida_tipo':'abandono',
-        'post_abandono/salida_aviso_visto/'+_rol:null,
+        ['post_abandono/salida_aviso_visto/'+_rol]:null,
         nueva_partida_solicitud:null,
         nueva_partida_max_alert:null,
         ['conexion/'+_rol]:{online:false,ts:serverTimestamp()}
