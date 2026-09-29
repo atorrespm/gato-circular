@@ -1100,6 +1100,15 @@ M12· JUEGO — Orquestador principal · V17
 // V63 · FRONTERA EXPLÍCITA ENTRE PARTIDA NORMAL Y PARTIDA HISTÓRICA.
 // Son dos controles físicos distintos aunque visualmente ocupen el mismo lugar.
 // Nunca se reutiliza el handler del botón normal para el estado histórico.
+window._salirHistoricoV657 = async function(ev){
+  if(ev){ ev.preventDefault(); ev.stopPropagation(); }
+  const historico=document.getElementById('btn-abandonar-historico');
+  if(historico){ historico.disabled=false; historico.style.pointerEvents='auto'; historico.style.opacity=''; }
+  if(!window.Firebase || typeof Firebase.salirLocalTrasAbandono!=='function') return;
+  try{ await Firebase.salirLocalTrasAbandono(true); }
+  catch(e){ console.error('[V65.7] salida histórica:',e); }
+};
+
 function _setModoAbandonoUI(modo){
   const normal=document.getElementById('btn-abandonar');
   const historico=document.getElementById('btn-abandonar-historico');
@@ -1115,6 +1124,11 @@ function _setModoAbandonoUI(modo){
     historico.disabled=!esHistorico;
     historico.style.opacity=esHistorico?'':'0.4';
     historico.style.pointerEvents=esHistorico?'auto':'none';
+    // V65.7 · Reforzamos el handler cada vez que entramos en modo histórico.
+    // No dependemos de que una transición anterior haya conservado el binding.
+    if(esHistorico && typeof window._salirHistoricoV657==='function') {
+      historico.onclick=window._salirHistoricoV657;
+    }
   }
 }
 window._setModoAbandonoUI=_setModoAbandonoUI;
@@ -4314,8 +4328,12 @@ async abandonarPartida(){
     this.salirLocalTrasAbandono();
 },
 salirLocalAlLobbyNormal(){if(_unsubSala){_unsubSala();_unsubSala=null;}_iniciado=false;_borrarSesion();if(_unsubConexion){_unsubConexion();_unsubConexion=null;}_ocultarModalDesconexion();_ocultarModalReconexion();UI.cerrarModal();UI.bloquearTablero(true);UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar','btn-abandonar'],true);if(window._setModoAbandonoUI) window._setModoAbandonoUI('none');const wrap=document.getElementById('inicio-partida-wrap');if(wrap)wrap.style.display='none';UI.lobbyPaso('inicio');UI.lobbyVisible(true);setTimeout(()=>{try{window.location.reload();}catch(e){console.error('[V32.3] no se pudo volver al lobby',e);}},120);},
-async salirLocalTrasAbandono(){
-    if(_recargandoTrasAbandono) return;
+async salirLocalTrasAbandono(forzarSalidaHistorica=false){
+    // V65.7 · MICRO-CIRUGÍA: una entrada histórica puede llegar por varias
+    // rutas y, en alguna de ellas, la bandera de recarga local puede haber
+    // quedado levantada por una transición anterior. Para el botón histórico
+    // la salida es idempotente y debe poder ejecutarse siempre.
+    if(_recargandoTrasAbandono && !forzarSalidaHistorica) return;
     _recargandoTrasAbandono=true;
 
     // V55: la decisión de conservar la sesión histórica se toma con el estado
@@ -4969,16 +4987,7 @@ function instalarHandlersAbandonoSeparados(){
   if(historico && historico.dataset.handlerV62!=='1'){
     historico.dataset.handlerV62='1';
     // V65.6 · El botón histórico también usa entrada directa.
-    historico.onclick = async (ev)=>{
-      ev.preventDefault();
-      ev.stopPropagation();
-      if(!window.Firebase || typeof Firebase.salirLocalTrasAbandono!=='function') return;
-      // ÚNICA responsabilidad del botón histórico: abandonar la vista histórica.
-      // Nunca escribe el resultado de la partida ni entra a abandonarPartida().
-      try{
-        await Firebase.salirLocalTrasAbandono();
-      }catch(e){ console.error('[V62] salida histórica:',e); }
-    };
+    historico.onclick = window._salirHistoricoV657;
   }
 }
 instalarHandlersAbandonoSeparados();
