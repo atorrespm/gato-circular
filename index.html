@@ -1135,10 +1135,22 @@ function _setModoAbandonoUI(modo){
   const historico=document.getElementById('btn-abandonar-historico');
   const esHistorico=modo==='historico';
   if(normal){
-    normal.style.display=esHistorico?'none':'';
-    normal.disabled=false;
-    normal.style.opacity='';
-    normal.style.pointerEvents=esHistorico?'none':'auto';
+    if(esHistorico){
+      // V65.9 · FRONTERA FÍSICA DEL HISTÓRICO:
+      // El botón normal NO debe coexistir con el botón histórico.
+      // Algunas ramas de aplicarEstado() vuelven a habilitar #btn-abandonar
+      // después de haber entrado en histórico; aunque visualmente parezca
+      // bloqueado, su presencia física puede quedar encima/interceptar el clic.
+      // El histórico es una máquina de solo lectura y se abandona por un único
+      // control físico. Como la salida histórica recarga la página, eliminar
+      // este nodo es seguro: al recargar, el HTML vuelve a crear el botón normal.
+      normal.remove();
+    }else{
+      normal.style.display='';
+      normal.disabled=false;
+      normal.style.opacity='';
+      normal.style.pointerEvents='auto';
+    }
   }
   if(historico){
     historico.style.display=esHistorico?'':'none';
