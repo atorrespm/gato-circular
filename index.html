@@ -6,7 +6,7 @@ V43 · MICRO-CIRUGÍA: distingue reclamo inválido antes/después de jugar
 V47 · MICRO-CIRUGÍA ABANDONO + PANEL FIJO DE LATENCIA
 V56 · MICRO-CIRUGÍA: HISTÓRICO DE DESCONEXIÓN COMO MODO SOLO LECTURA
 V61 · AUDITORÍA ESTRUCTURAL: histórico aislado + salida local única
-V65.5 · MICRO-CIRUGÍA: handler directo del ABANDONAR inferior
+V65.6 · MICRO-CIRUGÍA: handler directo del ABANDONAR inferior
 Desarrollador: Pedro Alejandro Torres Guerrero
 Juego de Estrategia Mental: GATO CIRCULAR
 Todos los derechos reservados.
@@ -48,7 +48,7 @@ M20· ESTADISTICAS  Historial y estadísticas avanzadas
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gato Circular V65.5</title>
+<title>Gato Circular V65.6</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@500;700&display=swap');
 /* ═══════════════════════════════════════════════════════
@@ -1485,12 +1485,21 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.post_abandono
     const infoVistoPropia=pa.retorno_info_visto||{};
     if(retornoPropio[miRol]===true && infoVistoPropia[miRol]!==true){
       const rivalOnline=!!(con[rival]&&con[rival].online===true);
+      // V65.6 · No estar presente y estar desconectado son estados distintos.
+      // Si el rival salió voluntariamente al lobby, post_abandono.salida[rival]
+      // queda marcado. Si, en cambio, cerró la pestaña después de haber visto
+      // el abandono original, queda offline pero sin ese evento de salida: en
+      // ese caso informamos explícitamente DESCONectado.
+      const rivalSalioVoluntariamente=!!(pa.salida&&pa.salida[rival]===true);
+      const rivalDesconectado=!rivalOnline && !rivalSalioVoluntariamente;
       try{ await update(_salaRef,{['post_abandono/retorno_info_visto/'+miRol]:true}); }catch(e){}
       UI.modal(
-        rivalOnline ? '🟢 OPONENTE PRESENTE EN EL TABLERO' : '⏳ OPONENTE NO PRESENTE EN EL TABLERO',
+        rivalOnline ? '🟢 OPONENTE PRESENTE EN EL TABLERO' : (rivalDesconectado ? '📡 OPONENTE DESCONECTADO' : '⏳ OPONENTE NO PRESENTE EN EL TABLERO'),
         rivalOnline
           ? 'Tu oponente está presente en el tablero. Ambos jugadores están disponibles y pueden solicitar una Nueva Partida para continuar la sesión.'
-          : 'Tu oponente no está presente en el tablero en este momento. Puedes revisar la partida histórica. No podrás iniciar una Nueva Partida hasta que ambos jugadores estén presentes.',
+          : (rivalDesconectado
+            ? 'Tu oponente se ha desconectado del tablero en este momento. Puedes revisar la partida histórica. No podrás iniciar una Nueva Partida hasta que ambos jugadores estén presentes.'
+            : 'Tu oponente no está presente en el tablero en este momento. Puedes revisar la partida histórica. No podrás iniciar una Nueva Partida hasta que ambos jugadores estén presentes.'),
         'ACEPTAR',null
       );
       return;
@@ -4211,6 +4220,10 @@ async abandonarPartida(){
         'post_abandono/ultimo_salida_tipo':'abandono',
         'post_abandono/estado':'presencia_posterior',
         ['post_abandono/salida_aviso_visto/'+_rol]:false,
+        // V65.6 · Si el jugador eligió ABANDONAR desde el modal original,
+        // ese evento ya fue visto/consumido. Nunca debe reaparecer como
+        // 'VICTORIA POR ABANDONO' al RETOMAR.
+        ['post_abandono/abandono_aviso_visto/'+_rol]:true,
         nueva_partida_solicitud:null,
         nueva_partida_max_alert:null,
         ['conexion/'+_rol]:{online:false,ts:serverTimestamp()}
@@ -4892,7 +4905,7 @@ function instalarHandlersAbandonoSeparados(){
 
   if(normal && normal.dataset.handlerV62!=='1'){
     normal.dataset.handlerV62='1';
-    // V65.5 · Microcirugía: usar onclick como único punto de entrada del
+    // V65.6 · Microcirugía: usar onclick como único punto de entrada del
     // botón normal. El elemento puede cambiar de estado/visibilidad durante
     // las transiciones de sesión; onclick queda asociado directamente al
     // elemento actual y evita que una instalación anterior del listener
@@ -4955,7 +4968,8 @@ function instalarHandlersAbandonoSeparados(){
 
   if(historico && historico.dataset.handlerV62!=='1'){
     historico.dataset.handlerV62='1';
-    historico.addEventListener('click', async (ev)=>{
+    // V65.6 · El botón histórico también usa entrada directa.
+    historico.onclick = async (ev)=>{
       ev.preventDefault();
       ev.stopPropagation();
       if(!window.Firebase || typeof Firebase.salirLocalTrasAbandono!=='function') return;
@@ -4964,7 +4978,7 @@ function instalarHandlersAbandonoSeparados(){
       try{
         await Firebase.salirLocalTrasAbandono();
       }catch(e){ console.error('[V62] salida histórica:',e); }
-    });
+    };
   }
 }
 instalarHandlersAbandonoSeparados();
