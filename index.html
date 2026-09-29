@@ -1423,11 +1423,14 @@ if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
 // Si un snapshot terminal quedara en la cola normal, no permitimos que
 // aplicarEstado() lo procese como abandono genérico ni que pise la UI histórica.
 if(d.terminado && d.fin_por_desconexion) return;
-// V63: abandono remoto normal tiene una ruta terminal propia, antes de
-// _faseTerminado(), para garantizar la secuencia de avisos al rival.
-if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.abandono.abandonador!==miRol){
+// V65.0 — ÚNICA MÁQUINA PARA ABANDONO NORMAL CONTINUABLE.
+// `abandono` es el resultado inmutable de la partida que terminó.
+// `post_abandono` contiene únicamente eventos de presencia posteriores:
+// retorno, salida posterior y solicitud bilateral de Nueva Partida.
+if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.post_abandono && d.sesion_continuable===true){
   Estado.fromFirebase(d); _ultimoD=d;
   try{
+    if(Reclamo.isActivo()) Reclamo.desactivar();
     Tablero.render(Estado.tablero,id=>{});
     UI.actualizarPaneles(Estado);
     UI.setStats(d.victoriasX||0,d.victoriasO||0);
@@ -1435,53 +1438,45 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.abandono.aban
     if(typeof marcarModoActivo==='function') marcarModoActivo(d.crono_modo||'clasico');
     Cronometro.detener();
     UI.bloquearTablero(true);
-    UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar'],true);
+    UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar','btn-iniciar-partida'],true);
     if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
     UI.bloquearBtns(['btn-abandonar'],false);
     _instalarSalidaDirectaTrasAbandono();
     const pa=d.post_abandono||{};
-    const retA=pa.retorno||{};
-    const conA=d.conexion||{};
-    const ambosRetornaron=retA.X===true&&retA.O===true;
-    const ambosConectados=conA.X&&conA.O&&conA.X.online===true&&conA.O.online===true;
-    const puedeContinuar=!!d.post_abandono && d.fin_sesion!==true && ambosRetornaron && ambosConectados;
+    const ret=pa.retorno||{};
+    const con=d.conexion||{};
+    const rival=miRol==='X'?'O':'X';
+    const ambosPresentes=!!(con.X&&con.O&&con.X.online===true&&con.O.online===true&&ret.X===true&&ret.O===true);
+    const puedeContinuar=ambosPresentes && d.fin_sesion!==true;
     UI.bloquearBtns(['btn-nueva'],!puedeContinuar);
-    const wrapAb=document.getElementById('inicio-partida-wrap'); if(wrapAb) wrapAb.style.display='flex';
-    const selAb=document.getElementById('crono-modo-selector'); if(selAb) selAb.style.display='flex';
+    const wrap=document.getElementById('inicio-partida-wrap'); if(wrap) wrap.style.display='flex';
+    const sel=document.getElementById('crono-modo-selector'); if(sel) sel.style.display='flex';
     if(typeof bloquearSelectorModo==='function') bloquearSelectorModo(true);
-    const paRem=d.post_abandono||{};
-    const retRem=paRem.retorno||{};
-    const ackRet=paRem.retorno_ack||{};
-    const infoAb=paRem.abandono_aviso_visto||{};
-    const salidaRem=paRem.salida||{};
-    const rivalRolRem=miRol==='X'?'O':'X';
 
-    // V64.8: el aviso de abandono original es un EVENTO, no un estado que
-    // deba reaparecer cada vez que llega un snapshot o después de RETOMAR.
-    const keyAb='normal-abandono|'+String(d.abandono.ts||'')+'|'+String(d.partidasJugadas||0)+'|'+String(miRol);
-    const abandonoYaAvisado=infoAb[miRol]===true;
-    if(!abandonoYaAvisado && _abandonoOponenteAvisoVisto!==keyAb){
-      _abandonoOponenteAvisoVisto=keyAb;
-      // V64.9: el aviso del abandono original es un EVENTO INMEDIATO.
-      // No esperamos a que Firebase confirme el ACK antes de pintarlo;
-      // esa espera podía retrasar el modal hasta que llegara otra transición
-      // (por ejemplo, el RETOMAR del abandonador). El ACK se persiste después,
-      // de forma asíncrona, sin bloquear la presentación al jugador.
+    // 1) UNA SOLA VEZ: resultado original por abandono del rival.
+    const avisoOriginal=pa.abandono_aviso_visto||{};
+    if(pa.abandonador!==miRol && avisoOriginal[miRol]!==true){
+      try{ await update(_salaRef,{['post_abandono/abandono_aviso_visto/'+miRol]:true}); }catch(e){}
+      _abandonoOponenteAvisoVisto='original-abandono|'+String(pa.abandono_original_ts||d.abandono.ts||'')+'|'+miRol;
       UI.cerrarModal();
       _ocultarModalOponenteAbandono();
       _mostrarModalOponenteAbandono(d.abandono.ts,miRol);
-      update(_salaRef,{['post_abandono/abandono_aviso_visto/'+miRol]:true}).catch(()=>{});
       return;
     }
 
-    // V64.8: si el abandonador RETOMA, el jugador que permaneció en la sala
-    // recibe un aviso explícito de que su rival regresó. No es RECONEXIÓN: el
-    // jugador no había perdido conexión; simplemente volvió al tablero.
-    const retornoRivalNuevo=retRem[rivalRolRem]===true &&
-      paRem.ultimo_retorno_rol===rivalRolRem &&
-      Number(paRem.ultimo_retorno_ts||0)>Number(d.abandono.ts||0) &&
-      ackRet[miRol]!==true;
-    if(retornoRivalNuevo){
+    // 2) UNA SOLA VEZ: una solicitud bilateral actual siempre tiene prioridad
+    // sobre avisos de retorno/salida. Así ambos clientes ven exactamente el
+    // mismo flujo de Nueva Partida y no se pisan dos modales distintos.
+    if(puedeContinuar && d.nueva_partida_solicitud && typeof window._revisarNuevaPartida==='function'){
+      window._revisarNuevaPartida(d,miRol);
+      return;
+    }
+
+    // 3) RETORNO DEL RIVAL: es un evento posterior al abandono original.
+    const ultimoRetRol=pa.ultimo_retorno_rol;
+    const ultimoRetTs=Number(pa.ultimo_retorno_ts||0);
+    const retornoAck=pa.retorno_ack||{};
+    if(ultimoRetRol===rival && ultimoRetTs>Number(pa.abandono_original_ts||d.abandono.ts||0) && retornoAck[miRol]!==true && con[rival]&&con[rival].online===true){
       try{ await update(_salaRef,{['post_abandono/retorno_ack/'+miRol]:true}); }catch(e){}
       UI.modal('🟢 TU OPONENTE HA REGRESADO AL TABLERO',
         'Tu oponente ha regresado al tablero después de haber abandonado la partida. La partida anterior permanece disponible para revisión. Ambos jugadores están presentes y pueden solicitar una Nueva Partida para continuar la sesión.',
@@ -1489,27 +1484,15 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.abandono.aban
       return;
     }
 
-    // V64.9: una solicitud bilateral ACTUAL tiene prioridad sobre cualquier
-    // aviso de retorno ya mostrado o pendiente. Si ambos están presentes y
-    // uno solicita Nueva Partida, el otro debe recibir el modal bilateral,
-    // nunca volver a recibir el aviso de que el rival regresó.
-    if(puedeContinuar && d.nueva_partida_solicitud && typeof window._revisarNuevaPartida==='function'){
-      window._revisarNuevaPartida(d,miRol);
-      return;
-    }
-
-    // V64.9: si ambos estaban de regreso y el rival posteriormente abandona
-    // o cierra la pestaña, el jugador que permanece debe saber que ya no puede
-    // solicitar una Nueva Partida hasta que ambos vuelvan a estar presentes.
-    const ambosHabianRetornado=retRem.X===true&&retRem.O===true;
-    const rivalAusente=!!(conA[rivalRolRem] && conA[rivalRolRem].online!==true);
-    const tsConexionRival=Number(conA[rivalRolRem]&&conA[rivalRolRem].ts||0);
-    const tsRetornoRival=Number(paRem.ultimo_retorno_ts||0);
-    const salidaRivalNueva=ambosHabianRetornado && rivalAusente &&
-      (salidaRem[rivalRolRem]===true || Number(paRem.ultimo_salida_ts||0)>tsRetornoRival || tsConexionRival>tsRetornoRival);
-    const salidaKey='salida-post-abandono|'+String(paRem.ultimo_salida_ts||'')+'|'+String(tsConexionRival||'')+'|'+String(rivalRolRem)+'|'+String(miRol);
-    if(salidaRivalNueva && _abandonoOponenteAvisoVisto!==salidaKey){
-      _abandonoOponenteAvisoVisto=salidaKey;
+    // 4) SALIDA POSTERIOR: NO es una nueva victoria. Solo informa que el rival
+    // dejó el tablero después de haber regresado. Se reconoce por un evento de
+    // salida posterior al último retorno y se marca por jugador para no repetirlo.
+    const ultimoSalidaTs=Number(pa.ultimo_salida_ts||0);
+    const salidaRol=pa.ultimo_salida_rol;
+    const salidaVisto=pa.salida_aviso_visto||{};
+    const salidaPosterior=ultimoSalidaTs>ultimoRetTs && ultimoSalidaTs>Number(pa.abandono_original_ts||d.abandono.ts||0) && salidaRol===rival && con[rival]&&con[rival].online!==true;
+    if(salidaPosterior && salidaVisto[miRol]!==true){
+      try{ await update(_salaRef,{['post_abandono/salida_aviso_visto/'+miRol]:true}); }catch(e){}
       UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
       UI.bloquearBtns(['btn-abandonar'],false);
       UI.modal('🚪 OPONENTE HA SALIDO DEL TABLERO',
@@ -1518,9 +1501,12 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.abandono.aban
       return;
     }
 
-    // Mantener el estado terminal estable: no reabrimos el modal de abandono
-    // original en cada snapshot.
-  }catch(e){ console.warn('[V64.8] no pudo procesar abandono remoto normal:',e); }
+    // 5) Estado estable: nunca volver a interpretar `d.abandono` como un
+    // evento nuevo. Solo mantenemos el tablero histórico bloqueado y la salida.
+    UI.setMsg(ambosPresentes
+      ? 'Ambos jugadores están presentes. Pueden solicitar una Nueva Partida para continuar la sesión.'
+      : 'Tu oponente no está presente en el tablero. No es posible iniciar una Nueva Partida hasta que ambos jugadores estén presentes.');
+  }catch(e){ console.warn('[V65.0] no pudo procesar abandono continuable:',e); }
   return;
 }
 console.debug('[FLOW-V22] aplicarEstado', {fase:d.fase, terminado:!!d.terminado, abandono:d.abandono||null, tc:d.tc_decision||null, prioridad:d.prioridad_jugador||null});
@@ -2085,14 +2071,19 @@ function _instalarSalidaDirectaTrasAbandono(){
   // V62: esta es una ruta NORMAL terminal. No convierte el botón normal
   // en un botón histórico ni escribe flags históricos en su DOM.
   b.disabled=false; b.style.opacity=''; b.style.pointerEvents='auto';
-  // V64.4: marcar la salida en el mismo ámbito que consume el handler.
-  // _salidaTrasAbandono existe también dentro de Juego, por lo que el flag
-  // local de esta capa no basta para activar Juego.isSalidaTrasAbandono().
+  // V65.0: después del abandono original, ABANDONAR vuelve a ser una acción
+  // de sesión. Debe pasar por abandonarPartida() para registrar el evento de
+  // salida posterior; salirLocalTrasAbandono() por sí solo solo desmontaba
+  // la interfaz y dejaba al rival sin un evento nuevo que procesar.
   b.dataset.salidaTrasAbandono='1';
   _salidaTrasAbandono=true;
   if(window.Juego && typeof Juego.marcarSalidaTrasAbandono==='function') {
     Juego.marcarSalidaTrasAbandono();
   }
+  b.onclick=async()=>{
+    _salidaTrasAbandono=true;
+    try{ await Firebase.abandonarPartida(); }catch(e){ console.error('[V65.0] salida post-abandono:',e); }
+  };
 }
 
 function _mostrarModalOponenteAbandono(ts, miRol){
@@ -2120,10 +2111,10 @@ function _mostrarModalOponenteAbandono(ts, miRol){
       }
       UI.setMsg('Tu oponente abandonó. Has ganado la partida por abandono. Puedes estudiar las jugadas o abandonar la partida.');
     });
-    document.getElementById('btn-ab-salir')?.addEventListener('click',()=>{
+    document.getElementById('btn-ab-salir')?.addEventListener('click',async()=>{
       ov.style.display='none';
       _salidaTrasAbandono=true;
-      Firebase.salirLocalTrasAbandono();
+      try{ await Firebase.abandonarPartida(); }catch(e){ console.error('[V65.0] salida desde modal:',e); }
     });
   }
   const nombreAbandonador = (_ultimoD && _ultimoD.abandono && _ultimoD.abandono.abandonador==='X') ? 'Jugador 1 (X)' : 'Jugador 2 (O)';
@@ -2141,6 +2132,10 @@ function _ocultarModalOponenteAbandono(){
 // ("Reclamo de Victoria Válido – Jugador X gana la partida"),
 // idéntico para ambos jugadores (RG-004 Sincronización Absoluta).
 function _faseTerminado(d, miRol){
+// V65.0: una partida terminada por abandono continuable tiene un único dueño:
+// aplicarEstado(). No permitimos que la máquina terminal histórica vuelva a
+// interpretar `abandono` y genere un segundo modal o una salida prematura.
+if(d && d.sesion_continuable===true && d.abandono && d.post_abandono && !d.fin_por_desconexion) return;
 EmpateFlow.detenerCronometroPrioridad();
 Cronometro.detener();
 UI.bloquearTablero(true);
@@ -3276,6 +3271,7 @@ if(!_modoHistoricoDesconexion){
     cambiosRet['post_abandono/retorno_ack/'+_rol]=false;
     cambiosRet['post_abandono/retorno_info_visto/'+_rol]=false;
     cambiosRet['post_abandono/salida/'+_rol]=false;
+    cambiosRet['post_abandono/salida_aviso_visto/'+_rol]=false;
     cambiosRet['post_abandono/ultimo_retorno_rol']=_rol;
     cambiosRet['post_abandono/ultimo_retorno_ts']=Date.now();
   }
@@ -4209,10 +4205,14 @@ async abandonarPartida(){
       const salidaN2=Number(d.post_abandono.salida_numero||1)+1;
       await update(_salaRef,{
         ['post_abandono/salida/'+_rol]:true,
+        ['post_abandono/retorno/'+_rol]:false,
+        ['post_abandono/retorno_ack/'+_rol]:false,
+        ['post_abandono/retorno_info_visto/'+_rol]:false,
         'post_abandono/salida_numero':salidaN2,
         'post_abandono/ultimo_salida_rol':_rol,
         'post_abandono/ultimo_salida_ts':tsSalida2,
         'post_abandono/ultimo_salida_tipo':'abandono',
+        'post_abandono/salida_aviso_visto/'+_rol:null,
         nueva_partida_solicitud:null,
         nueva_partida_max_alert:null,
         ['conexion/'+_rol]:{online:false,ts:serverTimestamp()}
@@ -4221,9 +4221,10 @@ async abandonarPartida(){
       return;
     }
 
-    // V27: si el oponente ya abandonó, el jugador restante solo necesita salir.
-    // No se modifica el resultado ni se registra un segundo abandono.
-    if(d.abandono && d.abandono.abandonador !== _rol){
+    // V65.0: en una sesión con post_abandono, la salida posterior ya tiene
+    // una rama específica arriba. No usar la mera existencia de `abandono`
+    // como disparador, porque ese campo es el resultado histórico inmutable.
+    if(d.abandono && d.abandono.abandonador !== _rol && !d.post_abandono){
       const tsSalida=Date.now();
       await update(_salaRef,{
         'abandono/salida_oponente_ts':tsSalida,
@@ -4287,6 +4288,7 @@ async abandonarPartida(){
         retorno_info_visto:{X:false,O:false},
         abandono_aviso_visto:{X:false,O:false},
         salida:{X:(_rol==='X'),O:(_rol==='O')},
+        salida_aviso_visto:{X:false,O:false},
         ultimo_salida_rol:_rol,
         ultimo_salida_ts:ahoraAbandono,
         ultimo_retorno_rol:null,
