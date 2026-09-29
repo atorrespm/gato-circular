@@ -6,6 +6,7 @@ V43 · MICRO-CIRUGÍA: distingue reclamo inválido antes/después de jugar
 V47 · MICRO-CIRUGÍA ABANDONO + PANEL FIJO DE LATENCIA
 V56 · MICRO-CIRUGÍA: HISTÓRICO DE DESCONEXIÓN COMO MODO SOLO LECTURA
 V61 · AUDITORÍA ESTRUCTURAL: histórico aislado + salida local única
+V65.5 · MICRO-CIRUGÍA: handler directo del ABANDONAR inferior
 Desarrollador: Pedro Alejandro Torres Guerrero
 Juego de Estrategia Mental: GATO CIRCULAR
 Todos los derechos reservados.
@@ -47,7 +48,7 @@ M20· ESTADISTICAS  Historial y estadísticas avanzadas
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gato Circular V63</title>
+<title>Gato Circular V65.5</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@500;700&display=swap');
 /* ═══════════════════════════════════════════════════════
@@ -4891,7 +4892,12 @@ function instalarHandlersAbandonoSeparados(){
 
   if(normal && normal.dataset.handlerV62!=='1'){
     normal.dataset.handlerV62='1';
-    normal.addEventListener('click', async (ev)=>{
+    // V65.5 · Microcirugía: usar onclick como único punto de entrada del
+    // botón normal. El elemento puede cambiar de estado/visibilidad durante
+    // las transiciones de sesión; onclick queda asociado directamente al
+    // elemento actual y evita que una instalación anterior del listener
+    // deje al botón visualmente activo pero sin respuesta.
+    normal.onclick = async (ev)=>{
       ev.preventDefault();
       ev.stopPropagation();
       if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
@@ -4944,7 +4950,7 @@ function instalarHandlersAbandonoSeparados(){
         false,
         partidaYaTerminada
       );
-    });
+    };
   }
 
   if(historico && historico.dataset.handlerV62!=='1'){
