@@ -1136,6 +1136,8 @@ function _setModoAbandonoUI(modo){
   const esHistorico=modo==='historico';
   if(normal){
     if(esHistorico){
+      // V66 · FRONTERA EXCLUSIVA DEL HISTÓRICO: el botón normal se elimina físicamente.
+      // Ninguna rama histórica puede volver a habilitarlo o mostrarlo.
       // V65.9 · FRONTERA FÍSICA DEL HISTÓRICO:
       // El botón normal NO debe coexistir con el botón histórico.
       // Algunas ramas de aplicarEstado() vuelven a habilitar #btn-abandonar
@@ -1242,7 +1244,8 @@ async function procesarTerminalDesconexion(d, miRol){
     EmpateFlow.detenerCronometroPrioridad();
     UI.bloquearTablero(true);
     UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar'],true);
-    const bn=document.getElementById('btn-nueva'), ba=document.getElementById('btn-abandonar');
+    const bn=document.getElementById('btn-nueva');
+    const ba=(!_modoHistoricoDesconexion) ? document.getElementById('btn-abandonar') : null;
     if(bn){
       const sesionContinuable=!!(d.terminado===true&&d.fin_por_desconexion===true&&!d.abandono&&d.ganador&&d.fin_sesion!==true);
       const retorno=post.retorno||{};
@@ -1250,7 +1253,7 @@ async function procesarTerminalDesconexion(d, miRol){
       const bloquearNueva=!!d.fin_sesion || (sesionContinuable && !ambosRetornaron);
       bn.disabled=bloquearNueva;bn.style.opacity=bloquearNueva?'0.4':'';bn.style.pointerEvents=bloquearNueva?'none':'auto';
     }
-    if(ba){ba.disabled=false;ba.style.opacity='';ba.style.pointerEvents='auto';}
+    if(ba && !_modoHistoricoDesconexion){ba.disabled=false;ba.style.opacity='';ba.style.pointerEvents='auto';}
     const wrap=document.getElementById('inicio-partida-wrap'); if(wrap) wrap.style.display='flex';
     // V64: PARTIDA TERMINADA / SESIÓN CONTINUABLE. La partida ya terminó y
     // su resultado es definitivo, pero si aún quedan partidas de la sesión,
@@ -1294,7 +1297,9 @@ async function procesarTerminalDesconexion(d, miRol){
       const selHistorico=document.getElementById('crono-modo-selector');
       if(selHistorico){ selHistorico.style.display='flex'; }
       UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar','btn-nueva','btn-iniciar-partida'],true);
-      UI.bloquearBtns(['btn-abandonar'],false);
+      // V66: en histórico NO se toca jamás el botón normal. Solo existe el histórico.
+      const btnNormalHistorico=document.getElementById('btn-abandonar');
+      if(btnNormalHistorico) btnNormalHistorico.remove();
       const baHistorico=document.getElementById('btn-abandonar-historico');
       if(baHistorico){baHistorico.disabled=false;baHistorico.style.opacity='';baHistorico.style.pointerEvents='auto';baHistorico.style.display='';}
       UI.setMsg('Partida histórica — solo lectura. Puedes revisar la partida y ABANDONAR cuando termines.');
@@ -1471,7 +1476,7 @@ async function procesarTerminalDesconexion(d, miRol){
 
 async function aplicarEstado(d, miRol) {
 if(!d) return;
-if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
+if(!window._modoHistoricoDesconexion && window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
 // V58: los finales por desconexión tienen una máquina terminal propia.
 // Si un snapshot terminal quedara en la cola normal, no permitimos que
 // aplicarEstado() lo procese como abandono genérico ni que pise la UI histórica.
@@ -4743,9 +4748,11 @@ if(d.terminado && !d.fin_por_desconexion && !d.abandono){
   }
 }
 if(d.terminado && d.fin_por_desconexion){
-  if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
+  if(!_modoHistoricoDesconexion && window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
+  // V66: si ya estamos en histórico, el botón normal no participa y se elimina.
+  if(_modoHistoricoDesconexion){ const bnHist=document.getElementById('btn-abandonar'); if(bnHist) bnHist.remove(); }
   // V61: asegurar que ABANDONAR no quede físicamente disabled por un estado previo.
-  const btnAbTerminal=document.getElementById('btn-abandonar');
+  const btnAbTerminal=!_modoHistoricoDesconexion ? document.getElementById('btn-abandonar') : null;
   if(btnAbTerminal){btnAbTerminal.disabled=false;btnAbTerminal.style.pointerEvents='auto';btnAbTerminal.style.opacity='';btnAbTerminal.style.display='';}
   // V32.3.17: al retomar una partida ya terminada por desconexión, el cliente
   // podía seguir con _iniciado=false porque este gate terminal retornaba antes
@@ -4789,7 +4796,7 @@ if(d.terminado && d.fin_por_desconexion){
   return;
 }
 if(!_iniciado&&d.j1==='online'&&d.j2==='online'){
-if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
+if(!_modoHistoricoDesconexion && window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
 _iniciado=true;
 UI.lobbyVisible(false);
 UI.indicadorOnline(_sala,_rol);
