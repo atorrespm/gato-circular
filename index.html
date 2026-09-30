@@ -5131,7 +5131,7 @@ function instalarHandlersAbandonoSeparados(){
       const salidaDirecta =
         normal.dataset.salidaTrasAbandono==='1' ||
         (window.Juego&&typeof Juego.isSalidaTrasAbandono==='function'&&Juego.isSalidaTrasAbandono());
-      if(window._v71Diag) window._v71Diag('RUTA-DECIDIDA','salidaDirecta='+String(salidaDirecta)+' | flagDOM='+String(normal.dataset.salidaTrasAbandono)+' | Firebase._salaRef-publico='+String(!!(window.Firebase&&Firebase._salaRef))+' (NO ES LA VARIABLE INTERNA) );
+      if(window._v71Diag) window._v71Diag('RUTA-DECIDIDA','salidaDirecta='+String(salidaDirecta)+' | flagDOM='+String(normal.dataset.salidaTrasAbandono)+' | Firebase._salaRef-publico='+String(!!(window.Firebase&&Firebase._salaRef))+' (NO ES LA VARIABLE INTERNA)');
       if(salidaDirecta){
         delete normal.dataset.salidaTrasAbandono;
         _ocultarModalOponenteAbandono();
