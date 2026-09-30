@@ -7,7 +7,7 @@ V47 · MICRO-CIRUGÍA ABANDONO + PANEL FIJO DE LATENCIA
 V56 · MICRO-CIRUGÍA: HISTÓRICO DE DESCONEXIÓN COMO MODO SOLO LECTURA
 V61 · AUDITORÍA ESTRUCTURAL: histórico aislado + salida local única
 V65.6 · MICRO-CIRUGÍA: handler directo del ABANDONAR inferior
-V78 · MICRO-CIRUGÍA: salida posterior segura + diagnóstico acumulativo
+V79 · MICRO-CIRUGÍA: salida posterior segura + diagnóstico acumulativo + limpieza de prueba
 Desarrollador: Pedro Alejandro Torres Guerrero
 Juego de Estrategia Mental: GATO CIRCULAR
 Todos los derechos reservados.
@@ -49,7 +49,7 @@ M20· ESTADISTICAS  Historial y estadísticas avanzadas
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gato Circular V78</title>
+<title>Gato Circular V80</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@500;700&display=swap');
 /* ═══════════════════════════════════════════════════════
@@ -168,6 +168,9 @@ M3 · PANELES CSS — Laterales, botones, modal
 #info-diagnostico-log .diag-line:last-child{border-bottom:none;}
 #info-diagnostico-log::-webkit-scrollbar{width:6px;}
 #info-diagnostico-log::-webkit-scrollbar-thumb{background:#555;border-radius:4px;}
+#btn-diagnostico-limpiar{display:block;margin:8px auto 0;padding:7px 12px;background:#333;color:#ddd;border:1px solid #666;border-radius:5px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;letter-spacing:.5px;}
+#btn-diagnostico-limpiar:hover{filter:brightness(1.2);}
+
 #inicio-partida-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;width:100%;margin:6px 0 2px;}
 #btn-iniciar-partida{width:84px;height:84px;min-width:84px;padding:0;border-radius:50%;background:radial-gradient(circle at 35% 30%,#f4f5df,#d9ddbf 62%,#c3c8aa);color:#20231d;border:3px solid #ecefd7;box-shadow:0 0 0 2px #555,0 0 16px rgba(220,225,190,.28),inset 0 0 8px rgba(0,0,0,.18);justify-content:center;text-align:center;line-height:1.05;font-size:10px;letter-spacing:.7px;}
 #btn-iniciar-partida:hover{filter:brightness(1.06);transform:translateY(-1px);box-shadow:0 0 0 2px #666,0 0 22px rgba(220,225,190,.42),inset 0 0 8px rgba(0,0,0,.18);}
@@ -777,6 +780,7 @@ MODO RECLAMO: Selecciona las 4 fichas de tu línea ganadora
 <div id="info-diagnostico-panel" aria-live="polite">
   <div id="info-diagnostico-titulo">INFORMACIÓN DEL SISTEMA</div>
   <div id="info-diagnostico-log"></div>
+  <button id="btn-diagnostico-limpiar" type="button">LIMPIAR / NUEVA PRUEBA</button>
 </div>
 <!-- MODAL -->
 <div id="overlay"></div>
@@ -5107,6 +5111,7 @@ function _mostrarConfirmacionAbandono(cb, yaGanoPorAbandono=false, partidaYaTerm
   }
   ov.style.display='flex';
 }
+// V80 · DIAGNÓSTICO QUIRÚRGICO ACUMULATIVO DEL ABANDONAR INFERIOR, con limpieza manual entre pruebas.
 // V77 · DIAGNÓSTICO QUIRÚRGICO ACUMULATIVO DEL ABANDONAR INFERIOR.
 // El panel es flotante para que nunca desaparezca por falta de espacio del layout.
 // Las trazas se numeran y acumulan; así el usuario puede copiar TODO el contenido
@@ -5131,6 +5136,22 @@ window._v76DiagSeq = window._v76DiagSeq || 0;
     }
   }catch(e){ console.warn('[V77-DIAG] no se pudo restaurar el panel:',e); }
 })();
+// V80 · LIMPIEZA CONTROLADA DEL DIAGNÓSTICO.
+// La traza sigue siendo persistente durante una prueba para poder copiarla,
+// pero NO se arrastra a la siguiente prueba. La limpieza es deliberada y
+// no toca ningún estado del juego ni Firebase.
+window._limpiarDiagnosticoV80 = function(){
+  try{
+    sessionStorage.removeItem('GC_V78_DIAG_HIST');
+    sessionStorage.removeItem('GC_V78_DIAG_SEQ');
+  }catch(e){}
+  window._v76DiagHist=[];
+  window._v76DiagSeq=0;
+  const panel=document.getElementById('info-diagnostico-panel');
+  const log=document.getElementById('info-diagnostico-log');
+  if(log) log.innerHTML='';
+  if(panel) panel.classList.remove('visible');
+};
 window._v71Diag = function(etapa, detalle){
   try{ window._v76DiagSeq++; }catch(e){}
   const n=String(window._v76DiagSeq||0).padStart(3,'0');
@@ -5174,6 +5195,20 @@ if(!window._v76DiagErrorInstalada){
     }catch(e){}
   });
 }
+
+// V80 · Botón explícito para cerrar la prueba diagnóstica y comenzar limpia.
+// Es el único mecanismo que limpia la traza; no modifica la lógica de partida.
+(function instalarLimpiezaDiagnosticoV80(){
+  const b=document.getElementById('btn-diagnostico-limpiar');
+  if(b && !b.dataset.v80Instalado){
+    b.dataset.v80Instalado='1';
+    b.onclick=function(ev){
+      ev.preventDefault();
+      ev.stopPropagation();
+      window._limpiarDiagnosticoV80();
+    };
+  }
+})();
 
 // V77 · Segunda garantía: si algún flujo reconstruye el contenedor de juego,
 // el panel permanece directamente bajo <body>.
