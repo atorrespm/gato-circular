@@ -3320,6 +3320,21 @@ if(d.terminado===true && !esHistoricoTerminal && !esContinuableTerminal){_borrar
 // V62: incluso si fin_sesion===true, el registro terminal sigue siendo
 // históricamente consultable durante la ventana de 60 minutos.
 _sala=ses.sala; _rol=d.sesionX===ses.sessionId?'X':'O'; _sessionId=ses.sessionId; _salaRef=ref(db,'salas/'+_sala);
+// V69 · RETOMAR DE SESIÓN CONTINUABLE: esta ruta llega desde el lobby con
+// _iniciado=false. Si no levantamos aquí la misma inicialización que usa una
+// sala ya conectada, _escuchar() no entrega el snapshot a aplicarEstado() y
+// el panel TURNO ACTUAL queda eternamente en su texto inicial "Conectando...".
+// La ruta bilateral que funciona ya opera con _iniciado=true; alineamos ambas
+// rutas sin tocar su maquinaria.
+if(esContinuableTerminal && !_iniciado){
+  _iniciado=true;
+  UI.lobbyVisible(false);
+  UI.indicadorOnline(_sala,_rol);
+  UI.bloquearTablero(true);
+  UI.bloquearBtns(['btn-reclamar','btn-confirmar'],false);
+  try{ Reclamo.init(_rol); }catch(e){}
+  try{ Chat.init(db,_sala,_rol); }catch(e){}
+}
 _modoHistoricoDesconexion=esHistoricoTerminal;
 _historicoInicioTs=_modoHistoricoDesconexion ? Number(d.historico_inicio_ts||d.abandono?.ts||Date.now()) : null;
 if(_modoHistoricoDesconexion){
