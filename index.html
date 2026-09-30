@@ -7,7 +7,8 @@ V47 · MICRO-CIRUGÍA ABANDONO + PANEL FIJO DE LATENCIA
 V56 · MICRO-CIRUGÍA: HISTÓRICO DE DESCONEXIÓN COMO MODO SOLO LECTURA
 V61 · AUDITORÍA ESTRUCTURAL: histórico aislado + salida local única
 V65.6 · MICRO-CIRUGÍA: handler directo del ABANDONAR inferior
-V79 · MICRO-CIRUGÍA: salida posterior segura + diagnóstico acumulativo + limpieza de prueba
+V79 · MICRO-CIRUGÍA: salida posterior segura
+V81 · BLINDADA: eliminación total del sistema de diagnóstico; sin cambios funcionales
 Desarrollador: Pedro Alejandro Torres Guerrero
 Juego de Estrategia Mental: GATO CIRCULAR
 Todos los derechos reservados.
@@ -49,7 +50,7 @@ M20· ESTADISTICAS  Historial y estadísticas avanzadas
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gato Circular V80</title>
+<title>Gato Circular V81</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@500;700&display=swap');
 /* ═══════════════════════════════════════════════════════
@@ -154,23 +155,6 @@ M3 · PANELES CSS — Laterales, botones, modal
 #btn-confirmar{background:linear-gradient(135deg,#003070,#0055bb);color:#fff}
 #btn-abandonar{background:linear-gradient(135deg,#4a0000,#7a0000);color:#fff}
 #btn-abandonar-historico{background:linear-gradient(135deg,#4a0000,#7a0000);color:#fff;position:relative;z-index:1000}
-/* V74 · PANEL INDEPENDIENTE DE INFORMACIÓN / DIAGNÓSTICO.
-   Mantiene las leyendas largas fuera de TURNO ACTUAL y de la zona de latencia. */
-/* V76 · PANEL DE DIAGNÓSTICO FLOTANTE.
-   No ocupa espacio del layout del juego y permanece visible incluso si la UI
-   vuelve al lobby. Así podemos copiar la traza completa sin interferir con
-   TURNO ACTUAL, latencia, tablero, chat ni botones. */
-#info-diagnostico-panel{display:none;position:fixed;left:12px;right:12px;bottom:12px;width:auto;max-width:calc(100vw - 24px);max-height:72vh;margin:0;padding:10px 14px;background:linear-gradient(135deg,#171717,#222);border:1px solid #666;border-radius:8px;box-sizing:border-box;text-align:left;z-index:2147483646;box-shadow:0 6px 28px rgba(0,0,0,.75);overflow:hidden;pointer-events:auto;}
-#info-diagnostico-panel.visible{display:block;}
-#info-diagnostico-titulo{font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;color:#aaa;text-align:center;margin-bottom:7px;}
-#info-diagnostico-log{font-family:'Rajdhani',sans-serif;font-size:14px;color:#f2f2f2;line-height:1.3;max-height:62vh;overflow-y:auto;overscroll-behavior:contain;white-space:normal;word-break:break-word;text-shadow:0 0 5px rgba(255,255,255,.28);padding:2px 4px;}
-#info-diagnostico-log .diag-line{padding:2px 0;border-bottom:1px solid rgba(255,255,255,.06);}
-#info-diagnostico-log .diag-line:last-child{border-bottom:none;}
-#info-diagnostico-log::-webkit-scrollbar{width:6px;}
-#info-diagnostico-log::-webkit-scrollbar-thumb{background:#555;border-radius:4px;}
-#btn-diagnostico-limpiar{display:block;margin:8px auto 0;padding:7px 12px;background:#333;color:#ddd;border:1px solid #666;border-radius:5px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;letter-spacing:.5px;}
-#btn-diagnostico-limpiar:hover{filter:brightness(1.2);}
-
 #inicio-partida-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;width:100%;margin:6px 0 2px;}
 #btn-iniciar-partida{width:84px;height:84px;min-width:84px;padding:0;border-radius:50%;background:radial-gradient(circle at 35% 30%,#f4f5df,#d9ddbf 62%,#c3c8aa);color:#20231d;border:3px solid #ecefd7;box-shadow:0 0 0 2px #555,0 0 16px rgba(220,225,190,.28),inset 0 0 8px rgba(0,0,0,.18);justify-content:center;text-align:center;line-height:1.05;font-size:10px;letter-spacing:.7px;}
 #btn-iniciar-partida:hover{filter:brightness(1.06);transform:translateY(-1px);box-shadow:0 0 0 2px #666,0 0 22px rgba(220,225,190,.42),inset 0 0 8px rgba(0,0,0,.18);}
@@ -774,13 +758,6 @@ MODO RECLAMO: Selecciona las 4 fichas de tu línea ganadora
 <button id="chat-send">ENVIAR</button>
 </div>
 </div>
-</div>
-<!-- V76 · PANEL FLOTANTE DE DIAGNÓSTICO: no consume espacio del layout -->
-<!-- V74 · INFORMACIÓN / DIAGNÓSTICO INDEPENDIENTE DEL PANEL DE TURNO -->
-<div id="info-diagnostico-panel" aria-live="polite">
-  <div id="info-diagnostico-titulo">INFORMACIÓN DEL SISTEMA</div>
-  <div id="info-diagnostico-log"></div>
-  <button id="btn-diagnostico-limpiar" type="button">LIMPIAR / NUEVA PRUEBA</button>
 </div>
 <!-- MODAL -->
 <div id="overlay"></div>
@@ -4343,13 +4320,13 @@ prioridad_jugador:null, prioridad_intento:null, prioridad_inicio_ts:null, priori
 });
 },
 async abandonarPartida(){
-    if(window._v71Diag) window._v71Diag('ABANDONAR-ENTRADA','rol='+String(_rol)+' | salaRef='+String(!!_salaRef)+' | sala='+String(_sala)+' | iniciado='+String(_iniciado));
-    if(!_salaRef){ if(window._v71Diag) window._v71Diag('ABANDONAR-CORTA','_salaRef inexistente'); return; }
+
+    if(!_salaRef){  return; }
     // V11: abandono válido desde cualquier fase de una sala activa.
     // La UI exige confirmación SÍ/NO antes de llegar aquí.
-    if(window._v71Diag) window._v71Diag('ABANDONAR-ANTES-GET','leyendo estado Firebase');
+
     const snap=await get(_salaRef); const d=snap.val();
-    if(window._v71Diag) window._v71Diag('ABANDONAR-DESPUES-GET','d='+String(!!d)+' | terminado='+String(!!(d&&d.terminado))+' | continuable='+String(!!(d&&d.sesion_continuable))+' | post_abandono='+String(!!(d&&d.post_abandono))+' | abandono='+String(!!(d&&d.abandono)));
+
     if(!d) return;
     if(d.desconexion_pendiente&&d.desconexion_pendiente.preinicio&&d.desconexion_pendiente.rol!==_rol){await update(_salaRef,{desconexion_pendiente:null,inicio_propuesto:null,cancelada_preinicio:{tipo:'oponente_abandono',abandonador:_rol,ts:Date.now()}});this.salirLocalTrasAbandono();return;}
     // V64.9: si esta es la misma sesión continuable cuyo ABANDONO ORIGINAL
@@ -4358,7 +4335,7 @@ async abandonarPartida(){
     // un nuevo evento de salida del tablero. El rival ya sabe quién ganó la
     // partida; ahora solo necesita saber que el jugador volvió a salir.
     if(d.terminado===true && d.sesion_continuable===true && d.post_abandono && d.abandono){
-      if(window._v71Diag) window._v71Diag('ABANDONAR-BRANCH-CONTINUABLE','actualizando post_abandono/salida');
+
       const tsSalida2=Date.now();
       const salidaN2=Number(d.post_abandono.salida_numero||1)+1;
       await update(_salaRef,{
@@ -4380,15 +4357,15 @@ async abandonarPartida(){
         nueva_partida_max_alert:null,
         ['conexion/'+_rol]:{online:false,ts:serverTimestamp()}
       });
-      if(window._v71Diag) window._v71Diag('ABANDONAR-UPDATE-CONTINUABLE','update completado; saliendo local');
-      if(window._v71Diag) window._v71Diag('ANTES-SALIR-LOCAL','update continuable completado; ejecutando salirLocalTrasAbandono');
+
+
       // V79 · MICRO-CIRUGÍA: la salida local es asíncrona (lee Firebase,
       // conserva la sesión y prepara la recarga). Antes se disparaba sin await,
       // por lo que abandonarPartida() podía terminar antes de que la salida
       // hubiera completado su propia secuencia. Esperamos explícitamente su
       // finalización, sin cambiar la máquina ni la ruta conocida del modal.
       await this.salirLocalTrasAbandono();
-      if(window._v71Diag) window._v71Diag('DESPUES-SALIR-LOCAL','salirLocalTrasAbandono completado');
+
       return;
     }
 
@@ -5111,112 +5088,6 @@ function _mostrarConfirmacionAbandono(cb, yaGanoPorAbandono=false, partidaYaTerm
   }
   ov.style.display='flex';
 }
-// V80 · DIAGNÓSTICO QUIRÚRGICO ACUMULATIVO DEL ABANDONAR INFERIOR, con limpieza manual entre pruebas.
-// V77 · DIAGNÓSTICO QUIRÚRGICO ACUMULATIVO DEL ABANDONAR INFERIOR.
-// El panel es flotante para que nunca desaparezca por falta de espacio del layout.
-// Las trazas se numeran y acumulan; así el usuario puede copiar TODO el contenido
-// del recuadro y traerlo aquí sin tener que descifrarlo visualmente.
-window._v76DiagHist = window._v76DiagHist || [];
-window._v76DiagSeq = window._v76DiagSeq || 0;
-// V77 · El panel debe vivir fuera de #app para sobrevivir a UI.lobbyVisible()
-// y, sobre todo, a la recarga que realiza salirLocalTrasAbandono().
-(function instalarPanelDiagnosticoPersistente(){
-  try{
-    const panel=document.getElementById('info-diagnostico-panel');
-    if(!panel) return;
-    if(panel.parentElement!==document.body) document.body.appendChild(panel);
-    const raw=sessionStorage.getItem('GC_V78_DIAG_HIST');
-    if(raw){
-      const arr=JSON.parse(raw);
-      if(Array.isArray(arr) && arr.length){
-        window._v76DiagHist=arr.slice(-100);
-        window._v76DiagSeq=parseInt(sessionStorage.getItem('GC_V78_DIAG_SEQ')||'0',10)||0;
-        panel.classList.add('visible');
-      }
-    }
-  }catch(e){ console.warn('[V77-DIAG] no se pudo restaurar el panel:',e); }
-})();
-// V80 · LIMPIEZA CONTROLADA DEL DIAGNÓSTICO.
-// La traza sigue siendo persistente durante una prueba para poder copiarla,
-// pero NO se arrastra a la siguiente prueba. La limpieza es deliberada y
-// no toca ningún estado del juego ni Firebase.
-window._limpiarDiagnosticoV80 = function(){
-  try{
-    sessionStorage.removeItem('GC_V78_DIAG_HIST');
-    sessionStorage.removeItem('GC_V78_DIAG_SEQ');
-  }catch(e){}
-  window._v76DiagHist=[];
-  window._v76DiagSeq=0;
-  const panel=document.getElementById('info-diagnostico-panel');
-  const log=document.getElementById('info-diagnostico-log');
-  if(log) log.innerHTML='';
-  if(panel) panel.classList.remove('visible');
-};
-window._v71Diag = function(etapa, detalle){
-  try{ window._v76DiagSeq++; }catch(e){}
-  const n=String(window._v76DiagSeq||0).padStart(3,'0');
-  const msg='[V78-DIAG] #'+n+' '+etapa+(detalle ? ' | '+detalle : '');
-  console.log(msg);
-  try{
-    window._v76DiagHist.push(msg);
-    if(window._v76DiagHist.length>100) window._v76DiagHist.shift();
-    try{
-      sessionStorage.setItem('GC_V78_DIAG_HIST',JSON.stringify(window._v76DiagHist));
-      sessionStorage.setItem('GC_V78_DIAG_SEQ',String(window._v76DiagSeq||0));
-    }catch(e){}
-    const panel=document.getElementById('info-diagnostico-panel');
-    const log=document.getElementById('info-diagnostico-log');
-    if(panel && log){
-      panel.classList.add('visible');
-      log.innerHTML=window._v76DiagHist.map((line)=>'<div class="diag-line">'+String(line).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div>').join('');
-      log.scrollTop=log.scrollHeight;
-    }
-  }catch(e){ console.warn('[V78-DIAG] no se pudo pintar el panel:',e); }
-};
-if(!window._v76DiagCaptureInstalada){
-  window._v76DiagCaptureInstalada=true;
-  document.addEventListener('click',function(ev){
-    const b=document.getElementById('btn-abandonar');
-    if(!b || !ev.target) return;
-    if(ev.target===b || (typeof ev.target.closest==='function' && ev.target.closest('#btn-abandonar')===b)){
-      window._v71Diag('CAPTURE-CLICK','trusted='+String(!!ev.isTrusted)+' | detail='+String(ev.detail)+' | disabled='+b.disabled+', display='+getComputedStyle(b).display+', pointer='+getComputedStyle(b).pointerEvents);
-    }
-  },true);
-}
-if(!window._v76DiagErrorInstalada){
-  window._v76DiagErrorInstalada=true;
-  window.addEventListener('error',function(ev){
-    try{ window._v71Diag('WINDOW-ERROR',String(ev&&ev.message||'error JS')+' | linea='+String(ev&&ev.lineno||'?')+' | archivo='+String(ev&&ev.filename||'?')); }catch(e){}
-  });
-  window.addEventListener('unhandledrejection',function(ev){
-    try{
-      const r=ev&&ev.reason;
-      window._v71Diag('UNHANDLED-REJECTION',String(r&&r.message||r||'Promise rejection sin detalle'));
-    }catch(e){}
-  });
-}
-
-// V80 · Botón explícito para cerrar la prueba diagnóstica y comenzar limpia.
-// Es el único mecanismo que limpia la traza; no modifica la lógica de partida.
-(function instalarLimpiezaDiagnosticoV80(){
-  const b=document.getElementById('btn-diagnostico-limpiar');
-  if(b && !b.dataset.v80Instalado){
-    b.dataset.v80Instalado='1';
-    b.onclick=function(ev){
-      ev.preventDefault();
-      ev.stopPropagation();
-      window._limpiarDiagnosticoV80();
-    };
-  }
-})();
-
-// V77 · Segunda garantía: si algún flujo reconstruye el contenedor de juego,
-// el panel permanece directamente bajo <body>.
-try{
-  const _pDiagV77=document.getElementById('info-diagnostico-panel');
-  if(_pDiagV77 && _pDiagV77.parentElement!==document.body) document.body.appendChild(_pDiagV77);
-}catch(e){}
-
 function instalarHandlersAbandonoSeparados(){
 
   const normal=document.getElementById('btn-abandonar');
@@ -5232,12 +5103,11 @@ function instalarHandlersAbandonoSeparados(){
     normal.onclick = async (ev)=>{
       ev.preventDefault();
       ev.stopPropagation();
-      if(window._v71Diag) window._v71Diag('ONCLICK-ENTRADA','rol='+String(window.Firebase&&typeof Firebase.getMiRol==='function'?Firebase.getMiRol():'?')+' | salidaFlag='+String(normal.dataset.salidaTrasAbandono)+' | _salidaTrasAbandono='+String(window._salidaTrasAbandono));
-      if(window._v71Diag) window._v71Diag('ANTES-SET-MODO-NORMAL','funcion='+String(typeof window._setModoAbandonoUI));
-      try{ if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal'); if(window._v71Diag) window._v71Diag('DESPUES-SET-MODO-NORMAL','ok | onclickActual='+String(typeof normal.onclick)); }
-      catch(e){ if(window._v71Diag) window._v71Diag('ERROR-SET-MODO-NORMAL',String(e&&e.message||e)); throw e; }
+
+
+      try{ if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');  }
+      catch(e){  throw e; }
       normal.disabled=false; normal.style.pointerEvents='auto'; normal.style.opacity='';
-      if(window._v71Diag) window._v71Diag('DESPUES-AJUSTE-BOTON','disabled='+String(normal.disabled)+' | display='+String(getComputedStyle(normal).display)+' | pointer='+String(getComputedStyle(normal).pointerEvents));
 
       // V64.3: si el jugador acaba de pulsar VOLVER AL TABLERO en el modal
       // de abandono del oponente, ya sabemos que esta partida es terminal y
@@ -5247,21 +5117,21 @@ function instalarHandlersAbandonoSeparados(){
       const salidaDirecta =
         normal.dataset.salidaTrasAbandono==='1' ||
         (window.Juego&&typeof Juego.isSalidaTrasAbandono==='function'&&Juego.isSalidaTrasAbandono());
-      if(window._v71Diag) window._v71Diag('RUTA-DECIDIDA','salidaDirecta='+String(salidaDirecta)+' | flagDOM='+String(normal.dataset.salidaTrasAbandono)+' | Firebase._salaRef-publico='+String(!!(window.Firebase&&Firebase._salaRef))+' (NO ES LA VARIABLE INTERNA)');
+
       if(salidaDirecta){
         delete normal.dataset.salidaTrasAbandono;
-        if(window._v71Diag) window._v71Diag('DIRECTA-INICIO','entra a salidaDirecta');
-        if(window._v71Diag) window._v71Diag('ANTES-OCULTAR-MODAL','iniciando salida directa');
-        try{ if(typeof window._ocultarModalOponenteAbandono==='function') window._ocultarModalOponenteAbandono(); if(window._v71Diag) window._v71Diag('DESPUES-OCULTAR-MODAL','ok'); }
-        catch(e){ if(window._v71Diag) window._v71Diag('ERROR-OCULTAR-MODAL',String(e&&e.message||e)); }
-        if(window._v71Diag) window._v71Diag('ANTES-MARCAR-SALIDA','Juego='+String(!!window.Juego)+' | tipo='+String(window.Juego&&typeof Juego.marcarSalidaTrasAbandono));
-        try{ if(window.Juego&&typeof Juego.marcarSalidaTrasAbandono==='function') Juego.marcarSalidaTrasAbandono(); if(window._v71Diag) window._v71Diag('DESPUES-MARCAR-SALIDA','ok'); }
-        catch(e){ if(window._v71Diag) window._v71Diag('ERROR-MARCAR-SALIDA',String(e&&e.message||e)); }
-        if(window._v71Diag) window._v71Diag('ANTES-ABANDONAR-FIREBASE','tipo='+String(window.Firebase&&typeof Firebase.abandonarPartida)+' | Firebase='+String(!!window.Firebase)+' | rol='+String(window.Firebase&&typeof Firebase.getMiRol==='function'?Firebase.getMiRol():'?'));
+
+
+        try{ if(typeof window._ocultarModalOponenteAbandono==='function') window._ocultarModalOponenteAbandono();  }
+        catch(e){  }
+
+        try{ if(window.Juego&&typeof Juego.marcarSalidaTrasAbandono==='function') Juego.marcarSalidaTrasAbandono();  }
+        catch(e){  }
+
         if(window.Firebase&&typeof Firebase.abandonarPartida==='function'){
-          try{ await Firebase.abandonarPartida(); if(window._v71Diag) window._v71Diag('DESPUES-ABANDONAR-FIREBASE','ruta directa completada'); }
-          catch(e){ if(window._v71Diag) window._v71Diag('ERROR-ABANDONAR-FIREBASE',String(e&&e.message||e)); console.error('[V65.4] salida posterior tras VOLVER AL TABLERO:',e); }
-        }else if(window._v71Diag) window._v71Diag('SIN-FUNCION-ABANDONAR','Firebase.abandonarPartida no existe');
+          try{ await Firebase.abandonarPartida();  }
+          catch(e){  console.error('[V65.4] salida posterior tras VOLVER AL TABLERO:',e); }
+        }
         return;
       }
 
@@ -5269,22 +5139,22 @@ function instalarHandlersAbandonoSeparados(){
       const miRol=(window.Firebase&&typeof Firebase.getMiRol==='function') ? Firebase.getMiRol() : null;
       // V63: al pulsar se consulta Firebase para no depender del último
       // snapshot visual cuando el rival acaba de abandonar y salir al lobby.
-      if(window._v71Diag) window._v71Diag('ANTES-SNAPSHOT','ruta no-directa; iniciando snapshotFase');
+
       try{
         if(window.Firebase&&typeof Firebase.snapshotFase==='function'){
           const snapLive=await Firebase.snapshotFase();
           if(snapLive) snap=snapLive;
-          if(window._v71Diag) window._v71Diag('DESPUES-SNAPSHOT','terminado='+String(!!(snap&&snap.terminado))+' | continuable='+String(!!(snap&&snap.sesion_continuable))+' | post_abandono='+String(!!(snap&&snap.post_abandono)));
-        }else if(window._v71Diag) window._v71Diag('SIN-SNAPSHOT','Firebase.snapshotFase no existe');
-      }catch(e){ if(window._v71Diag) window._v71Diag('ERROR-SNAPSHOT',String(e&&e.message||e)); console.warn('[V63] no se pudo refrescar estado al pulsar ABANDONAR:',e); }
+
+        }
+      }catch(e){  console.warn('[V63] no se pudo refrescar estado al pulsar ABANDONAR:',e); }
 
       // V65.4: si existe una sesión continuable por abandono, el botón inferior
       // es una salida de PRESENCIA POSTERIOR. Nunca usa la salida histórica pura.
       if(snap && snap.terminado===true && snap.sesion_continuable===true && snap.abandono && snap.post_abandono){
-        if(window._v71Diag) window._v71Diag('BRANCH-CONTINUABLE','entrando a Firebase.abandonarPartida');
+
         if(typeof window._ocultarModalOponenteAbandono==='function') window._ocultarModalOponenteAbandono();
         if(window.Firebase&&typeof Firebase.abandonarPartida==='function'){
-          try{ await Firebase.abandonarPartida(); if(window._v71Diag) window._v71Diag('DESPUES-ABANDONAR-FIREBASE','branch continuable completada'); }catch(e){ if(window._v71Diag) window._v71Diag('ERROR-ABANDONAR-FIREBASE',String(e&&e.message||e)); console.error('[V65.4] salida posterior normal:',e); }
+          try{ await Firebase.abandonarPartida();  }catch(e){  console.error('[V65.4] salida posterior normal:',e); }
         }
         return;
       }
@@ -5299,8 +5169,6 @@ function instalarHandlersAbandonoSeparados(){
       );
     };
   }
-
-  if(window._v71Diag) window._v71Diag('HANDLERS-INSTALADOS','normal='+String(!!normal)+' | onclick='+String(!!(normal&&typeof normal.onclick==='function'))+' | historico='+String(!!historico));
 
   if(historico && historico.dataset.handlerV62!=='1'){
     historico.dataset.handlerV62='1';
