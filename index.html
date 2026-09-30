@@ -7,7 +7,7 @@ V47 · MICRO-CIRUGÍA ABANDONO + PANEL FIJO DE LATENCIA
 V56 · MICRO-CIRUGÍA: HISTÓRICO DE DESCONEXIÓN COMO MODO SOLO LECTURA
 V61 · AUDITORÍA ESTRUCTURAL: histórico aislado + salida local única
 V65.6 · MICRO-CIRUGÍA: handler directo del ABANDONAR inferior
-V76 · DIAGNÓSTICO QUIRÚRGICO ACUMULATIVO DEL ABANDONAR INFERIOR
+V78 · MICRO-CIRUGÍA: salida posterior segura + diagnóstico acumulativo
 Desarrollador: Pedro Alejandro Torres Guerrero
 Juego de Estrategia Mental: GATO CIRCULAR
 Todos los derechos reservados.
@@ -49,7 +49,7 @@ M20· ESTADISTICAS  Historial y estadísticas avanzadas
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gato Circular V76</title>
+<title>Gato Circular V78</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@500;700&display=swap');
 /* ═══════════════════════════════════════════════════════
@@ -2243,6 +2243,10 @@ function _ocultarModalOponenteAbandono(){
   const ov=document.getElementById('abandono-oponente-overlay');
   if(ov) ov.style.display='none';
 }
+// V78 · El handler del botón ABANDONAR vive en el script type=module.
+// Exponemos explícitamente la función clásica en window para que el módulo
+// pueda invocarla sin depender de un binding léxico de otro script.
+window._ocultarModalOponenteAbandono = _ocultarModalOponenteAbandono;
 
 // ── PARTIDA TERMINADA ─────────────────────────────────
 // CORRECCIÓN 3: modal neutral y sincronizado de validez/victoria
@@ -4373,6 +4377,7 @@ async abandonarPartida(){
         ['conexion/'+_rol]:{online:false,ts:serverTimestamp()}
       });
       if(window._v71Diag) window._v71Diag('ABANDONAR-UPDATE-CONTINUABLE','update completado; saliendo local');
+      if(window._v71Diag) window._v71Diag('ANTES-SALIR-LOCAL','update continuable completado; ejecutando salirLocalTrasAbandono');
       this.salirLocalTrasAbandono();
       return;
     }
@@ -5109,12 +5114,12 @@ window._v76DiagSeq = window._v76DiagSeq || 0;
     const panel=document.getElementById('info-diagnostico-panel');
     if(!panel) return;
     if(panel.parentElement!==document.body) document.body.appendChild(panel);
-    const raw=sessionStorage.getItem('GC_V77_DIAG_HIST');
+    const raw=sessionStorage.getItem('GC_V78_DIAG_HIST');
     if(raw){
       const arr=JSON.parse(raw);
       if(Array.isArray(arr) && arr.length){
         window._v76DiagHist=arr.slice(-100);
-        window._v76DiagSeq=parseInt(sessionStorage.getItem('GC_V77_DIAG_SEQ')||'0',10)||0;
+        window._v76DiagSeq=parseInt(sessionStorage.getItem('GC_V78_DIAG_SEQ')||'0',10)||0;
         panel.classList.add('visible');
       }
     }
@@ -5123,14 +5128,14 @@ window._v76DiagSeq = window._v76DiagSeq || 0;
 window._v71Diag = function(etapa, detalle){
   try{ window._v76DiagSeq++; }catch(e){}
   const n=String(window._v76DiagSeq||0).padStart(3,'0');
-  const msg='[V76-DIAG] #'+n+' '+etapa+(detalle ? ' | '+detalle : '');
+  const msg='[V78-DIAG] #'+n+' '+etapa+(detalle ? ' | '+detalle : '');
   console.log(msg);
   try{
     window._v76DiagHist.push(msg);
     if(window._v76DiagHist.length>100) window._v76DiagHist.shift();
     try{
-      sessionStorage.setItem('GC_V77_DIAG_HIST',JSON.stringify(window._v76DiagHist));
-      sessionStorage.setItem('GC_V77_DIAG_SEQ',String(window._v76DiagSeq||0));
+      sessionStorage.setItem('GC_V78_DIAG_HIST',JSON.stringify(window._v76DiagHist));
+      sessionStorage.setItem('GC_V78_DIAG_SEQ',String(window._v76DiagSeq||0));
     }catch(e){}
     const panel=document.getElementById('info-diagnostico-panel');
     const log=document.getElementById('info-diagnostico-log');
@@ -5139,7 +5144,7 @@ window._v71Diag = function(etapa, detalle){
       log.innerHTML=window._v76DiagHist.map((line)=>'<div class="diag-line">'+String(line).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div>').join('');
       log.scrollTop=log.scrollHeight;
     }
-  }catch(e){ console.warn('[V76-DIAG] no se pudo pintar el panel:',e); }
+  }catch(e){ console.warn('[V78-DIAG] no se pudo pintar el panel:',e); }
 };
 if(!window._v76DiagCaptureInstalada){
   window._v76DiagCaptureInstalada=true;
@@ -5206,7 +5211,7 @@ function instalarHandlersAbandonoSeparados(){
         delete normal.dataset.salidaTrasAbandono;
         if(window._v71Diag) window._v71Diag('DIRECTA-INICIO','entra a salidaDirecta');
         if(window._v71Diag) window._v71Diag('ANTES-OCULTAR-MODAL','iniciando salida directa');
-        try{ _ocultarModalOponenteAbandono(); if(window._v71Diag) window._v71Diag('DESPUES-OCULTAR-MODAL','ok'); }
+        try{ if(typeof window._ocultarModalOponenteAbandono==='function') window._ocultarModalOponenteAbandono(); if(window._v71Diag) window._v71Diag('DESPUES-OCULTAR-MODAL','ok'); }
         catch(e){ if(window._v71Diag) window._v71Diag('ERROR-OCULTAR-MODAL',String(e&&e.message||e)); }
         if(window._v71Diag) window._v71Diag('ANTES-MARCAR-SALIDA','Juego='+String(!!window.Juego)+' | tipo='+String(window.Juego&&typeof Juego.marcarSalidaTrasAbandono));
         try{ if(window.Juego&&typeof Juego.marcarSalidaTrasAbandono==='function') Juego.marcarSalidaTrasAbandono(); if(window._v71Diag) window._v71Diag('DESPUES-MARCAR-SALIDA','ok'); }
@@ -5236,7 +5241,7 @@ function instalarHandlersAbandonoSeparados(){
       // es una salida de PRESENCIA POSTERIOR. Nunca usa la salida histórica pura.
       if(snap && snap.terminado===true && snap.sesion_continuable===true && snap.abandono && snap.post_abandono){
         if(window._v71Diag) window._v71Diag('BRANCH-CONTINUABLE','entrando a Firebase.abandonarPartida');
-        _ocultarModalOponenteAbandono();
+        if(typeof window._ocultarModalOponenteAbandono==='function') window._ocultarModalOponenteAbandono();
         if(window.Firebase&&typeof Firebase.abandonarPartida==='function'){
           try{ await Firebase.abandonarPartida(); if(window._v71Diag) window._v71Diag('DESPUES-ABANDONAR-FIREBASE','branch continuable completada'); }catch(e){ if(window._v71Diag) window._v71Diag('ERROR-ABANDONAR-FIREBASE',String(e&&e.message||e)); console.error('[V65.4] salida posterior normal:',e); }
         }
