@@ -1100,10 +1100,10 @@ M12· JUEGO — Orquestador principal · V17
 // V63 · FRONTERA EXPLÍCITA ENTRE PARTIDA NORMAL Y PARTIDA HISTÓRICA.
 // Son dos controles físicos distintos aunque visualmente ocupen el mismo lugar.
 // Nunca se reutiliza el handler del botón normal para el estado histórico.
-window._historicoSalidaV67EnCurso=false;
-window._salirHistoricoV67 = async function(ev){
-  if(window._historicoSalidaV67EnCurso) return;
-  window._historicoSalidaV67EnCurso=true;
+window._historicoSalidaV68EnCurso=false;
+window._salirHistoricoV68 = async function(ev){
+  if(window._historicoSalidaV68EnCurso) return;
+  window._historicoSalidaV68EnCurso=true;
   if(ev){ ev.preventDefault(); ev.stopPropagation(); if(ev.stopImmediatePropagation) ev.stopImmediatePropagation(); }
   const historico=document.getElementById('btn-abandonar-historico');
   if(historico){
@@ -1114,14 +1114,26 @@ window._salirHistoricoV67 = async function(ev){
     historico.style.position='relative';
     historico.style.zIndex='2147483647';
   }
-  if(!window.Firebase || typeof Firebase.salirLocalTrasAbandono!=='function'){
-    window._historicoSalidaV67EnCurso=false;
-    return;
-  }
-  try{ await Firebase.salirLocalTrasAbandono(true); }
-  catch(e){
-    window._historicoSalidaV67EnCurso=false;
-    console.error('[V67] salida histórica:',e);
+  // V68 · SALIDA HISTÓRICA DIRECTA.
+  // La vista histórica ya es terminal y de solo lectura. NO hacemos get(_salaRef)
+  // aquí: una lectura de Firebase pendiente puede dejar el botón aparentemente
+  // muerto durante una reconexión o una carrera de listeners. Conservamos la
+  // sesión usando exclusivamente el estado local ya disponible y salimos.
+  try{
+    if(window.Firebase && typeof Firebase.salirLocalHistoricoDirecto==='function'){
+      await Firebase.salirLocalHistoricoDirecto();
+      return;
+    }
+    // Fallback mínimo: si el método aún no estuviera disponible, no dejamos
+    // la interfaz atrapada. La ruta histórica sigue siendo una salida local.
+    UI.cerrarModal();
+    UI.bloquearTablero(true);
+    UI.lobbyPaso('inicio');
+    UI.lobbyVisible(true);
+    setTimeout(()=>{ try{ window.location.reload(); }catch(e){} },120);
+  }catch(e){
+    window._historicoSalidaV68EnCurso=false;
+    console.error('[V68] salida histórica directa:',e);
   }
 };
 // V67 · BARRERA GEOMÉTRICA: si una capa invisible/interpuesta captura el clic
@@ -1136,7 +1148,7 @@ if(!window._capturaHistoricoV67){
     const r=b.getBoundingClientRect();
     const dentro=ev.clientX>=r.left && ev.clientX<=r.right && ev.clientY>=r.top && ev.clientY<=r.bottom;
     if(!dentro) return;
-    window._salirHistoricoV67(ev);
+    window._salirHistoricoV68(ev);
   },true);
 }
 
@@ -1172,8 +1184,8 @@ function _setModoAbandonoUI(modo){
     historico.style.pointerEvents=esHistorico?'auto':'none';
     // V65.7 · Reforzamos el handler cada vez que entramos en modo histórico.
     // No dependemos de que una transición anterior haya conservado el binding.
-    if(esHistorico && typeof window._salirHistoricoV67==='function') {
-      historico.onclick=window._salirHistoricoV67;
+    if(esHistorico && typeof window._salirHistoricoV68==='function') {
+      historico.onclick=window._salirHistoricoV68;
       historico.disabled=false;
       historico.style.display='';
       historico.style.pointerEvents='auto';
@@ -1413,7 +1425,7 @@ async function procesarTerminalDesconexion(d, miRol){
       baHistorico2.style.display='';
       baHistorico2.style.position='relative';
       baHistorico2.style.zIndex='2147483647';
-      baHistorico2.onclick=window._salirHistoricoV67;
+      baHistorico2.onclick=window._salirHistoricoV68;
     }
     UI.setMsg('Partida histórica — solo lectura. Puedes revisar la partida y ABANDONAR cuando termines.');
     return;
@@ -4391,6 +4403,47 @@ async abandonarPartida(){
     this.salirLocalTrasAbandono();
 },
 salirLocalAlLobbyNormal(){if(_unsubSala){_unsubSala();_unsubSala=null;}_iniciado=false;_borrarSesion();if(_unsubConexion){_unsubConexion();_unsubConexion=null;}_ocultarModalDesconexion();_ocultarModalReconexion();UI.cerrarModal();UI.bloquearTablero(true);UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar','btn-abandonar'],true);if(window._setModoAbandonoUI) window._setModoAbandonoUI('none');const wrap=document.getElementById('inicio-partida-wrap');if(wrap)wrap.style.display='none';UI.lobbyPaso('inicio');UI.lobbyVisible(true);setTimeout(()=>{try{window.location.reload();}catch(e){console.error('[V32.3] no se pudo volver al lobby',e);}},120);},
+async salirLocalHistoricoDirecto(){
+    // V68: salida EXCLUSIVAMENTE LOCAL desde la vista histórica.
+    // No consulta Firebase ni depende de un snapshot remoto para poder salir.
+    // La sesión histórica debe sobrevivir para permitir RETOMAR hasta que
+    // caduque la ventana de 60 minutos. El timestamp terminal ya está disponible
+    // localmente por _historicoInicioTs o por el último estado histórico.
+    const ultimo=(window.Juego&&typeof Juego.getUltimoEstado==='function') ? Juego.getUltimoEstado() : null;
+    const terminal=ultimo && ultimo.terminado===true && (ultimo.fin_por_desconexion===true || !!ultimo.abandono) && ultimo.ganador;
+    const conservar=!!(_modoHistoricoDesconexion || terminal);
+    const ts=conservar
+      ? Number(_historicoInicioTs || ultimo?.historico_inicio_ts || ultimo?.abandono?.ts || Date.now())
+      : null;
+    try{
+      if(_unsubSala){ _unsubSala(); _unsubSala=null; }
+      _iniciado=false;
+      if(conservar){
+        localStorage.setItem(GC_SESSION_KEY,JSON.stringify({sala:_sala,rol:_rol,sessionId:_sessionId,ts}));
+        _programarCaducidadSesionLocal();
+      }else{
+        _borrarSesion();
+      }
+      if(_unsubConexion){ _unsubConexion(); _unsubConexion=null; }
+    }catch(e){
+      console.warn('[V68] limpieza local histórica:',e);
+    }
+    UI.cerrarModal();
+    if(window.EmpateFlow){
+      EmpateFlow.ocultarModalTC();
+      EmpateFlow.ocultarModalSinRespuesta();
+      EmpateFlow.ocultarModalPrioridad();
+      EmpateFlow.ocultarModalResultado();
+    }
+    UI.bloquearTablero(true);
+    UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
+    UI.lobbyPaso('inicio');
+    UI.lobbyVisible(true);
+    setTimeout(()=>{
+      try{ window.location.reload(); }
+      catch(e){ console.error('[V68] no se pudo recargar la página:',e); }
+    },120);
+},
 async salirLocalTrasAbandono(forzarSalidaHistorica=false){
     // V65.7 · MICRO-CIRUGÍA: una entrada histórica puede llegar por varias
     // rutas y, en alguna de ellas, la bandera de recarga local puede haber
@@ -5052,7 +5105,7 @@ function instalarHandlersAbandonoSeparados(){
   if(historico && historico.dataset.handlerV62!=='1'){
     historico.dataset.handlerV62='1';
     // V65.6 · El botón histórico también usa entrada directa.
-    historico.onclick = window._salirHistoricoV67;
+    historico.onclick = window._salirHistoricoV68;
   }
 }
 instalarHandlersAbandonoSeparados();
