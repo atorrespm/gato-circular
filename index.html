@@ -7,7 +7,7 @@ V47 · MICRO-CIRUGÍA ABANDONO + PANEL FIJO DE LATENCIA
 V56 · MICRO-CIRUGÍA: HISTÓRICO DE DESCONEXIÓN COMO MODO SOLO LECTURA
 V61 · AUDITORÍA ESTRUCTURAL: histórico aislado + salida local única
 V65.6 · MICRO-CIRUGÍA: handler directo del ABANDONAR inferior
-V73 · DIAGNÓSTICO SEPARADO + PANEL DE INFORMACIÓN BAJO EL TABLERO
+V76 · DIAGNÓSTICO QUIRÚRGICO ACUMULATIVO DEL ABANDONAR INFERIOR
 Desarrollador: Pedro Alejandro Torres Guerrero
 Juego de Estrategia Mental: GATO CIRCULAR
 Todos los derechos reservados.
@@ -49,7 +49,7 @@ M20· ESTADISTICAS  Historial y estadísticas avanzadas
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gato Circular V65.6</title>
+<title>Gato Circular V76</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@500;700&display=swap');
 /* ═══════════════════════════════════════════════════════
@@ -156,10 +156,14 @@ M3 · PANELES CSS — Laterales, botones, modal
 #btn-abandonar-historico{background:linear-gradient(135deg,#4a0000,#7a0000);color:#fff;position:relative;z-index:1000}
 /* V74 · PANEL INDEPENDIENTE DE INFORMACIÓN / DIAGNÓSTICO.
    Mantiene las leyendas largas fuera de TURNO ACTUAL y de la zona de latencia. */
-#info-diagnostico-panel{display:none;width:100%;max-width:1080px;margin:8px auto 6px;padding:10px 14px;background:linear-gradient(135deg,#171717,#222);border:1px solid #444;border-radius:8px;box-sizing:border-box;text-align:left;}
+/* V76 · PANEL DE DIAGNÓSTICO FLOTANTE.
+   No ocupa espacio del layout del juego y permanece visible incluso si la UI
+   vuelve al lobby. Así podemos copiar la traza completa sin interferir con
+   TURNO ACTUAL, latencia, tablero, chat ni botones. */
+#info-diagnostico-panel{display:none;position:fixed;left:12px;right:12px;bottom:12px;width:auto;max-width:none;margin:0;padding:10px 14px;background:linear-gradient(135deg,#171717,#222);border:1px solid #666;border-radius:8px;box-sizing:border-box;text-align:left;z-index:2147483000;box-shadow:0 6px 28px rgba(0,0,0,.75);}
 #info-diagnostico-panel.visible{display:block;}
 #info-diagnostico-titulo{font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;color:#aaa;text-align:center;margin-bottom:7px;}
-#info-diagnostico-log{font-family:'Rajdhani',sans-serif;font-size:14px;color:#f2f2f2;line-height:1.3;max-height:240px;overflow-y:auto;white-space:normal;word-break:break-word;text-shadow:0 0 5px rgba(255,255,255,.28);padding:2px 4px;}
+#info-diagnostico-log{font-family:'Rajdhani',sans-serif;font-size:14px;color:#f2f2f2;line-height:1.3;max-height:42vh;overflow-y:auto;white-space:normal;word-break:break-word;text-shadow:0 0 5px rgba(255,255,255,.28);padding:2px 4px;}
 #info-diagnostico-log .diag-line{padding:2px 0;border-bottom:1px solid rgba(255,255,255,.06);}
 #info-diagnostico-log .diag-line:last-child{border-bottom:none;}
 #info-diagnostico-log::-webkit-scrollbar{width:6px;}
@@ -768,7 +772,7 @@ MODO RECLAMO: Selecciona las 4 fichas de tu línea ganadora
 </div>
 </div>
 </div>
-<!-- V75 · PANEL TEMPORAL DE DIAGNÓSTICO: debajo del CHAT para permitir trazas largas -->
+<!-- V76 · PANEL FLOTANTE DE DIAGNÓSTICO: no consume espacio del layout -->
 <!-- V74 · INFORMACIÓN / DIAGNÓSTICO INDEPENDIENTE DEL PANEL DE TURNO -->
 <div id="info-diagnostico-panel" aria-live="polite">
   <div id="info-diagnostico-titulo">INFORMACIÓN DEL SISTEMA</div>
@@ -5092,45 +5096,54 @@ function _mostrarConfirmacionAbandono(cb, yaGanoPorAbandono=false, partidaYaTerm
   }
   ov.style.display='flex';
 }
-// V73 · DIAGNÓSTICO QUIRÚRGICO DEL ABANDONAR INFERIOR.
-// Las trazas salen del panel TURNO ACTUAL y pasan a un recuadro independiente
-// bajo el tablero, para que las leyendas largas no se mezclen con la latencia.
-window._v73DiagHist=[];
+// V76 · DIAGNÓSTICO QUIRÚRGICO ACUMULATIVO DEL ABANDONAR INFERIOR.
+// El panel es flotante para que nunca desaparezca por falta de espacio del layout.
+// Las trazas se numeran y acumulan; así el usuario puede copiar TODO el contenido
+// del recuadro y traerlo aquí sin tener que descifrarlo visualmente.
+window._v76DiagHist = window._v76DiagHist || [];
+window._v76DiagSeq = window._v76DiagSeq || 0;
 window._v71Diag = function(etapa, detalle){
-  const msg = '[V74-DIAG] ' + etapa + (detalle ? ' | ' + detalle : '');
+  try{ window._v76DiagSeq++; }catch(e){}
+  const n=String(window._v76DiagSeq||0).padStart(3,'0');
+  const msg='[V76-DIAG] #'+n+' '+etapa+(detalle ? ' | '+detalle : '');
   console.log(msg);
   try{
-    window._v73DiagHist.push(msg);
-    if(window._v73DiagHist.length>12) window._v73DiagHist.shift();
+    window._v76DiagHist.push(msg);
+    if(window._v76DiagHist.length>100) window._v76DiagHist.shift();
     const panel=document.getElementById('info-diagnostico-panel');
     const log=document.getElementById('info-diagnostico-log');
     if(panel && log){
       panel.classList.add('visible');
-      log.innerHTML=window._v73DiagHist.map((line)=>'<div class="diag-line">'+String(line).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div>').join('');
+      log.innerHTML=window._v76DiagHist.map((line)=>'<div class="diag-line">'+String(line).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div>').join('');
       log.scrollTop=log.scrollHeight;
     }
-  }catch(e){ console.warn('[V74-DIAG] no se pudo pintar el panel:',e); }
+  }catch(e){ console.warn('[V76-DIAG] no se pudo pintar el panel:',e); }
 };
-// Captura informativa: si el clic nunca llega al onclick del botón,
-// esta traza permite distinguir un problema de evento/capa de uno interno.
-if(!window._v71DiagCaptureInstalada){
-  window._v71DiagCaptureInstalada=true;
+if(!window._v76DiagCaptureInstalada){
+  window._v76DiagCaptureInstalada=true;
   document.addEventListener('click',function(ev){
     const b=document.getElementById('btn-abandonar');
     if(!b || !ev.target) return;
     if(ev.target===b || (typeof ev.target.closest==='function' && ev.target.closest('#btn-abandonar')===b)){
-      window._v71Diag('CAPTURE-CLICK','el clic alcanzó el documento; disabled='+b.disabled+', display='+getComputedStyle(b).display+', pointer='+getComputedStyle(b).pointerEvents);
+      window._v71Diag('CAPTURE-CLICK','trusted='+String(!!ev.isTrusted)+' | detail='+String(ev.detail)+' | disabled='+b.disabled+', display='+getComputedStyle(b).display+', pointer='+getComputedStyle(b).pointerEvents);
     }
   },true);
 }
-if(!window._v73DiagErrorInstalada){
-  window._v73DiagErrorInstalada=true;
+if(!window._v76DiagErrorInstalada){
+  window._v76DiagErrorInstalada=true;
   window.addEventListener('error',function(ev){
-    try{ window._v71Diag('WINDOW-ERROR',String(ev&&ev.message||'error JS')+' | linea='+String(ev&&ev.lineno||'?')); }catch(e){}
+    try{ window._v71Diag('WINDOW-ERROR',String(ev&&ev.message||'error JS')+' | linea='+String(ev&&ev.lineno||'?')+' | archivo='+String(ev&&ev.filename||'?')); }catch(e){}
+  });
+  window.addEventListener('unhandledrejection',function(ev){
+    try{
+      const r=ev&&ev.reason;
+      window._v71Diag('UNHANDLED-REJECTION',String(r&&r.message||r||'Promise rejection sin detalle'));
+    }catch(e){}
   });
 }
 
 function instalarHandlersAbandonoSeparados(){
+
   const normal=document.getElementById('btn-abandonar');
   const historico=document.getElementById('btn-abandonar-historico');
 
@@ -5145,8 +5158,11 @@ function instalarHandlersAbandonoSeparados(){
       ev.preventDefault();
       ev.stopPropagation();
       if(window._v71Diag) window._v71Diag('ONCLICK-ENTRADA','rol='+String(window.Firebase&&typeof Firebase.getMiRol==='function'?Firebase.getMiRol():'?')+' | salidaFlag='+String(normal.dataset.salidaTrasAbandono)+' | _salidaTrasAbandono='+String(window._salidaTrasAbandono));
-      if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
+      if(window._v71Diag) window._v71Diag('ANTES-SET-MODO-NORMAL','funcion='+String(typeof window._setModoAbandonoUI));
+      try{ if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal'); if(window._v71Diag) window._v71Diag('DESPUES-SET-MODO-NORMAL','ok | onclickActual='+String(typeof normal.onclick)); }
+      catch(e){ if(window._v71Diag) window._v71Diag('ERROR-SET-MODO-NORMAL',String(e&&e.message||e)); throw e; }
       normal.disabled=false; normal.style.pointerEvents='auto'; normal.style.opacity='';
+      if(window._v71Diag) window._v71Diag('DESPUES-AJUSTE-BOTON','disabled='+String(normal.disabled)+' | display='+String(getComputedStyle(normal).display)+' | pointer='+String(getComputedStyle(normal).pointerEvents));
 
       // V64.3: si el jugador acaba de pulsar VOLVER AL TABLERO en el modal
       // de abandono del oponente, ya sabemos que esta partida es terminal y
@@ -5159,13 +5175,14 @@ function instalarHandlersAbandonoSeparados(){
       if(window._v71Diag) window._v71Diag('RUTA-DECIDIDA','salidaDirecta='+String(salidaDirecta)+' | flagDOM='+String(normal.dataset.salidaTrasAbandono)+' | Firebase._salaRef-publico='+String(!!(window.Firebase&&Firebase._salaRef))+' (NO ES LA VARIABLE INTERNA)');
       if(salidaDirecta){
         delete normal.dataset.salidaTrasAbandono;
+        if(window._v71Diag) window._v71Diag('DIRECTA-INICIO','entra a salidaDirecta');
         if(window._v71Diag) window._v71Diag('ANTES-OCULTAR-MODAL','iniciando salida directa');
         try{ _ocultarModalOponenteAbandono(); if(window._v71Diag) window._v71Diag('DESPUES-OCULTAR-MODAL','ok'); }
         catch(e){ if(window._v71Diag) window._v71Diag('ERROR-OCULTAR-MODAL',String(e&&e.message||e)); }
         if(window._v71Diag) window._v71Diag('ANTES-MARCAR-SALIDA','Juego='+String(!!window.Juego)+' | tipo='+String(window.Juego&&typeof Juego.marcarSalidaTrasAbandono));
         try{ if(window.Juego&&typeof Juego.marcarSalidaTrasAbandono==='function') Juego.marcarSalidaTrasAbandono(); if(window._v71Diag) window._v71Diag('DESPUES-MARCAR-SALIDA','ok'); }
         catch(e){ if(window._v71Diag) window._v71Diag('ERROR-MARCAR-SALIDA',String(e&&e.message||e)); }
-        if(window._v71Diag) window._v71Diag('ANTES-ABANDONAR-FIREBASE','tipo='+String(window.Firebase&&typeof Firebase.abandonarPartida)+' | Firebase='+String(!!window.Firebase));
+        if(window._v71Diag) window._v71Diag('ANTES-ABANDONAR-FIREBASE','tipo='+String(window.Firebase&&typeof Firebase.abandonarPartida)+' | Firebase='+String(!!window.Firebase)+' | rol='+String(window.Firebase&&typeof Firebase.getMiRol==='function'?Firebase.getMiRol():'?'));
         if(window.Firebase&&typeof Firebase.abandonarPartida==='function'){
           try{ await Firebase.abandonarPartida(); if(window._v71Diag) window._v71Diag('DESPUES-ABANDONAR-FIREBASE','ruta directa completada'); }
           catch(e){ if(window._v71Diag) window._v71Diag('ERROR-ABANDONAR-FIREBASE',String(e&&e.message||e)); console.error('[V65.4] salida posterior tras VOLVER AL TABLERO:',e); }
@@ -5207,6 +5224,8 @@ function instalarHandlersAbandonoSeparados(){
       );
     };
   }
+
+  if(window._v71Diag) window._v71Diag('HANDLERS-INSTALADOS','normal='+String(!!normal)+' | onclick='+String(!!(normal&&typeof normal.onclick==='function'))+' | historico='+String(!!historico));
 
   if(historico && historico.dataset.handlerV62!=='1'){
     historico.dataset.handlerV62='1';
