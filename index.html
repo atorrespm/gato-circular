@@ -4378,7 +4378,13 @@ async abandonarPartida(){
       });
       if(window._v71Diag) window._v71Diag('ABANDONAR-UPDATE-CONTINUABLE','update completado; saliendo local');
       if(window._v71Diag) window._v71Diag('ANTES-SALIR-LOCAL','update continuable completado; ejecutando salirLocalTrasAbandono');
-      this.salirLocalTrasAbandono();
+      // V79 · MICRO-CIRUGÍA: la salida local es asíncrona (lee Firebase,
+      // conserva la sesión y prepara la recarga). Antes se disparaba sin await,
+      // por lo que abandonarPartida() podía terminar antes de que la salida
+      // hubiera completado su propia secuencia. Esperamos explícitamente su
+      // finalización, sin cambiar la máquina ni la ruta conocida del modal.
+      await this.salirLocalTrasAbandono();
+      if(window._v71Diag) window._v71Diag('DESPUES-SALIR-LOCAL','salirLocalTrasAbandono completado');
       return;
     }
 
