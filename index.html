@@ -4314,7 +4314,7 @@ prioridad_jugador:null, prioridad_intento:null, prioridad_inicio_ts:null, priori
 });
 },
 async abandonarPartida(){
-    if(window._v71Diag) window._v71Diag('ABANDONAR-ENTRADA','rol='+String(_rol)+' | salaRef='+String(!!_salaRef));
+    if(window._v71Diag) window._v71Diag('ABANDONAR-ENTRADA','rol='+String(_rol)+' | salaRef='+String(!!_salaRef)+' | sala='+String(_sala)+' | iniciado='+String(_iniciado));
     if(!_salaRef){ if(window._v71Diag) window._v71Diag('ABANDONAR-CORTA','_salaRef inexistente'); return; }
     // V11: abandono válido desde cualquier fase de una sala activa.
     // La UI exige confirmación SÍ/NO antes de llegar aquí.
@@ -5075,21 +5075,20 @@ function _mostrarConfirmacionAbandono(cb, yaGanoPorAbandono=false, partidaYaTerm
   }
   ov.style.display='flex';
 }
-// V71 · DIAGNÓSTICO QUIRÚRGICO DEL ABANDONAR INFERIOR.
+// V72 · DIAGNÓSTICO QUIRÚRGICO DEL ABANDONAR INFERIOR.
 // No cambia la máquina de estado ni Firebase: solo deja trazas visibles/console
 // para identificar exactamente dónde se corta la ruta del botón inferior.
+window._v72DiagHist=[];
 window._v71Diag = function(etapa, detalle){
-  const msg = '[V71-DIAG] ' + etapa + (detalle ? ' | ' + detalle : '');
+  const msg = '[V72-DIAG] ' + etapa + (detalle ? ' | ' + detalle : '');
   console.log(msg);
   try{
+    window._v72DiagHist.push(msg);
+    if(window._v72DiagHist.length>8) window._v72DiagHist.shift();
     const el=document.getElementById('turno-msg');
     if(el){
-      el.dataset.v71Diag='1';
-      el.textContent=msg;
-      clearTimeout(window._v71DiagTimer);
-      window._v71DiagTimer=setTimeout(()=>{
-        try{ delete el.dataset.v71Diag; }catch(e){}
-      },5000);
+      el.dataset.v72Diag='1';
+      el.textContent=window._v72DiagHist.join('  ||  ');
     }
   }catch(e){}
 };
@@ -5132,12 +5131,12 @@ function instalarHandlersAbandonoSeparados(){
       const salidaDirecta =
         normal.dataset.salidaTrasAbandono==='1' ||
         (window.Juego&&typeof Juego.isSalidaTrasAbandono==='function'&&Juego.isSalidaTrasAbandono());
-      if(window._v71Diag) window._v71Diag('RUTA-DECIDIDA','salidaDirecta='+String(salidaDirecta)+' | flagDOM='+String(normal.dataset.salidaTrasAbandono)+' | _salaRef='+String(!!(window.Firebase&&Firebase._salaRef)));
+      if(window._v71Diag) window._v71Diag('RUTA-DECIDIDA','salidaDirecta='+String(salidaDirecta)+' | flagDOM='+String(normal.dataset.salidaTrasAbandono)+' | Firebase._salaRef-publico='+String(!!(window.Firebase&&Firebase._salaRef))+' (NO ES LA VARIABLE INTERNA) );
       if(salidaDirecta){
         delete normal.dataset.salidaTrasAbandono;
         _ocultarModalOponenteAbandono();
         if(window.Juego&&typeof Juego.marcarSalidaTrasAbandono==='function') Juego.marcarSalidaTrasAbandono();
-        if(window.v71Diag) window.v71Diag('ANTES-ABANDONAR-FIREBASE','ruta directa');
+        if(window._v71Diag) window._v71Diag('ANTES-ABANDONAR-FIREBASE','ruta directa');
         if(window.Firebase&&typeof Firebase.abandonarPartida==='function'){
           try{ await Firebase.abandonarPartida(); if(window._v71Diag) window._v71Diag('DESPUES-ABANDONAR-FIREBASE','ruta directa completada'); }catch(e){ if(window._v71Diag) window._v71Diag('ERROR-ABANDONAR-FIREBASE',String(e&&e.message||e)); console.error('[V65.4] salida posterior tras VOLVER AL TABLERO:',e); }
         }else if(window._v71Diag) window._v71Diag('SIN-FUNCION-ABANDONAR','Firebase.abandonarPartida no existe');
