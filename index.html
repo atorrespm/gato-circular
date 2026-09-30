@@ -1100,8 +1100,11 @@ M12· JUEGO — Orquestador principal · V17
 // V63 · FRONTERA EXPLÍCITA ENTRE PARTIDA NORMAL Y PARTIDA HISTÓRICA.
 // Son dos controles físicos distintos aunque visualmente ocupen el mismo lugar.
 // Nunca se reutiliza el handler del botón normal para el estado histórico.
-window._salirHistoricoV658 = async function(ev){
-  if(ev){ ev.preventDefault(); ev.stopPropagation(); }
+window._historicoSalidaV67EnCurso=false;
+window._salirHistoricoV67 = async function(ev){
+  if(window._historicoSalidaV67EnCurso) return;
+  window._historicoSalidaV67EnCurso=true;
+  if(ev){ ev.preventDefault(); ev.stopPropagation(); if(ev.stopImmediatePropagation) ev.stopImmediatePropagation(); }
   const historico=document.getElementById('btn-abandonar-historico');
   if(historico){
     historico.disabled=false;
@@ -1109,26 +1112,34 @@ window._salirHistoricoV658 = async function(ev){
     historico.style.pointerEvents='auto';
     historico.style.opacity='';
     historico.style.position='relative';
-    historico.style.zIndex='1000';
+    historico.style.zIndex='2147483647';
   }
-  if(!window.Firebase || typeof Firebase.salirLocalTrasAbandono!=='function') return;
+  if(!window.Firebase || typeof Firebase.salirLocalTrasAbandono!=='function'){
+    window._historicoSalidaV67EnCurso=false;
+    return;
+  }
   try{ await Firebase.salirLocalTrasAbandono(true); }
-  catch(e){ console.error('[V65.8] salida histórica:',e); }
+  catch(e){
+    window._historicoSalidaV67EnCurso=false;
+    console.error('[V67] salida histórica:',e);
+  }
 };
-// V65.8 · Segunda barrera: captura documental específica para el botón histórico.
-// No toca el botón normal ni ninguna otra acción. Si alguna transición dejó
-// otro listener asociado al botón, esta captura sigue llevando exclusivamente
-// el clic histórico a su salida local.
-if(!window._capturaHistoricoV658){
-  window._capturaHistoricoV658=true;
-  document.addEventListener('click',function(ev){
-    const b=ev.target && ev.target.closest ? ev.target.closest('#btn-abandonar-historico') : null;
+// V67 · BARRERA GEOMÉTRICA: si una capa invisible/interpuesta captura el clic
+// antes de que llegue al botón, detectamos igualmente que el puntero cayó sobre
+// el rectángulo REAL del botón histórico y ejecutamos exclusivamente su salida.
+if(!window._capturaHistoricoV67){
+  window._capturaHistoricoV67=true;
+  document.addEventListener('pointerdown',function(ev){
+    if(window._modoHistoricoDesconexion!==true || window._historicoSalidaV67EnCurso) return;
+    const b=document.getElementById('btn-abandonar-historico');
     if(!b || b.disabled || b.style.display==='none') return;
-    if(window._modoHistoricoDesconexion===true || b.offsetParent!==null){
-      window._salirHistoricoV658(ev);
-    }
+    const r=b.getBoundingClientRect();
+    const dentro=ev.clientX>=r.left && ev.clientX<=r.right && ev.clientY>=r.top && ev.clientY<=r.bottom;
+    if(!dentro) return;
+    window._salirHistoricoV67(ev);
   },true);
 }
+
 
 function _setModoAbandonoUI(modo){
   const normal=document.getElementById('btn-abandonar');
@@ -1136,7 +1147,7 @@ function _setModoAbandonoUI(modo){
   const esHistorico=modo==='historico';
   if(normal){
     if(esHistorico){
-      // V66 · FRONTERA EXCLUSIVA DEL HISTÓRICO: el botón normal se elimina físicamente.
+      // V67 · FRONTERA EXCLUSIVA DEL HISTÓRICO: el botón normal se elimina físicamente.
       // Ninguna rama histórica puede volver a habilitarlo o mostrarlo.
       // V65.9 · FRONTERA FÍSICA DEL HISTÓRICO:
       // El botón normal NO debe coexistir con el botón histórico.
@@ -1161,13 +1172,13 @@ function _setModoAbandonoUI(modo){
     historico.style.pointerEvents=esHistorico?'auto':'none';
     // V65.7 · Reforzamos el handler cada vez que entramos en modo histórico.
     // No dependemos de que una transición anterior haya conservado el binding.
-    if(esHistorico && typeof window._salirHistoricoV658==='function') {
-      historico.onclick=window._salirHistoricoV658;
+    if(esHistorico && typeof window._salirHistoricoV67==='function') {
+      historico.onclick=window._salirHistoricoV67;
       historico.disabled=false;
       historico.style.display='';
       historico.style.pointerEvents='auto';
       historico.style.position='relative';
-      historico.style.zIndex='1000';
+      historico.style.zIndex='2147483647';
     }
   }
 }
@@ -1392,9 +1403,18 @@ async function procesarTerminalDesconexion(d, miRol){
     const ovAbHistorico=document.getElementById('abandono-confirm-overlay'); if(ovAbHistorico) ovAbHistorico.style.display='none';
     UI.bloquearTablero(true);
     UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar','btn-iniciar-partida'],true);
-    UI.bloquearBtns(['btn-abandonar'],false);
+    const btnNormalHistorico2=document.getElementById('btn-abandonar');
+    if(btnNormalHistorico2) btnNormalHistorico2.remove();
     const baHistorico2=document.getElementById('btn-abandonar-historico');
-    if(baHistorico2){baHistorico2.disabled=false;baHistorico2.style.opacity='';baHistorico2.style.pointerEvents='auto';baHistorico2.style.display='';}
+    if(baHistorico2){
+      baHistorico2.disabled=false;
+      baHistorico2.style.opacity='';
+      baHistorico2.style.pointerEvents='auto';
+      baHistorico2.style.display='';
+      baHistorico2.style.position='relative';
+      baHistorico2.style.zIndex='2147483647';
+      baHistorico2.onclick=window._salirHistoricoV67;
+    }
     UI.setMsg('Partida histórica — solo lectura. Puedes revisar la partida y ABANDONAR cuando termines.');
     return;
   }
@@ -5032,7 +5052,7 @@ function instalarHandlersAbandonoSeparados(){
   if(historico && historico.dataset.handlerV62!=='1'){
     historico.dataset.handlerV62='1';
     // V65.6 · El botón histórico también usa entrada directa.
-    historico.onclick = window._salirHistoricoV658;
+    historico.onclick = window._salirHistoricoV67;
   }
 }
 instalarHandlersAbandonoSeparados();
