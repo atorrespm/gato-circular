@@ -160,10 +160,10 @@ M3 · PANELES CSS — Laterales, botones, modal
    No ocupa espacio del layout del juego y permanece visible incluso si la UI
    vuelve al lobby. Así podemos copiar la traza completa sin interferir con
    TURNO ACTUAL, latencia, tablero, chat ni botones. */
-#info-diagnostico-panel{display:none;position:fixed;left:12px;right:12px;bottom:12px;width:auto;max-width:none;margin:0;padding:10px 14px;background:linear-gradient(135deg,#171717,#222);border:1px solid #666;border-radius:8px;box-sizing:border-box;text-align:left;z-index:2147483000;box-shadow:0 6px 28px rgba(0,0,0,.75);}
+#info-diagnostico-panel{display:none;position:fixed;left:12px;right:12px;bottom:12px;width:auto;max-width:calc(100vw - 24px);max-height:72vh;margin:0;padding:10px 14px;background:linear-gradient(135deg,#171717,#222);border:1px solid #666;border-radius:8px;box-sizing:border-box;text-align:left;z-index:2147483646;box-shadow:0 6px 28px rgba(0,0,0,.75);overflow:hidden;pointer-events:auto;}
 #info-diagnostico-panel.visible{display:block;}
 #info-diagnostico-titulo{font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;color:#aaa;text-align:center;margin-bottom:7px;}
-#info-diagnostico-log{font-family:'Rajdhani',sans-serif;font-size:14px;color:#f2f2f2;line-height:1.3;max-height:42vh;overflow-y:auto;white-space:normal;word-break:break-word;text-shadow:0 0 5px rgba(255,255,255,.28);padding:2px 4px;}
+#info-diagnostico-log{font-family:'Rajdhani',sans-serif;font-size:14px;color:#f2f2f2;line-height:1.3;max-height:62vh;overflow-y:auto;overscroll-behavior:contain;white-space:normal;word-break:break-word;text-shadow:0 0 5px rgba(255,255,255,.28);padding:2px 4px;}
 #info-diagnostico-log .diag-line{padding:2px 0;border-bottom:1px solid rgba(255,255,255,.06);}
 #info-diagnostico-log .diag-line:last-child{border-bottom:none;}
 #info-diagnostico-log::-webkit-scrollbar{width:6px;}
@@ -5096,12 +5096,30 @@ function _mostrarConfirmacionAbandono(cb, yaGanoPorAbandono=false, partidaYaTerm
   }
   ov.style.display='flex';
 }
-// V76 · DIAGNÓSTICO QUIRÚRGICO ACUMULATIVO DEL ABANDONAR INFERIOR.
+// V77 · DIAGNÓSTICO QUIRÚRGICO ACUMULATIVO DEL ABANDONAR INFERIOR.
 // El panel es flotante para que nunca desaparezca por falta de espacio del layout.
 // Las trazas se numeran y acumulan; así el usuario puede copiar TODO el contenido
 // del recuadro y traerlo aquí sin tener que descifrarlo visualmente.
 window._v76DiagHist = window._v76DiagHist || [];
 window._v76DiagSeq = window._v76DiagSeq || 0;
+// V77 · El panel debe vivir fuera de #app para sobrevivir a UI.lobbyVisible()
+// y, sobre todo, a la recarga que realiza salirLocalTrasAbandono().
+(function instalarPanelDiagnosticoPersistente(){
+  try{
+    const panel=document.getElementById('info-diagnostico-panel');
+    if(!panel) return;
+    if(panel.parentElement!==document.body) document.body.appendChild(panel);
+    const raw=sessionStorage.getItem('GC_V77_DIAG_HIST');
+    if(raw){
+      const arr=JSON.parse(raw);
+      if(Array.isArray(arr) && arr.length){
+        window._v76DiagHist=arr.slice(-100);
+        window._v76DiagSeq=parseInt(sessionStorage.getItem('GC_V77_DIAG_SEQ')||'0',10)||0;
+        panel.classList.add('visible');
+      }
+    }
+  }catch(e){ console.warn('[V77-DIAG] no se pudo restaurar el panel:',e); }
+})();
 window._v71Diag = function(etapa, detalle){
   try{ window._v76DiagSeq++; }catch(e){}
   const n=String(window._v76DiagSeq||0).padStart(3,'0');
@@ -5110,6 +5128,10 @@ window._v71Diag = function(etapa, detalle){
   try{
     window._v76DiagHist.push(msg);
     if(window._v76DiagHist.length>100) window._v76DiagHist.shift();
+    try{
+      sessionStorage.setItem('GC_V77_DIAG_HIST',JSON.stringify(window._v76DiagHist));
+      sessionStorage.setItem('GC_V77_DIAG_SEQ',String(window._v76DiagSeq||0));
+    }catch(e){}
     const panel=document.getElementById('info-diagnostico-panel');
     const log=document.getElementById('info-diagnostico-log');
     if(panel && log){
@@ -5141,6 +5163,13 @@ if(!window._v76DiagErrorInstalada){
     }catch(e){}
   });
 }
+
+// V77 · Segunda garantía: si algún flujo reconstruye el contenedor de juego,
+// el panel permanece directamente bajo <body>.
+try{
+  const _pDiagV77=document.getElementById('info-diagnostico-panel');
+  if(_pDiagV77 && _pDiagV77.parentElement!==document.body) document.body.appendChild(_pDiagV77);
+}catch(e){}
 
 function instalarHandlersAbandonoSeparados(){
 
