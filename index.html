@@ -1538,6 +1538,14 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.post_abandono
     const rival=miRol==='X'?'O':'X';
     const ambosPresentes=!!(con.X&&con.O&&con.X.online===true&&con.O.online===true&&ret.X===true&&ret.O===true);
     const puedeContinuar=ambosPresentes && d.fin_sesion!==true;
+    // V70 · ESTADO VISUAL PRIMERO: el terminal continuable no puede quedar
+    // mostrando el texto inicial `Conectando...` mientras se procesan avisos
+    // secundarios de presencia. Pintamos inmediatamente el estado estable;
+    // los modales/ACK posteriores no pueden impedir que el tablero tenga su
+    // estado de salida correcto.
+    UI.setMsg(ambosPresentes
+      ? 'Ambos jugadores están presentes. Pueden solicitar una Nueva Partida para continuar la sesión.'
+      : 'Tu oponente no está presente en el tablero. No es posible iniciar una Nueva Partida hasta que ambos jugadores estén presentes.');
     UI.bloquearBtns(['btn-nueva'],!puedeContinuar);
     const wrap=document.getElementById('inicio-partida-wrap'); if(wrap) wrap.style.display='flex';
     const sel=document.getElementById('crono-modo-selector'); if(sel) sel.style.display='flex';
@@ -3380,6 +3388,13 @@ if(!_modoHistoricoDesconexion){
   }
   await update(_salaRef,cambiosRet);
   _guardarSesion(); _escuchar();
+  // V70 · ENTREGA EXPLÍCITA DEL SNAPSHOT DE RETORNO: no dependemos de que
+  // onValue entregue el primer snapshot en el mismo instante de la transición.
+  // La ruta RETOMAR ya tiene el estado terminal real `d`; lo entregamos una vez
+  // al mismo serializador que gobierna el resto de la máquina.
+  if(esContinuableTerminal && window.Juego && typeof Juego.encolarEstado==='function'){
+    Juego.encolarEstado(d,_rol);
+  }
   Firebase._registrarPresencia();
 }else{
   _guardarSesion();
@@ -4787,7 +4802,12 @@ if(typeof Juego!=='undefined' && Juego.setUltimoEstado) Juego.setUltimoEstado(d)
 if(!_modoHistoricoDesconexion && _iniciado &&
    d.terminado===true && !d.fin_por_desconexion && d.sesion_continuable===true &&
    d.abandono && d.post_abandono){
-  Juego.aplicarEstado(d,_rol).catch(e=>console.error('[V65.4] abandono continuable:',e));
+  // V70 · SERIALIZACIÓN REAL DEL TERMINAL CONTINUABLE: esta rama puede
+  // recibir varios snapshots seguidos por los updates de presencia/retorno.
+  // No ejecutamos aplicarEstado() en paralelo; usamos la misma cola que protege
+  // el resto de la máquina contra carreras de snapshots.
+  if(typeof Juego.encolarEstado==='function') Juego.encolarEstado(d,_rol);
+  else Juego.aplicarEstado(d,_rol).catch(e=>console.error('[V70] abandono continuable:',e));
   return;
 }
 // V62: HISTÓRICO ES UN ESTADO AISLADO. Desde este punto no se ejecuta ninguna
