@@ -1561,6 +1561,12 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.post_abandono
     const sel=document.getElementById('crono-modo-selector'); if(sel) sel.style.display='flex';
     if(typeof bloquearSelectorModo==='function') bloquearSelectorModo(true);
 
+    // V86 · La declaración de retorno debe existir antes de evaluar el
+    // resultado original. En V85 quedó debajo de su primera referencia,
+    // provocando un ReferenceError (TDZ) y abortando aplicarEstado() antes
+    // de entregar cualquiera de los modales de presencia.
+    const retornoPropio=ret||{};
+
     // 1) UNA SOLA VEZ: resultado original por abandono del rival.
     const avisoOriginal=pa.abandono_aviso_visto||{};
     const claveAbandonoOriginal='original-abandono|'+String(pa.abandono_original_ts||d.abandono.ts||'')+'|'+miRol;
@@ -1588,7 +1594,6 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.post_abandono
     // 3) EL JUGADOR QUE RETOMA RECIBE SU PROPIO AVISO DE PRESENCIA.
     // Este evento es distinto del aviso que recibe el rival. Se consume una
     // sola vez por jugador y nunca vuelve a interpretar el abandono original.
-    const retornoPropio=ret||{};
     const infoVistoPropia=pa.retorno_info_visto||{};
     if(retornoPropio[miRol]===true && infoVistoPropia[miRol]!==true){
       const rivalOnline=!!(con[rival]&&con[rival].online===true);
@@ -3299,26 +3304,7 @@ if(ses && ses.sala===cod && ses.sessionId){
 }
 if(rolRecon){
   _sala=cod; _rol=rolRecon; _sessionId=ses.sessionId; _salaRef=refSala;
-  // V85: una nueva entrada desde GitHub después de cerrar la pestaña debe
-  // generar nuevamente el aviso de presencia del oponente al llegar al
-  // histórico. El aviso es por RETORNO/REINGRESO, no un evento único de toda
-  // la sesión. Solo reiniciamos estos marcadores en una partida terminal por
-  // abandono continuable; no tocamos partidas normales ni desconexiones.
-  if(d.terminado===true && d.abandono && d.post_abandono && d.fin_sesion!==true){
-    await update(_salaRef,{
-      ['conexion/'+_rol]:{online:true,ts:serverTimestamp()},
-      ['post_abandono/retorno/'+_rol]:true,
-      ['post_abandono/retorno_ack/'+_rol]:false,
-      ['post_abandono/retorno_info_visto/'+_rol]:false,
-      ['post_abandono/abandono_aviso_visto/'+_rol]:true,
-      ['post_abandono/salida/'+_rol]:false,
-      ['post_abandono/salida_aviso_visto/'+_rol]:false,
-      'post_abandono/ultimo_retorno_rol':_rol,
-      'post_abandono/ultimo_retorno_ts':Date.now()
-    });
-  }else{
-    await update(_salaRef,{['conexion/'+_rol]:{online:true,ts:serverTimestamp()}});
-  }
+  await update(_salaRef,{['conexion/'+_rol]:{online:true,ts:serverTimestamp()}});
   _escuchar(); Firebase._registrarPresencia();
   return {ok:true,reconectada:true,rol:_rol};
 }
