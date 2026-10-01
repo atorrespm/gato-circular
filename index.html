@@ -1013,7 +1013,7 @@ if(_cb){_cb(); _cb=null;}
 }
 function initModal(){
 $('btn-modal').onclick=cerrarModal;
-$('overlay').onclick=()=>{};
+$('overlay').onclick=()=>{_cb=null; cerrarModal();};
 }
 function bloquearTablero(b){
 const bl=$('tablero-block'), sv=$('tablero-svg');
@@ -1564,7 +1564,7 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.post_abandono
     // 1) UNA SOLA VEZ: resultado original por abandono del rival.
     const avisoOriginal=pa.abandono_aviso_visto||{};
     const claveAbandonoOriginal='original-abandono|'+String(pa.abandono_original_ts||d.abandono.ts||'')+'|'+miRol;
-    if(pa.abandonador!==miRol && avisoOriginal[miRol]!==true && _abandonoOponenteAvisoVisto!==claveAbandonoOriginal){
+    if(pa.abandonador!==miRol && retornoPropio[miRol]!==true && avisoOriginal[miRol]!==true && _abandonoOponenteAvisoVisto!==claveAbandonoOriginal){
       // V65.1: mostrar el aviso ANTES del update. El update de Firebase puede
       // generar otro snapshot inmediatamente; la marca local evita duplicados.
       _abandonoOponenteAvisoVisto=claveAbandonoOriginal;
@@ -1599,7 +1599,7 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.post_abandono
       // ese caso informamos explícitamente DESCONectado.
       const rivalSalioVoluntariamente=!!(pa.salida&&pa.salida[rival]===true);
       const rivalDesconectado=!rivalOnline && !rivalSalioVoluntariamente;
-      try{ await update(_salaRef,{['post_abandono/retorno_info_visto/'+miRol]:true}); }catch(e){}
+      try{ await update(_salaRef,{['post_abandono/retorno_info_visto/'+miRol]:true,['post_abandono/abandono_aviso_visto/'+miRol]:true}); }catch(e){}
       UI.modal(
         rivalOnline ? '🟢 OPONENTE PRESENTE EN EL TABLERO' : (rivalDesconectado ? '📡 OPONENTE DESCONECTADO' : '⏳ OPONENTE NO PRESENTE EN EL TABLERO'),
         rivalOnline
