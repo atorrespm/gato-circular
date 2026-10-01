@@ -3299,7 +3299,26 @@ if(ses && ses.sala===cod && ses.sessionId){
 }
 if(rolRecon){
   _sala=cod; _rol=rolRecon; _sessionId=ses.sessionId; _salaRef=refSala;
-  await update(_salaRef,{['conexion/'+_rol]:{online:true,ts:serverTimestamp()}});
+  // V85: una nueva entrada desde GitHub después de cerrar la pestaña debe
+  // generar nuevamente el aviso de presencia del oponente al llegar al
+  // histórico. El aviso es por RETORNO/REINGRESO, no un evento único de toda
+  // la sesión. Solo reiniciamos estos marcadores en una partida terminal por
+  // abandono continuable; no tocamos partidas normales ni desconexiones.
+  if(d.terminado===true && d.abandono && d.post_abandono && d.fin_sesion!==true){
+    await update(_salaRef,{
+      ['conexion/'+_rol]:{online:true,ts:serverTimestamp()},
+      ['post_abandono/retorno/'+_rol]:true,
+      ['post_abandono/retorno_ack/'+_rol]:false,
+      ['post_abandono/retorno_info_visto/'+_rol]:false,
+      ['post_abandono/abandono_aviso_visto/'+_rol]:true,
+      ['post_abandono/salida/'+_rol]:false,
+      ['post_abandono/salida_aviso_visto/'+_rol]:false,
+      'post_abandono/ultimo_retorno_rol':_rol,
+      'post_abandono/ultimo_retorno_ts':Date.now()
+    });
+  }else{
+    await update(_salaRef,{['conexion/'+_rol]:{online:true,ts:serverTimestamp()}});
+  }
   _escuchar(); Firebase._registrarPresencia();
   return {ok:true,reconectada:true,rol:_rol};
 }
