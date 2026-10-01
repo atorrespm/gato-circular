@@ -1013,7 +1013,7 @@ if(_cb){_cb(); _cb=null;}
 }
 function initModal(){
 $('btn-modal').onclick=cerrarModal;
-$('overlay').onclick=()=>{_cb=null; cerrarModal();};
+$('overlay').onclick=()=>{};
 }
 function bloquearTablero(b){
 const bl=$('tablero-block'), sv=$('tablero-svg');
