@@ -51,7 +51,7 @@ M20· ESTADISTICAS  Historial y estadísticas avanzadas
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Águila Circular V1.0</title>
+<title>Águila Circular V1.1</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@500;700&display=swap');
 /* ═══════════════════════════════════════════════════════
@@ -1003,6 +1003,9 @@ function ocultarLatenciaVisual(){
 function setStats(vX,vO){ $('stat-x').textContent=vX; $('stat-o').textContent=vO; }
 let _cb=null;
 function modal(t,b,btn='ACEPTAR',cb=null){
+// V1.1: cualquier modal nuevo que no sea el modal de presencia vivo invalida
+// el seguimiento del modal de presencia anterior.
+_modalPresenciaVivo=null;
 $('modal-t').textContent=t; $('modal-b').textContent=b;
 $('btn-modal').textContent=btn;
 $('modal').style.display=$('overlay').style.display='block'; _cb=cb;
@@ -1548,6 +1551,10 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.post_abandono
     const rival=miRol==='X'?'O':'X';
     const ambosPresentes=!!(con.X&&con.O&&con.X.online===true&&con.O.online===true&&ret.X===true&&ret.O===true);
     const puedeContinuar=ambosPresentes && d.fin_sesion!==true;
+    // V1.1 · Si el oponente cambia de estado mientras un modal de presencia
+    // permanece abierto, ese modal se sustituye inmediatamente por el estado
+    // actual. Nunca dejamos información de presencia obsoleta en pantalla.
+    if(_sincronizarModalPresenciaVivo(d,miRol)) return;
     // V70 · ESTADO VISUAL PRIMERO: el terminal continuable no puede quedar
     // mostrando el texto inicial `Conectando...` mientras se procesan avisos
     // secundarios de presencia. Pintamos inmediatamente el estado estable;
@@ -1570,7 +1577,7 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.post_abandono
     // 1) UNA SOLA VEZ: resultado original por abandono del rival.
     const avisoOriginal=pa.abandono_aviso_visto||{};
     const claveAbandonoOriginal='original-abandono|'+String(pa.abandono_original_ts||d.abandono.ts||'')+'|'+miRol;
-    if(pa.abandonador!==miRol && retornoPropio[miRol]!==true && avisoOriginal[miRol]!==true && _abandonoOponenteAvisoVisto!==claveAbandonoOriginal){
+    if(pa.abandonador!==miRol && avisoOriginal[miRol]!==true && _abandonoOponenteAvisoVisto!==claveAbandonoOriginal){
       // V65.1: mostrar el aviso ANTES del update. El update de Firebase puede
       // generar otro snapshot inmediatamente; la marca local evita duplicados.
       _abandonoOponenteAvisoVisto=claveAbandonoOriginal;
@@ -1605,15 +1612,7 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.post_abandono
       const rivalSalioVoluntariamente=!!(pa.salida&&pa.salida[rival]===true);
       const rivalDesconectado=!rivalOnline && !rivalSalioVoluntariamente;
       try{ await update(_salaRef,{['post_abandono/retorno_info_visto/'+miRol]:true,['post_abandono/abandono_aviso_visto/'+miRol]:true}); }catch(e){}
-      UI.modal(
-        rivalOnline ? '🟢 OPONENTE PRESENTE EN EL TABLERO' : (rivalDesconectado ? '📡 OPONENTE DESCONECTADO' : '⏳ OPONENTE NO PRESENTE EN EL TABLERO'),
-        rivalOnline
-          ? 'Tu oponente está presente en el tablero. Ambos jugadores están disponibles y pueden solicitar una Nueva Partida para continuar la sesión.'
-          : (rivalDesconectado
-            ? 'Tu oponente se ha desconectado del tablero en este momento. Puedes revisar la partida histórica. No podrás iniciar una Nueva Partida hasta que ambos jugadores estén presentes.'
-            : 'Tu oponente no está presente en el tablero en este momento. Puedes revisar la partida histórica. No podrás iniciar una Nueva Partida hasta que ambos jugadores estén presentes.'),
-        'ACEPTAR',null
-      );
+      _mostrarModalPresenciaVivo(rivalOnline ? 'presente' : (rivalDesconectado ? 'desconectado' : 'no_presente'));
       return;
     }
 
@@ -1623,9 +1622,7 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.post_abandono
     const retornoAck=pa.retorno_ack||{};
     if(ultimoRetRol===rival && ultimoRetTs>Number(pa.abandono_original_ts||d.abandono.ts||0) && retornoAck[miRol]!==true && con[rival]&&con[rival].online===true){
       try{ await update(_salaRef,{['post_abandono/retorno_ack/'+miRol]:true}); }catch(e){}
-      UI.modal('🟢 TU OPONENTE HA REGRESADO AL TABLERO',
-        'Tu oponente ha regresado al tablero después de haber abandonado la partida. La partida anterior permanece disponible para revisión. Ambos jugadores están presentes y pueden solicitar una Nueva Partida para continuar la sesión.',
-        'ACEPTAR',null);
+      _mostrarModalPresenciaVivo('presente');
       return;
     }
 
@@ -1635,14 +1632,13 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.post_abandono
     const ultimoSalidaTs=Number(pa.ultimo_salida_ts||0);
     const salidaRol=pa.ultimo_salida_rol;
     const salidaVisto=pa.salida_aviso_visto||{};
+    const estadoSalida=_estadoPresenciaOponente(d,rival);
     const salidaPosterior=ultimoSalidaTs>ultimoRetTs && ultimoSalidaTs>Number(pa.abandono_original_ts||d.abandono.ts||0) && salidaRol===rival && con[rival]&&con[rival].online!==true;
     if(salidaPosterior && salidaVisto[miRol]!==true){
       try{ await update(_salaRef,{['post_abandono/salida_aviso_visto/'+miRol]:true}); }catch(e){}
       UI.bloquearBtns(['btn-nueva','btn-sortear','btn-reclamar','btn-confirmar'],true);
       UI.bloquearBtns(['btn-abandonar'],false);
-      UI.modal('🚪 OPONENTE HA SALIDO DEL TABLERO',
-        'Tu oponente ha abandonado el tablero. En este momento no es posible iniciar una Nueva Partida porque el oponente no está presente. Si deseas continuar la sesión, podrás hacerlo cuando ambos jugadores estén presentes.',
-        'ACEPTAR',null);
+      _mostrarModalPresenciaVivo(estadoSalida==='desconectado' ? 'desconectado' : 'no_presente');
       return;
     }
 
@@ -2161,6 +2157,61 @@ window._revisarNuevaPartida = _revisarNuevaPartida;
 // ── V21 · OPONENTE ABANDONA DESPUÉS DE UNA PARTIDA TERMINADA ─────────
 let _abandonoOponenteAvisoVisto = null;
 let _salidaTrasAbandono = false;
+// V1.1 · ESTADO VIVO DE PRESENCIA: los modales de presencia no pueden quedar
+// mostrando un estado antiguo si Firebase informa un cambio posterior.
+let _modalPresenciaVivo = null;
+let _modalAbandonoOponenteAbierto = false;
+let _modalAbandonoOponenteEstado = null;
+function _estadoPresenciaOponente(d, rival){
+  const con=(d&&d.conexion)||{};
+  const c=con[rival]||{};
+  if(c.online===true) return 'presente';
+  if(c.evento==='desconexion') return 'desconectado';
+  if(c.evento==='salida') return 'no_presente';
+  const pa=(d&&d.post_abandono)||{};
+  const salida=pa.salida||{};
+  return salida[rival]===true ? 'no_presente' : 'desconectado';
+}
+function _datosModalPresencia(estado){
+  if(estado==='presente') return {
+    titulo:'🟢 OPONENTE PRESENTE EN EL TABLERO',
+    texto:'Tu oponente está presente en el tablero. Ambos jugadores están disponibles y pueden solicitar una Nueva Partida para continuar la sesión.'
+  };
+  if(estado==='desconectado') return {
+    titulo:'📡 OPONENTE DESCONECTADO',
+    texto:'Tu oponente se ha desconectado del tablero en este momento. Puedes revisar la partida histórica. No podrás iniciar una Nueva Partida hasta que ambos jugadores estén presentes.'
+  };
+  return {
+    titulo:'⏳ OPONENTE NO PRESENTE EN EL TABLERO',
+    texto:'Tu oponente no está presente en el tablero en este momento. Puedes revisar la partida histórica. No podrás iniciar una Nueva Partida hasta que ambos jugadores estén presentes.'
+  };
+}
+function _mostrarModalPresenciaVivo(estado){
+  const datos=_datosModalPresencia(estado);
+  UI.cerrarModal();
+  _ocultarModalOponenteAbandono();
+  _modalAbandonoOponenteAbierto=false;
+  _modalAbandonoOponenteEstado=null;
+  _modalPresenciaVivo=estado;
+  UI.modal(datos.titulo,datos.texto,'ACEPTAR',()=>{_modalPresenciaVivo=null;});
+}
+function _sincronizarModalPresenciaVivo(d,miRol){
+  const rival=miRol==='X'?'O':'X';
+  const estado=_estadoPresenciaOponente(d,rival);
+  // Un modal de victoria por abandono también debe ceder inmediatamente ante
+  // un cambio real de presencia del oponente. El resultado no se modifica;
+  // solamente se actualiza la información que el jugador está viendo.
+  if(_modalAbandonoOponenteAbierto && _modalAbandonoOponenteEstado!==estado){
+    _mostrarModalPresenciaVivo(estado);
+    return true;
+  }
+  if(_modalPresenciaVivo && _modalPresenciaVivo!==estado){
+    _mostrarModalPresenciaVivo(estado);
+    return true;
+  }
+  return false;
+}
+
 function _instalarSalidaDirectaTrasAbandono(){
   const b=document.getElementById('btn-abandonar');
   if(!b) return;
@@ -2196,6 +2247,8 @@ function _mostrarModalOponenteAbandono(ts, miRol){
     document.body.appendChild(ov);
     document.getElementById('btn-ab-volver')?.addEventListener('click',async()=>{
       ov.style.display='none';
+      _modalAbandonoOponenteAbierto=false;
+      _modalAbandonoOponenteEstado=null;
       UI.bloquearTablero(true);
       UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar'],true);
       UI.bloquearBtns(['btn-abandonar'],false);
@@ -2222,6 +2275,8 @@ function _mostrarModalOponenteAbandono(ts, miRol){
     });
     document.getElementById('btn-ab-salir')?.addEventListener('click',async()=>{
       ov.style.display='none';
+      _modalAbandonoOponenteAbierto=false;
+      _modalAbandonoOponenteEstado=null;
       _salidaTrasAbandono=true;
       try{ await Firebase.abandonarPartida(); }catch(e){ console.error('[V65.0] salida desde modal:',e); }
     });
@@ -2231,11 +2286,16 @@ function _mostrarModalOponenteAbandono(ts, miRol){
   const nombreAbandonador = (_ultimoD && _ultimoD.abandono && _ultimoD.abandono.abandonador==='X') ? 'Jugador 1 (X)' : 'Jugador 2 (O)';
   const txtAbandonador=document.getElementById('abandono-oponente-ganador-txt');
   if(txtAbandonador) txtAbandonador.textContent=nombreAbandonador;
+  _modalAbandonoOponenteEstado='no_presente';
+  _modalAbandonoOponenteAbierto=true;
+  _modalPresenciaVivo=null;
   ov.style.display='flex';
 }
 function _ocultarModalOponenteAbandono(){
   const ov=document.getElementById('abandono-oponente-overlay');
   if(ov) ov.style.display='none';
+  _modalAbandonoOponenteAbierto=false;
+  _modalAbandonoOponenteEstado=null;
 }
 // V78 · El handler del botón ABANDONAR vive en el script type=module.
 // Exponemos explícitamente la función clásica en window para que el módulo
@@ -3275,7 +3335,7 @@ await set(_salaRef,{
 tablero:Estado.tableroVacio(),turno:null,fase:'esperando_sorteo',
 terminado:false,ganador:null,jugadas:0,fichasX:16,fichasO:16,
 j1:'online',j2:'espera',ts:Date.now(),
-sesionX:_sessionId,sesionO:null,conexion:{X:{online:true,ts:serverTimestamp()},O:{online:false,ts:serverTimestamp()}},
+sesionX:_sessionId,sesionO:null,conexion:{X:{online:true,ts:serverTimestamp(),evento:'tablero'},O:{online:false,ts:serverTimestamp(),evento:'salida'}},
 desconexionesX:0,desconexionesO:0,
 ultimo_sorteo:null,sorteo_id:null,sorteo_usado:false,victoriasX:0,victoriasO:0,empates:0,partidasJugadas:0,
 crono_modo:'clasico', partida_iniciada:false, inicio_partida_ts:null, inicio_propuesto:null, turno_inicio_ts:null, crono_totalX:null, crono_totalO:null,fin_por_desconexion:false,
@@ -3304,7 +3364,7 @@ if(ses && ses.sala===cod && ses.sessionId){
 }
 if(rolRecon){
   _sala=cod; _rol=rolRecon; _sessionId=ses.sessionId; _salaRef=refSala;
-  await update(_salaRef,{['conexion/'+_rol]:{online:true,ts:serverTimestamp()}});
+  await update(_salaRef,{['conexion/'+_rol]:{online:true,ts:serverTimestamp(),evento:'tablero'}});
   _escuchar(); Firebase._registrarPresencia();
   return {ok:true,reconectada:true,rol:_rol};
 }
@@ -3314,7 +3374,7 @@ _sala=cod; _rol='O'; _sessionId=_nuevoSessionId(); _salaRef=refSala;
 // J1 ya quedó marcado como online al crear la sala. Reescribir j1 desde el
 // cliente de J2 era innecesario y podía hacer que Firebase rechazara/retardara
 // el update bajo reglas que separan la presencia de cada jugador.
-await update(_salaRef,{j2:'online',sesionO:_sessionId,['conexion/O']:{online:true,ts:serverTimestamp()}});
+await update(_salaRef,{j2:'online',sesionO:_sessionId,['conexion/O']:{online:true,ts:serverTimestamp(),evento:'tablero'}});
 _guardarSesion();
 _escuchar(); Firebase._registrarPresencia();
 return {ok:true};
@@ -3390,7 +3450,7 @@ if(esContinuableTerminal && window.Juego && typeof Juego.marcarModoContinuableTe
 // podrá solicitarse cuando ambos estén realmente conectados.
 if(!_modoHistoricoDesconexion){
   if(window._setModoAbandonoUI) window._setModoAbandonoUI('normal');
-  const cambiosRet={['conexion/'+_rol]:{online:true,ts:serverTimestamp()}};
+  const cambiosRet={['conexion/'+_rol]:{online:true,ts:serverTimestamp(),evento:'tablero'}};
   if(esContinuableDesconexion && d.post_desconexion){
     cambiosRet['post_desconexion/retorno/'+_rol]=true;
     cambiosRet['post_desconexion/ultimo_retorno_rol']=_rol;
@@ -3425,8 +3485,8 @@ _registrarPresencia(){
 if(!_salaRef||!_rol) return;
 if(_unsubConexion) _unsubConexion();
 const conexionRef=ref(db,'salas/'+_sala+'/conexion/'+_rol);
-try{ onDisconnect(conexionRef).set({online:false,ts:serverTimestamp()}); }catch(e){ console.warn('[V32.2] no pudo registrar onDisconnect',e); }
-update(conexionRef,{online:true,ts:serverTimestamp()}).then(()=>{
+try{ onDisconnect(conexionRef).set({online:false,ts:serverTimestamp(),evento:'desconexion'}); }catch(e){ console.warn('[V32.2] no pudo registrar onDisconnect',e); }
+update(conexionRef,{online:true,ts:serverTimestamp(),evento:'tablero'}).then(()=>{
   // V45: al reconectar después de una partida terminada, registrar el retorno
   // solamente si Firebase conserva un evento terminal de desconexión de ESTE
   // jugador. El rival podrá mostrar el modal de reconexión sin afectar el
@@ -3443,8 +3503,8 @@ update(conexionRef,{online:true,ts:serverTimestamp()}).then(()=>{
 }).catch(()=>{});
 _unsubConexion=onValue(ref(db,'.info/connected'),snap=>{
   if(snap.val()===true){
-    try{ onDisconnect(conexionRef).set({online:false,ts:serverTimestamp()}); }catch(e){}
-    update(conexionRef,{online:true,ts:serverTimestamp()}).then(()=>{
+    try{ onDisconnect(conexionRef).set({online:false,ts:serverTimestamp(),evento:'desconexion'}); }catch(e){}
+    update(conexionRef,{online:true,ts:serverTimestamp(),evento:'tablero'}).then(()=>{
       return get(_salaRef).then(s=>{
         const d=s.val();
         if(d && d.terminado && !d.abandono && d.presencia_terminal && d.presencia_terminal.desconectado===_rol){
@@ -4368,7 +4428,7 @@ async abandonarPartida(){
         ['post_abandono/abandono_aviso_visto/'+_rol]:true,
         nueva_partida_solicitud:null,
         nueva_partida_max_alert:null,
-        ['conexion/'+_rol]:{online:false,ts:serverTimestamp()}
+        ['conexion/'+_rol]:{online:false,ts:serverTimestamp(),evento:'salida'}
       });
 
 
@@ -4392,7 +4452,7 @@ async abandonarPartida(){
         ['post_abandono/salida/'+_rol]:true,
         'post_abandono/ultimo_salida_rol':_rol,
         'post_abandono/ultimo_salida_ts':tsSalida,
-        ['conexion/'+_rol]:{online:false,ts:serverTimestamp()}
+        ['conexion/'+_rol]:{online:false,ts:serverTimestamp(),evento:'salida'}
       });
       this.salirLocalTrasAbandono();
       return;
@@ -4457,7 +4517,7 @@ async abandonarPartida(){
       },
       historico_inicio_ts:ahoraAbandono,
       nueva_partida_solicitud:null,nueva_partida_max_alert:null,presencia_terminal:null,
-      ['conexion/'+_rol]:{online:false,ts:serverTimestamp()}
+      ['conexion/'+_rol]:{online:false,ts:serverTimestamp(),evento:'salida'}
     });
     // El jugador que abandona sale de su propia sala inmediatamente.
     // No dependemos del listener remoto para desmontar su interfaz local.
