@@ -2241,6 +2241,24 @@ function _procesarModalPostAbandonoVivo(d,miRol){
   const puedeContinuar=ambosPresentes && d.fin_sesion!==true;
   const clave='original-abandono|'+String(pa.abandono_original_ts||abandono.ts||'')+'|'+miRol;
 
+  // V1.8 · RETORNO PROPIO TIENE PRIORIDAD SOBRE EL AVISO DE ABANDONO YA CONSUMIDO.
+  // El jugador que acaba de retomar necesita su propio aviso de presencia del
+  // rival, aunque haya visto antes VICTORIA POR ABANDONO. Esta es una nueva
+  // transición de estado y no debe quedar absorbida por la rama
+  // 'abandono_aviso_visto=true'. Se marca como visto aquí mismo, de forma
+  // idempotente, para que el modal no se vuelva a abrir en cada snapshot.
+  const infoVistoPropiaV18=pa.retorno_info_visto||{};
+  if(ret[miRol]===true && infoVistoPropiaV18[miRol]!==true){
+    const rivalOnline=!!(con[rival]&&con[rival].online===true);
+    const rivalSalioVoluntariamente=!!(pa.salida&&pa.salida[rival]===true);
+    const rivalDesconectado=!rivalOnline && !rivalSalioVoluntariamente;
+    const estadoRetornoPropio=rivalOnline ? 'presente' : (rivalDesconectado ? 'desconectado' : 'no_presente');
+    _postAbandonoEstadoObservado=estadoRetornoPropio;
+    void update(_salaRef,{['post_abandono/retorno_info_visto/'+miRol]:true,['post_abandono/abandono_aviso_visto/'+miRol]:true}).catch(()=>{});
+    _mostrarModalPresenciaVivo(estadoRetornoPropio);
+    return true;
+  }
+
   // Una solicitud bilateral actual pertenece a la siguiente partida, no al
   // modal de presencia. Solo se entrega si no hay un modal vivo que deba
   // actualizarse.
