@@ -2198,9 +2198,13 @@ function _mostrarModalPresenciaVivo(estado){
 function _sincronizarModalPresenciaVivo(d,miRol){
   const rival=miRol==='X'?'O':'X';
   const estado=_estadoPresenciaOponente(d,rival);
-  // Un modal de victoria por abandono también debe ceder inmediatamente ante
-  // un cambio real de presencia del oponente. El resultado no se modifica;
-  // solamente se actualiza la información que el jugador está viendo.
+  const modalAbierto=_modalAbandonoOponenteAbierto || !!_modalPresenciaVivo;
+  if(!modalAbierto) return false;
+
+  // V1.2 · El modal es una representación VIVA del estado del oponente.
+  // Si el estado cambió, sustituimos el modal inmediatamente: no se espera
+  // a que el jugador pulse ACEPTAR. Esto reproduce exactamente la mecánica
+  // ya validada entre OPONENTE NO PRESENTE y OPONENTE PRESENTE.
   if(_modalAbandonoOponenteAbierto && _modalAbandonoOponenteEstado!==estado){
     _mostrarModalPresenciaVivo(estado);
     return true;
@@ -2209,7 +2213,20 @@ function _sincronizarModalPresenciaVivo(d,miRol){
     _mostrarModalPresenciaVivo(estado);
     return true;
   }
-  return false;
+
+  // Si el estado no cambió, el modal actual sigue siendo correcto y debe
+  // permanecer abierto. Pero una Nueva Partida bilateral actual tiene
+  // prioridad sobre un modal secundario de presencia.
+  const pa=d.post_abandono||{};
+  const ret=pa.retorno||{};
+  const con=d.conexion||{};
+  const ambosPresentes=!!(con.X&&con.O&&con.X.online===true&&con.O.online===true&&ret.X===true&&ret.O===true);
+  const puedeContinuar=ambosPresentes && d.fin_sesion!==true;
+  if(puedeContinuar && d.nueva_partida_solicitud) return false;
+
+  // Evita que la misma fotografía de Firebase vuelva a ejecutar las ramas
+  // de aviso que originalmente abrieron el modal y lo reemplacen en seguida.
+  return true;
 }
 
 function _instalarSalidaDirectaTrasAbandono(){
