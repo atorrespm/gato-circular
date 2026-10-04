@@ -1537,6 +1537,12 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.post_abandono
     Tablero.render(Estado.tablero,id=>{});
     UI.actualizarPaneles(Estado);
     UI.setStats(d.victoriasX||0,d.victoriasO||0);
+    // V1.4 · Una partida terminada por abandono NUNCA puede anunciar un turno.
+    // actualizarPaneles() conserva el valor histórico de turno para el tablero,
+    // pero el recuadro de sistema debe describir el estado terminal.
+    UI.setMsg(d.ganador===miRol
+      ? 'Partida terminada. Has ganado por abandono del oponente. Puedes revisar las jugadas o abandonar la partida.'
+      : 'Partida terminada por abandono. El resultado original se conserva.');
     if(d.crono_modo&&Cronometro.configurarModo) Cronometro.configurarModo(d.crono_modo);
     if(typeof marcarModoActivo==='function') marcarModoActivo(d.crono_modo||'clasico');
     Cronometro.detener();
@@ -2153,6 +2159,8 @@ let _salidaTrasAbandono = false;
 let _modalPresenciaVivo = null;
 let _modalAbandonoOponenteAbierto = false;
 let _modalAbandonoOponenteEstado = null;
+let _modalAbandonoOponenteTipo = null;
+let _modalAbandonoOponenteClave = null;
 function _estadoPresenciaOponente(d, rival){
   const con=(d&&d.conexion)||{};
   const c=con[rival]||{};
@@ -2182,51 +2190,70 @@ function _mostrarModalPresenciaVivo(estado){
   UI.cerrarModal();
   _ocultarModalOponenteAbandono();
   _modalAbandonoOponenteAbierto=false;
-  _modalAbandonoOponenteEstado=null;
+  _modalAbandonoOponenteEstado=estado;
+  _modalAbandonoOponenteTipo='presencia';
   _modalPresenciaVivo=estado;
   UI.modal(datos.titulo,datos.texto,'ACEPTAR',()=>{_modalPresenciaVivo=null;});
 }
 function _procesarModalPostAbandonoVivo(d,miRol){
-  // V1.3 · AUTORIDAD ÚNICA.
-  // Todas las rutas de estado terminado pasan por aquí. No existen dos
-  // funciones compitiendo por abrir/cerrar el modal de abandono.
+  // V1.4 · AUTORIDAD ÚNICA Y ESTADO SEPARADO.
+  // El resultado de la partida y la presencia posterior del oponente son DOS
+  // hechos distintos. El primero no se sustituye por el segundo hasta que
+  // exista un cambio REAL de presencia.
   const abandono=d&&d.abandono;
   if(!abandono || abandono.abandonador===miRol) return false;
 
   const rival=miRol==='X'?'O':'X';
-  const estado=_estadoPresenciaOponente(d,rival);
+  const estadoActual=_estadoPresenciaOponente(d,rival);
   const pa=d.post_abandono||{};
   const ret=pa.retorno||{};
   const con=d.conexion||{};
   const ambosPresentes=!!(con.X&&con.O&&con.X.online===true&&con.O.online===true&&ret.X===true&&ret.O===true);
   const puedeContinuar=ambosPresentes && d.fin_sesion!==true;
+  const clave='original-abandono|'+String(pa.abandono_original_ts||abandono.ts||'')+'|'+miRol;
 
-  // Una Nueva Partida bilateral actual tiene prioridad sobre el aviso/modal
-  // secundario. La autoridad devuelve false para que la rama superior pueda
-  // procesar esa solicitud.
-  if((!_modalAbandonoOponenteAbierto && !_modalPresenciaVivo) && puedeContinuar && d.nueva_partida_solicitud){
+  // Una solicitud bilateral actual pertenece a la siguiente partida, no al
+  // modal de presencia. Solo se entrega si no hay un modal vivo que deba
+  // actualizarse.
+  if(!_modalAbandonoOponenteAbierto && !_modalPresenciaVivo && puedeContinuar && d.nueva_partida_solicitud){
     return false;
   }
 
-  // Si ya hay un modal abierto, este bloque es el ÚNICO que puede sustituirlo.
-  // Mismo estado = no tocar el DOM. Estado diferente = reemplazo inmediato.
-  if(_modalAbandonoOponenteAbierto || _modalPresenciaVivo){
-    const estadoActual=_modalAbandonoOponenteAbierto
-      ? _modalAbandonoOponenteEstado
-      : _modalPresenciaVivo;
-    if(estadoActual===estado) return true;
-    _mostrarModalPresenciaVivo(estado);
+  // MODAL VIVO: si el resultado original sigue abierto, NO se reemplaza por
+  // 'NO PRESENTE' simplemente porque el abandono dejó al rival en el lobby.
+  // El resultado solo cambia cuando la presencia posterior cambia respecto del
+  // estado que existía al abrir el modal.
+  if(_modalAbandonoOponenteAbierto && _modalAbandonoOponenteTipo==='resultado_abandono'){
+    if(_modalAbandonoOponenteClave!==clave){
+      _modalAbandonoOponenteClave=clave;
+      _modalAbandonoOponenteEstado=estadoActual;
+      return true;
+    }
+    if(estadoActual===_modalAbandonoOponenteEstado) return true;
+    _mostrarModalPresenciaVivo(estadoActual);
     return true;
   }
 
-  // El modal fue cerrado por el usuario: no lo reabrimos eternamente. La marca
-  // local se vincula al abandono concreto, no a un simple timestamp reutilizado.
-  const clave='original-abandono|'+String(pa.abandono_original_ts||abandono.ts||'')+'|'+miRol;
-  const avisoOriginal=pa.abandono_aviso_visto||{};
-  if(_abandonoOponenteAvisoVisto===clave || avisoOriginal[miRol]===true) return true;
+  // Si ya mostramos un modal de presencia, este es el único punto que puede
+  // cambiarlo en vivo. Mismo estado = no tocar el DOM.
+  if(_modalPresenciaVivo || (_modalAbandonoOponenteAbierto && _modalAbandonoOponenteTipo==='presencia')){
+    const estadoMostrado=_modalPresenciaVivo || _modalAbandonoOponenteEstado;
+    if(estadoMostrado===estadoActual) return true;
+    _mostrarModalPresenciaVivo(estadoActual);
+    return true;
+  }
 
-  // Primera y única apertura del resultado original por abandono.
-  _abandonoOponenteAvisoVisto=clave;
+  // Si el jugador cerró el modal de resultado, no lo reabrimos por cada
+  // snapshot. La marca persistente mantiene consumido el evento original.
+  const avisoOriginal=pa.abandono_aviso_visto||{};
+  if(_modalAbandonoOponenteClave===clave || avisoOriginal[miRol]===true) return true;
+
+  // PRIMERA APERTURA: mostrar SIEMPRE el resultado de la partida.
+  // No usamos estadoActual como tipo de modal. Lo guardamos únicamente como
+  // referencia para detectar el PRIMER cambio de presencia posterior.
+  _modalAbandonoOponenteClave=clave;
+  _modalAbandonoOponenteEstado=estadoActual;
+  _modalAbandonoOponenteTipo='resultado_abandono';
   UI.cerrarModal();
   _mostrarModalOponenteAbandono(abandono.ts,miRol,d);
   void update(_salaRef,{['post_abandono/abandono_aviso_visto/'+miRol]:true}).catch(()=>{});
@@ -2277,6 +2304,7 @@ function _mostrarModalOponenteAbandono(ts, miRol, estadoFuente){
       ov.style.display='none';
       _modalAbandonoOponenteAbierto=false;
       _modalAbandonoOponenteEstado=null;
+      _modalAbandonoOponenteTipo=null;
       UI.bloquearTablero(true);
       UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar'],true);
       UI.bloquearBtns(['btn-abandonar'],false);
@@ -2305,6 +2333,7 @@ function _mostrarModalOponenteAbandono(ts, miRol, estadoFuente){
       ov.style.display='none';
       _modalAbandonoOponenteAbierto=false;
       _modalAbandonoOponenteEstado=null;
+      _modalAbandonoOponenteTipo=null;
       _salidaTrasAbandono=true;
       try{ await Firebase.abandonarPartida(); }catch(e){ console.error('[V65.0] salida desde modal:',e); }
     });
@@ -2316,6 +2345,7 @@ function _mostrarModalOponenteAbandono(ts, miRol, estadoFuente){
   if(txtAbandonador) txtAbandonador.textContent=nombreAbandonador;
   const rival=miRol==='X'?'O':'X';
   _modalAbandonoOponenteEstado=_estadoPresenciaOponente(estadoFuente||_ultimoD||{},rival);
+  _modalAbandonoOponenteTipo='resultado_abandono';
   _modalAbandonoOponenteAbierto=true;
   _modalPresenciaVivo=null;
   ov.style.display='flex';
@@ -2325,6 +2355,7 @@ function _ocultarModalOponenteAbandono(){
   if(ov) ov.style.display='none';
   _modalAbandonoOponenteAbierto=false;
   _modalAbandonoOponenteEstado=null;
+  _modalAbandonoOponenteTipo=null;
 }
 // V78 · El handler del botón ABANDONAR vive en el script type=module.
 // Exponemos explícitamente la función clásica en window para que el módulo
@@ -2659,7 +2690,7 @@ function reset(){
     _sorteoVisto=null; _victoriaVista=false; _reclamoKey=null; _partidaInicioVisto=null;
     _prioridadMostrada=null; _empateFinalKey=null; _resultadoReclamoVisto=null;
     _npConfirmacionVista=null; _npMaxAlertVisto=null; _npFinalizacionEnCurso=null; _abandonoVisto=null; _desconexionResultadoVisto=null; _abandonoPostDesconexionVisto=null; // V32.3.11: limpieza de estados terminales
-    _npFinalizacionEnCurso=null; _salidaTrasAbandono=false; _ultimoD=null; _modoHistoricoDesconexion=false; _modoContinuableTerminal=false; _historicoInicioTs=null;
+    _npFinalizacionEnCurso=null; _salidaTrasAbandono=false; _modalPresenciaVivo=null; _modalAbandonoOponenteAbierto=false; _modalAbandonoOponenteEstado=null; _modalAbandonoOponenteTipo=null; _modalAbandonoOponenteClave=null; _ultimoD=null; _modoHistoricoDesconexion=false; _modoContinuableTerminal=false; _historicoInicioTs=null;
     window._empateYaMostrado=false;
 }
 return {aplicarEstado, encolarEstado, procesarTerminalDesconexion, procesarPartidaHistorica, setUltimoEstado:(d)=>{_ultimoD=d;}, reset, getUltimoEstado:()=>_ultimoD, isSalidaTrasAbandono:()=>_salidaTrasAbandono, marcarSalidaTrasAbandono:()=>{_salidaTrasAbandono=true;}, isModoHistoricoDesconexion:()=>_modoHistoricoDesconexion, marcarModoHistoricoDesconexion:()=>{_modoHistoricoDesconexion=true;_modoContinuableTerminal=false;}, isModoContinuableTerminal:()=>_modoContinuableTerminal, marcarModoContinuableTerminal:()=>{_modoContinuableTerminal=true;_modoHistoricoDesconexion=false;}, isModoHistorico:()=>_modoHistoricoDesconexion, marcarModoHistorico:()=>{_modoHistoricoDesconexion=true;_modoContinuableTerminal=false;}};
