@@ -1561,12 +1561,14 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.post_abandono
     // Esta es la única puerta que decide qué modal debe permanecer visible.
     // Si ya existe un modal, solo lo reemplaza cuando cambia el estado vivo
     // del oponente. Si el estado no cambia, no vuelve a pintar nada.
-    if(_procesarModalPostAbandonoVivo(d,miRol)) return;
-    // V70 · ESTADO VISUAL PRIMERO: el terminal continuable no puede quedar
-    // mostrando el texto inicial `Conectando...` mientras se procesan avisos
-    // secundarios de presencia. Pintamos inmediatamente el estado estable;
-    // los modales/ACK posteriores no pueden impedir que el tablero tenga su
-    // estado de salida correcto.
+    // V1.5 · La autoridad del modal decide SOLO la capa de notificación.
+    // No puede abortar la construcción del estado terminal: aunque haya un
+    // modal abierto, botones, mensaje y tablero deben quedar sincronizados.
+    const modalPostAbandonoActivo=_procesarModalPostAbandonoVivo(d,miRol);
+
+    // V70/V1.5 · ESTADO VISUAL PRIMERO: el terminal continuable siempre deja
+    // preparada la UI de continuidad. Esto evita la incoherencia
+    // 'modal de presencia + todos los botones bloqueados'.
     UI.setMsg(ambosPresentes
       ? 'Ambos jugadores están presentes. Pueden solicitar una Nueva Partida para continuar la sesión.'
       : 'Tu oponente no está presente en el tablero. No es posible iniciar una Nueva Partida hasta que ambos jugadores estén presentes.');
@@ -1574,6 +1576,10 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.post_abandono
     const wrap=document.getElementById('inicio-partida-wrap'); if(wrap) wrap.style.display='flex';
     const sel=document.getElementById('crono-modo-selector'); if(sel) sel.style.display='flex';
     if(typeof bloquearSelectorModo==='function') bloquearSelectorModo(true);
+    // La partida actual terminó. INICIAR PARTIDA se habilitará solo después de
+    // crear la siguiente partida y llegar a fase 'preparada'.
+    UI.bloquearBtns(['btn-iniciar-partida'],true);
+    if(modalPostAbandonoActivo) return;
 
     // V86 · La declaración de retorno debe existir antes de evaluar el
     // resultado original. En V85 quedó debajo de su primera referencia,
@@ -2162,14 +2168,22 @@ let _modalAbandonoOponenteEstado = null;
 let _modalAbandonoOponenteTipo = null;
 let _modalAbandonoOponenteClave = null;
 function _estadoPresenciaOponente(d, rival){
+  // V1.5 · La presencia posterior al abandono tiene una jerarquía temporal.
+  // Una SALIDA VOLUNTARIA es más específica que cualquier marca offline
+  // residual que pueda llegar después por onDisconnect.
   const con=(d&&d.conexion)||{};
   const c=con[rival]||{};
-  if(c.online===true) return 'presente';
-  if(c.evento==='desconexion') return 'desconectado';
-  if(c.evento==='salida') return 'no_presente';
   const pa=(d&&d.post_abandono)||{};
   const salida=pa.salida||{};
-  return salida[rival]===true ? 'no_presente' : 'desconectado';
+  const retorno=pa.retorno||{};
+
+  if(c.online===true) return 'presente';
+  if(salida[rival]===true) return 'no_presente';
+  if(retorno[rival]===true && pa.ultimo_retorno_rol===rival) return 'no_presente';
+  if(c.evento==='salida') return 'no_presente';
+  if(c.evento==='desconexion') return 'desconectado';
+  if(pa.ultimo_salida_rol===rival && Number(pa.ultimo_salida_ts||0)>0) return 'no_presente';
+  return 'desconectado';
 }
 function _datosModalPresencia(estado){
   if(estado==='presente') return {
@@ -2196,7 +2210,7 @@ function _mostrarModalPresenciaVivo(estado){
   UI.modal(datos.titulo,datos.texto,'ACEPTAR',()=>{_modalPresenciaVivo=null;});
 }
 function _procesarModalPostAbandonoVivo(d,miRol){
-  // V1.4 · AUTORIDAD ÚNICA Y ESTADO SEPARADO.
+  // V1.5 · AUTORIDAD ÚNICA Y ESTADO SEPARADO.
   // El resultado de la partida y la presencia posterior del oponente son DOS
   // hechos distintos. El primero no se sustituye por el segundo hasta que
   // exista un cambio REAL de presencia.
@@ -2344,6 +2358,8 @@ function _mostrarModalOponenteAbandono(ts, miRol, estadoFuente){
   const txtAbandonador=document.getElementById('abandono-oponente-ganador-txt');
   if(txtAbandonador) txtAbandonador.textContent=nombreAbandonador;
   const rival=miRol==='X'?'O':'X';
+  // V1.5 · El resultado conserva el estado de presencia del snapshot que lo abrió.
+  // Ese valor es solo la referencia para detectar el primer cambio posterior.
   _modalAbandonoOponenteEstado=_estadoPresenciaOponente(estadoFuente||_ultimoD||{},rival);
   _modalAbandonoOponenteTipo='resultado_abandono';
   _modalAbandonoOponenteAbierto=true;
