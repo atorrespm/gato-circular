@@ -2169,6 +2169,7 @@ let _modalAbandonoOponenteTipo = null;
 let _modalAbandonoOponenteClave = null;
 let _postAbandonoEstadoObservado = null;
 function _estadoPresenciaOponente(d, rival){
+  // V1.7
   // V1.5 · La presencia posterior al abandono tiene una jerarquía temporal.
   // Una SALIDA VOLUNTARIA es más específica que cualquier marca offline
   // residual que pueda llegar después por onDisconnect.
@@ -2178,12 +2179,24 @@ function _estadoPresenciaOponente(d, rival){
   const salida=pa.salida||{};
   const retorno=pa.retorno||{};
 
+  // V1.7 · La señal de presencia debe respetar el ÚLTIMO evento real.
+  // `retorno[rival]=true` pertenece a la sesión y permanece después de que
+  // el jugador vuelve; no puede usarse para convertir una desconexión posterior
+  // en 'NO PRESENTE'.
   if(c.online===true) return 'presente';
-  if(salida[rival]===true) return 'no_presente';
-  if(retorno[rival]===true && pa.ultimo_retorno_rol===rival) return 'no_presente';
-  if(c.evento==='salida') return 'no_presente';
+
+  // SALIDA VOLUNTARIA: tiene prioridad sobre cualquier marca offline residual.
+  if(c.evento==='salida' || salida[rival]===true) return 'no_presente';
+
+  // DESCONEXIÓN REAL: si el jugador ya había regresado y luego cerró la
+  // pestaña, `retorno=true` sigue existiendo, pero el evento actual manda.
   if(c.evento==='desconexion') return 'desconectado';
+
   if(pa.ultimo_salida_rol===rival && Number(pa.ultimo_salida_ts||0)>0) return 'no_presente';
+
+  // Solo usamos retorno como evidencia de que el jugador está fuera del
+  // tablero cuando no existe un evento posterior más específico.
+  if(retorno[rival]===true && pa.ultimo_retorno_rol===rival) return 'no_presente';
   return 'desconectado';
 }
 function _datosModalPresencia(estado){
