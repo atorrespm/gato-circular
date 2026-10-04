@@ -1605,7 +1605,10 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.post_abandono
     // Este evento es distinto del aviso que recibe el rival. Se consume una
     // sola vez por jugador y nunca vuelve a interpretar el abandono original.
     const infoVistoPropia=pa.retorno_info_visto||{};
-    if(retornoPropio[miRol]===true && infoVistoPropia[miRol]!==true){
+    const ultimoRetornoPropioTs=Number(pa.ultimo_retorno_ts||0);
+    const abandonoOriginalTs=Number(pa.abandono_original_ts||d.abandono.ts||0);
+    if(retornoPropio[miRol]===true && infoVistoPropia[miRol]!==true &&
+       pa.ultimo_retorno_rol===miRol && ultimoRetornoPropioTs>abandonoOriginalTs){
       const rivalOnline=!!(con[rival]&&con[rival].online===true);
       // V65.6 · No estar presente y estar desconectado son estados distintos.
       // Si el rival salió voluntariamente al lobby, post_abandono.salida[rival]
@@ -2226,7 +2229,6 @@ function _mostrarModalPresenciaVivo(estado){
 }
 function _procesarModalPostAbandonoVivo(d,miRol){
   // V1.5 · AUTORIDAD ÚNICA Y ESTADO SEPARADO.
-  // V1.8 · Microcirugía: retorno propio después de aviso de abandono consumido.
   // El resultado de la partida y la presencia posterior del oponente son DOS
   // hechos distintos. El primero no se sustituye por el segundo hasta que
   // exista un cambio REAL de presencia.
@@ -2277,21 +2279,6 @@ function _procesarModalPostAbandonoVivo(d,miRol){
   // de presencia. El evento de abandono original está consumido, pero la
   // presencia del rival sigue siendo un estado VIVO que puede cambiar.
   const avisoOriginal=pa.abandono_aviso_visto||{};
-
-  // V1.8 · RETORNO PROPIO DESPUÉS DE HABER CONSUMIDO EL ABANDONO.
-  // Esta comprobación va DELANTE de la vigilancia genérica, pero DESPUÉS de
-  // la primera apertura de VICTORIA POR ABANDONO. Así no roba el primer modal
-  // y tampoco permite que abandono_aviso_visto=true absorba un retorno nuevo.
-  // El jugador que vuelve necesita saber inmediatamente si su rival está
-  // presente, no presente o desconectado.
-  const retornoInfoVisto=pa.retorno_info_visto||{};
-  if(ret[miRol]===true && retornoInfoVisto[miRol]!==true && avisoOriginal[miRol]===true){
-    const estadoRetornoPropio=estadoActual;
-    _postAbandonoEstadoObservado=estadoRetornoPropio;
-    void update(_salaRef,{['post_abandono/retorno_info_visto/'+miRol]:true}).catch(()=>{});
-    _mostrarModalPresenciaVivo(estadoRetornoPropio);
-    return true;
-  }
   if(_modalAbandonoOponenteClave===clave || avisoOriginal[miRol]===true){
     if(_postAbandonoEstadoObservado===null){
       _postAbandonoEstadoObservado=estadoActual;
