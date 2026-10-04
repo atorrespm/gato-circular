@@ -2167,6 +2167,7 @@ let _modalAbandonoOponenteAbierto = false;
 let _modalAbandonoOponenteEstado = null;
 let _modalAbandonoOponenteTipo = null;
 let _modalAbandonoOponenteClave = null;
+let _postAbandonoEstadoObservado = null;
 function _estadoPresenciaOponente(d, rival){
   // V1.5 · La presencia posterior al abandono tiene una jerarquía temporal.
   // Una SALIDA VOLUNTARIA es más específica que cualquier marca offline
@@ -2200,6 +2201,7 @@ function _datosModalPresencia(estado){
   };
 }
 function _mostrarModalPresenciaVivo(estado){
+  _postAbandonoEstadoObservado=estado;
   const datos=_datosModalPresencia(estado);
   UI.cerrarModal();
   _ocultarModalOponenteAbandono();
@@ -2257,16 +2259,28 @@ function _procesarModalPostAbandonoVivo(d,miRol){
     return true;
   }
 
-  // Si el jugador cerró el modal de resultado, no lo reabrimos por cada
-  // snapshot. La marca persistente mantiene consumido el evento original.
+  // Si el jugador ya aceptó/cerró el modal, NO debemos perder la vigilancia
+  // de presencia. El evento de abandono original está consumido, pero la
+  // presencia del rival sigue siendo un estado VIVO que puede cambiar.
   const avisoOriginal=pa.abandono_aviso_visto||{};
-  if(_modalAbandonoOponenteClave===clave || avisoOriginal[miRol]===true) return true;
+  if(_modalAbandonoOponenteClave===clave || avisoOriginal[miRol]===true){
+    if(_postAbandonoEstadoObservado===null){
+      _postAbandonoEstadoObservado=estadoActual;
+      return true;
+    }
+    if(estadoActual!==_postAbandonoEstadoObservado){
+      _mostrarModalPresenciaVivo(estadoActual);
+      return true;
+    }
+    return true;
+  }
 
   // PRIMERA APERTURA: mostrar SIEMPRE el resultado de la partida.
   // No usamos estadoActual como tipo de modal. Lo guardamos únicamente como
   // referencia para detectar el PRIMER cambio de presencia posterior.
   _modalAbandonoOponenteClave=clave;
   _modalAbandonoOponenteEstado=estadoActual;
+  _postAbandonoEstadoObservado=estadoActual;
   _modalAbandonoOponenteTipo='resultado_abandono';
   UI.cerrarModal();
   _mostrarModalOponenteAbandono(abandono.ts,miRol,d);
@@ -2316,6 +2330,7 @@ function _mostrarModalOponenteAbandono(ts, miRol, estadoFuente){
     document.body.appendChild(ov);
     document.getElementById('btn-ab-volver')?.addEventListener('click',async()=>{
       ov.style.display='none';
+      _postAbandonoEstadoObservado=_estadoPresenciaOponente(_ultimoD||{},miRol==='X'?'O':'X');
       _modalAbandonoOponenteAbierto=false;
       _modalAbandonoOponenteEstado=null;
       _modalAbandonoOponenteTipo=null;
@@ -2345,6 +2360,7 @@ function _mostrarModalOponenteAbandono(ts, miRol, estadoFuente){
     });
     document.getElementById('btn-ab-salir')?.addEventListener('click',async()=>{
       ov.style.display='none';
+      _postAbandonoEstadoObservado=_estadoPresenciaOponente(_ultimoD||{},miRol==='X'?'O':'X');
       _modalAbandonoOponenteAbierto=false;
       _modalAbandonoOponenteEstado=null;
       _modalAbandonoOponenteTipo=null;
