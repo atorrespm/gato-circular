@@ -1551,10 +1551,11 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.post_abandono
     const rival=miRol==='X'?'O':'X';
     const ambosPresentes=!!(con.X&&con.O&&con.X.online===true&&con.O.online===true&&ret.X===true&&ret.O===true);
     const puedeContinuar=ambosPresentes && d.fin_sesion!==true;
-    // V1.1 · Si el oponente cambia de estado mientras un modal de presencia
-    // permanece abierto, ese modal se sustituye inmediatamente por el estado
-    // actual. Nunca dejamos información de presencia obsoleta en pantalla.
-    if(_sincronizarModalPresenciaVivo(d,miRol)) return;
+    // V1.3 · AUTORIDAD ÚNICA DEL MODAL POST-ABANDONO.
+    // Esta es la única puerta que decide qué modal debe permanecer visible.
+    // Si ya existe un modal, solo lo reemplaza cuando cambia el estado vivo
+    // del oponente. Si el estado no cambia, no vuelve a pintar nada.
+    if(_procesarModalPostAbandonoVivo(d,miRol)) return;
     // V70 · ESTADO VISUAL PRIMERO: el terminal continuable no puede quedar
     // mostrando el texto inicial `Conectando...` mientras se procesan avisos
     // secundarios de presencia. Pintamos inmediatamente el estado estable;
@@ -1574,19 +1575,9 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.post_abandono
     // de entregar cualquiera de los modales de presencia.
     const retornoPropio=ret||{};
 
-    // 1) UNA SOLA VEZ: resultado original por abandono del rival.
-    const avisoOriginal=pa.abandono_aviso_visto||{};
-    const claveAbandonoOriginal='original-abandono|'+String(pa.abandono_original_ts||d.abandono.ts||'')+'|'+miRol;
-    if(pa.abandonador!==miRol && avisoOriginal[miRol]!==true && _abandonoOponenteAvisoVisto!==claveAbandonoOriginal){
-      // V65.1: mostrar el aviso ANTES del update. El update de Firebase puede
-      // generar otro snapshot inmediatamente; la marca local evita duplicados.
-      _abandonoOponenteAvisoVisto=claveAbandonoOriginal;
-      UI.cerrarModal();
-      _ocultarModalOponenteAbandono();
-      _mostrarModalOponenteAbandono(d.abandono.ts,miRol);
-      try{ await update(_salaRef,{['post_abandono/abandono_aviso_visto/'+miRol]:true}); }catch(e){}
-      return;
-    }
+    // V1.3 · La autoridad única ya procesó el modal post-abandono al entrar
+    // en esta rama. Si devolvió true, el snapshot queda consumido aquí.
+    if(_modalAbandonoOponenteAbierto || _modalPresenciaVivo) return;
 
     // 2) UNA SOLA VEZ: una solicitud bilateral ACTUAL tiene prioridad absoluta
     // sobre cualquier aviso secundario de retorno. Esto es deliberado: si un
@@ -1715,7 +1706,7 @@ if(d.abandono && !d.fin_por_desconexion && d.abandono.abandonador !== miRol){
     });
     return;
   }
-  _mostrarModalOponenteAbandono(d.abandono.ts, miRol);
+  _procesarModalPostAbandonoVivo(d,miRol);
   // V44: una vez confirmado que el rival ya abandonó, ABANDONAR es una salida
   // local definitiva. No debe depender de que otra rama vuelva a instalar
   // el handler general ni de que Firebase conserve el estado de la partida.
@@ -2195,38 +2186,58 @@ function _mostrarModalPresenciaVivo(estado){
   _modalPresenciaVivo=estado;
   UI.modal(datos.titulo,datos.texto,'ACEPTAR',()=>{_modalPresenciaVivo=null;});
 }
-function _sincronizarModalPresenciaVivo(d,miRol){
+function _procesarModalPostAbandonoVivo(d,miRol){
+  // V1.3 · AUTORIDAD ÚNICA.
+  // Todas las rutas de estado terminado pasan por aquí. No existen dos
+  // funciones compitiendo por abrir/cerrar el modal de abandono.
+  const abandono=d&&d.abandono;
+  if(!abandono || abandono.abandonador===miRol) return false;
+
   const rival=miRol==='X'?'O':'X';
   const estado=_estadoPresenciaOponente(d,rival);
-  const modalAbierto=_modalAbandonoOponenteAbierto || !!_modalPresenciaVivo;
-  if(!modalAbierto) return false;
-
-  // V1.2 · El modal es una representación VIVA del estado del oponente.
-  // Si el estado cambió, sustituimos el modal inmediatamente: no se espera
-  // a que el jugador pulse ACEPTAR. Esto reproduce exactamente la mecánica
-  // ya validada entre OPONENTE NO PRESENTE y OPONENTE PRESENTE.
-  if(_modalAbandonoOponenteAbierto && _modalAbandonoOponenteEstado!==estado){
-    _mostrarModalPresenciaVivo(estado);
-    return true;
-  }
-  if(_modalPresenciaVivo && _modalPresenciaVivo!==estado){
-    _mostrarModalPresenciaVivo(estado);
-    return true;
-  }
-
-  // Si el estado no cambió, el modal actual sigue siendo correcto y debe
-  // permanecer abierto. Pero una Nueva Partida bilateral actual tiene
-  // prioridad sobre un modal secundario de presencia.
   const pa=d.post_abandono||{};
   const ret=pa.retorno||{};
   const con=d.conexion||{};
   const ambosPresentes=!!(con.X&&con.O&&con.X.online===true&&con.O.online===true&&ret.X===true&&ret.O===true);
   const puedeContinuar=ambosPresentes && d.fin_sesion!==true;
-  if(puedeContinuar && d.nueva_partida_solicitud) return false;
 
-  // Evita que la misma fotografía de Firebase vuelva a ejecutar las ramas
-  // de aviso que originalmente abrieron el modal y lo reemplacen en seguida.
+  // Una Nueva Partida bilateral actual tiene prioridad sobre el aviso/modal
+  // secundario. La autoridad devuelve false para que la rama superior pueda
+  // procesar esa solicitud.
+  if((!_modalAbandonoOponenteAbierto && !_modalPresenciaVivo) && puedeContinuar && d.nueva_partida_solicitud){
+    return false;
+  }
+
+  // Si ya hay un modal abierto, este bloque es el ÚNICO que puede sustituirlo.
+  // Mismo estado = no tocar el DOM. Estado diferente = reemplazo inmediato.
+  if(_modalAbandonoOponenteAbierto || _modalPresenciaVivo){
+    const estadoActual=_modalAbandonoOponenteAbierto
+      ? _modalAbandonoOponenteEstado
+      : _modalPresenciaVivo;
+    if(estadoActual===estado) return true;
+    _mostrarModalPresenciaVivo(estado);
+    return true;
+  }
+
+  // El modal fue cerrado por el usuario: no lo reabrimos eternamente. La marca
+  // local se vincula al abandono concreto, no a un simple timestamp reutilizado.
+  const clave='original-abandono|'+String(pa.abandono_original_ts||abandono.ts||'')+'|'+miRol;
+  const avisoOriginal=pa.abandono_aviso_visto||{};
+  if(_abandonoOponenteAvisoVisto===clave || avisoOriginal[miRol]===true) return true;
+
+  // Primera y única apertura del resultado original por abandono.
+  _abandonoOponenteAvisoVisto=clave;
+  UI.cerrarModal();
+  _mostrarModalOponenteAbandono(abandono.ts,miRol,d);
+  void update(_salaRef,{['post_abandono/abandono_aviso_visto/'+miRol]:true}).catch(()=>{});
   return true;
+}
+
+// Compatibilidad interna: ninguna ruta nueva debe usar esta función para
+// decidir el modal. Se conserva solo como alias de transición para código
+// histórico que pudiera consultarla.
+function _sincronizarModalPresenciaVivo(d,miRol){
+  return _procesarModalPostAbandonoVivo(d,miRol);
 }
 
 function _instalarSalidaDirectaTrasAbandono(){
@@ -2248,7 +2259,7 @@ function _instalarSalidaDirectaTrasAbandono(){
   // (instalarHandlersAbandonoSeparados). Esta función solo declara el contexto.
 }
 
-function _mostrarModalOponenteAbandono(ts, miRol){
+function _mostrarModalOponenteAbandono(ts, miRol, estadoFuente){
   let ov=document.getElementById('abandono-oponente-overlay');
   if(!ov){
     ov=document.createElement('div');
@@ -2303,7 +2314,8 @@ function _mostrarModalOponenteAbandono(ts, miRol){
   const nombreAbandonador = (_ultimoD && _ultimoD.abandono && _ultimoD.abandono.abandonador==='X') ? 'Jugador 1 (X)' : 'Jugador 2 (O)';
   const txtAbandonador=document.getElementById('abandono-oponente-ganador-txt');
   if(txtAbandonador) txtAbandonador.textContent=nombreAbandonador;
-  _modalAbandonoOponenteEstado='no_presente';
+  const rival=miRol==='X'?'O':'X';
+  _modalAbandonoOponenteEstado=_estadoPresenciaOponente(estadoFuente||_ultimoD||{},rival);
   _modalAbandonoOponenteAbierto=true;
   _modalPresenciaVivo=null;
   ov.style.display='flex';
@@ -2371,10 +2383,10 @@ if(abandono){
   if(abandono.abandonador !== miRol){
     const btnAb = document.getElementById('btn-abandonar');
     if(btnAb){ btnAb.disabled=false; btnAb.style.opacity=''; btnAb.style.pointerEvents=''; }
-    if(abandono.abandonador !== miRol && _abandonoOponenteAvisoVisto !== abandono.ts){
-      _mostrarModalOponenteAbandono(abandono.ts, miRol);
-      _abandonoOponenteAvisoVisto = abandono.ts;
-    }
+    // V1.3 · Segunda puerta eliminada: esta ruta ya no decide el modal.
+    // La autoridad única se ejecuta antes y mantiene el modal vivo sin
+    // reabrirlo ni reemplazarlo mientras el estado del rival no cambie.
+    _procesarModalPostAbandonoVivo(d,miRol);
     UI.setMsg('Tu oponente abandonó. Eres el ganador.');
   } else if(!esGanador){
     _ocultarModalOponenteAbandono();
