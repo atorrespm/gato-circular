@@ -2187,10 +2187,14 @@ function _estadoPresenciaOponente(d, rival){
   // el jugador vuelve; no puede usarse para convertir una desconexión posterior
   // en 'NO PRESENTE'.
   if(c.online===true) return 'presente';
+  // V1.1 · El ÚLTIMO evento observado manda. Si onDisconnect marcó
+  // 'desconexion' después de un 'salida' previo, el jugador cerró la pestaña:
+  // está DESCONECTADO, no "en el lobby". Los registros históricos de salida
+  // no pueden enmascarar una desconexión real posterior.
 
   // SALIDA VOLUNTARIA: tiene prioridad sobre cualquier marca offline residual.
-  if(c.evento==='salida' || salida[rival]===true) return 'no_presente';
-
+  if(c.evento==='salida') return 'no_presente';
+    // Fallbacks para estados sin `evento` explícito (compatibilidad).
   // DESCONEXIÓN REAL: si el jugador ya había regresado y luego cerró la
   // pestaña, `retorno=true` sigue existiendo, pero el evento actual manda.
   if(c.evento==='desconexion') return 'desconectado';
@@ -2228,10 +2232,9 @@ function _mostrarModalPresenciaVivo(estado){
   UI.modal(datos.titulo,datos.texto,'ACEPTAR',()=>{_modalPresenciaVivo=null;});
 }
 function _procesarModalPostAbandonoVivo(d,miRol){
-  // V1.5 · AUTORIDAD ÚNICA Y ESTADO SEPARADO.
-  // El resultado de la partida y la presencia posterior del oponente son DOS
-  // hechos distintos. El primero no se sustituye por el segundo hasta que
-  // exista un cambio REAL de presencia.
+  // V1.1 · AUTORIDAD ÚNICA DEL MODAL POST-ABANDONO, con dos hechos separados:
+  //   1) RESULTADO del abandono (una sola vez por cliente y por abandono).
+  //   2) PRESENCIA VIVA del oponente (se actualiza cada vez que cambia).
   const abandono=d&&d.abandono;
   if(!abandono || abandono.abandonador===miRol) return false;
 
@@ -2243,66 +2246,63 @@ function _procesarModalPostAbandonoVivo(d,miRol){
   const ambosPresentes=!!(con.X&&con.O&&con.X.online===true&&con.O.online===true&&ret.X===true&&ret.O===true);
   const puedeContinuar=ambosPresentes && d.fin_sesion!==true;
   const clave='original-abandono|'+String(pa.abandono_original_ts||abandono.ts||'')+'|'+miRol;
+  const avisoOriginal=pa.abandono_aviso_visto||{};
+  const yaMostrado=avisoOriginal[miRol]===true;
 
-  // Una solicitud bilateral actual pertenece a la siguiente partida, no al
-  // modal de presencia. Solo se entrega si no hay un modal vivo que deba
-  // actualizarse.
+  // (1) PRIMERA APERTURA. Si este cliente nunca ha visto el resultado de este
+  // abandono, mostrarlo AHORA. Es el evento más importante y no debe quedar
+  // enmascarado por el estado de presencia del oponente.
+  if(_modalAbandonoOponenteClave !== clave && !yaMostrado){
+    _modalAbandonoOponenteClave   = clave;
+    _modalAbandonoOponenteEstado  = estadoActual;
+    _postAbandonoEstadoObservado  = estadoActual;
+    _modalAbandonoOponenteTipo    = 'resultado_abandono';
+    _modalAbandonoOponenteAbierto = true;
+    _modalPresenciaVivo           = null;
+    UI.cerrarModal();
+    _mostrarModalOponenteAbandono(abandono.ts, miRol, d);
+    // Marcamos el aviso como consumido por este cliente. Si el modal se cierra,
+    // el siguiente cambio de presencia se gestionará como modal de presencia.
+    void update(_salaRef,{['post_abandono/abandono_aviso_visto/'+miRol]:true}).catch(()=>{});
+    return true;
+  }
+
+  // Si hay una solicitud bilateral activa y ningún modal vivo que actualizar,
+  // cedemos el control al flujo de Nueva Partida.
   if(!_modalAbandonoOponenteAbierto && !_modalPresenciaVivo && puedeContinuar && d.nueva_partida_solicitud){
     return false;
   }
 
-  // MODAL VIVO: si el resultado original sigue abierto, NO se reemplaza por
-  // 'NO PRESENTE' simplemente porque el abandono dejó al rival en el lobby.
-  // El resultado solo cambia cuando la presencia posterior cambia respecto del
-  // estado que existía al abrir el modal.
+  // (2a) El modal de victoria sigue abierto. Solo lo reemplazamos si la
+  // presencia del oponente ha cambiado realmente desde que se abrió.
   if(_modalAbandonoOponenteAbierto && _modalAbandonoOponenteTipo==='resultado_abandono'){
-    if(_modalAbandonoOponenteClave!==clave){
-      _modalAbandonoOponenteClave=clave;
-      _modalAbandonoOponenteEstado=estadoActual;
-      return true;
-    }
-    if(estadoActual===_modalAbandonoOponenteEstado) return true;
+    if(estadoActual === _modalAbandonoOponenteEstado) return true;
     _mostrarModalPresenciaVivo(estadoActual);
     return true;
   }
 
-  // Si ya mostramos un modal de presencia, este es el único punto que puede
-  // cambiarlo en vivo. Mismo estado = no tocar el DOM.
+  // (2b) El modal de presencia está abierto. Actualizarlo si cambia el estado.
   if(_modalPresenciaVivo || (_modalAbandonoOponenteAbierto && _modalAbandonoOponenteTipo==='presencia')){
-    const estadoMostrado=_modalPresenciaVivo || _modalAbandonoOponenteEstado;
-    if(estadoMostrado===estadoActual) return true;
+    const estadoMostrado = _modalPresenciaVivo || _modalAbandonoOponenteEstado;
+    if(estadoMostrado === estadoActual) return true;
     _mostrarModalPresenciaVivo(estadoActual);
     return true;
   }
 
-  // Si el jugador ya aceptó/cerró el modal, NO debemos perder la vigilancia
-  // de presencia. El evento de abandono original está consumido, pero la
-  // presencia del rival sigue siendo un estado VIVO que puede cambiar.
-  const avisoOriginal=pa.abandono_aviso_visto||{};
-  if(_modalAbandonoOponenteClave===clave || avisoOriginal[miRol]===true){
-    if(_postAbandonoEstadoObservado===null){
-      _postAbandonoEstadoObservado=estadoActual;
-      return true;
-    }
-    if(estadoActual!==_postAbandonoEstadoObservado){
-      _mostrarModalPresenciaVivo(estadoActual);
-      return true;
-    }
+  // (2c) Ningún modal abierto: comparamos con el último estado observado para
+  // detectar cambios posteriores y notificarlos.
+  if(_postAbandonoEstadoObservado === null){
+    _postAbandonoEstadoObservado = estadoActual;
     return true;
   }
 
-  // PRIMERA APERTURA: mostrar SIEMPRE el resultado de la partida.
-  // No usamos estadoActual como tipo de modal. Lo guardamos únicamente como
-  // referencia para detectar el PRIMER cambio de presencia posterior.
-  _modalAbandonoOponenteClave=clave;
-  _modalAbandonoOponenteEstado=estadoActual;
-  _postAbandonoEstadoObservado=estadoActual;
-  _modalAbandonoOponenteTipo='resultado_abandono';
-  UI.cerrarModal();
-  _mostrarModalOponenteAbandono(abandono.ts,miRol,d);
-  void update(_salaRef,{['post_abandono/abandono_aviso_visto/'+miRol]:true}).catch(()=>{});
+  if(estadoActual !== _postAbandonoEstadoObservado){
+    _mostrarModalPresenciaVivo(estadoActual);
+    return true;
+  }
   return true;
-}
+}  
+
 
 // Compatibilidad interna: ninguna ruta nueva debe usar esta función para
 // decidir el modal. Se conserva solo como alias de transición para código
