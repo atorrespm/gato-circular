@@ -2172,37 +2172,37 @@ let _modalAbandonoOponenteTipo = null;
 let _modalAbandonoOponenteClave = null;
 let _postAbandonoEstadoObservado = null;
 function _estadoPresenciaOponente(d, rival){
-  // V1.7
-  // V1.5 · La presencia posterior al abandono tiene una jerarquía temporal.
-  // Una SALIDA VOLUNTARIA es más específica que cualquier marca offline
-  // residual que pueda llegar después por onDisconnect.
   const con=(d&&d.conexion)||{};
   const c=con[rival]||{};
   const pa=(d&&d.post_abandono)||{};
   const salida=pa.salida||{};
   const retorno=pa.retorno||{};
 
-  // V1.7 · La señal de presencia debe respetar el ÚLTIMO evento real.
-  // `retorno[rival]=true` pertenece a la sesión y permanece después de que
-  // el jugador vuelve; no puede usarse para convertir una desconexión posterior
-  // en 'NO PRESENTE'.
   if(c.online===true) return 'presente';
-  // V1.1 · El ÚLTIMO evento observado manda. Si onDisconnect marcó
-  // 'desconexion' después de un 'salida' previo, el jugador cerró la pestaña:
-  // está DESCONECTADO, no "en el lobby". Los registros históricos de salida
-  // no pueden enmascarar una desconexión real posterior.
 
-  // SALIDA VOLUNTARIA: tiene prioridad sobre cualquier marca offline residual.
+  // V1.2 · Distinguir "salida voluntaria (lobby)" de "pestaña cerrada".
+  // El onDisconnect de Firebase sobrescribe `evento` con 'desconexion' cuando
+  // el WebSocket se cierra. Al recargar la página (abandonar → reload), el
+  // socket se cae unos milisegundos y ese onDisconnect se dispara, aunque el
+  // jugador NO haya cerrado el navegador: está en el lobby.
+  // Usamos el timestamp del último 'salida' como referencia temporal: si el
+  // 'desconexion' ocurre en la misma ventana corta, lo tratamos como artefacto
+  // del recargar y seguimos en 'no_presente'. Solo aceptamos 'desconectado'
+  // cuando pasó tiempo suficiente (cierre real de pestaña desde el lobby).
+  const salidaTs   = Number(pa.ultimo_salida_ts || pa.abandono_original_ts || 0);
+  const conexionTs = Number(c.ts || 0);
+
+  if(c.evento==='desconexion'){
+    if(salidaTs > 0 && conexionTs > 0){
+      const gapMs = conexionTs - salidaTs;
+      if(gapMs >= 0 && gapMs < 10000) return 'no_presente';
+    }
+    return 'desconectado';
+  }
+
   if(c.evento==='salida') return 'no_presente';
-    // Fallbacks para estados sin `evento` explícito (compatibilidad).
-  // DESCONEXIÓN REAL: si el jugador ya había regresado y luego cerró la
-  // pestaña, `retorno=true` sigue existiendo, pero el evento actual manda.
-  if(c.evento==='desconexion') return 'desconectado';
-
-  if(pa.ultimo_salida_rol===rival && Number(pa.ultimo_salida_ts||0)>0) return 'no_presente';
-
-  // Solo usamos retorno como evidencia de que el jugador está fuera del
-  // tablero cuando no existe un evento posterior más específico.
+  if(salida[rival]===true) return 'no_presente';
+  if(pa.ultimo_salida_rol===rival && salidaTs>0) return 'no_presente';
   if(retorno[rival]===true && pa.ultimo_retorno_rol===rival) return 'no_presente';
   return 'desconectado';
 }
@@ -5172,6 +5172,27 @@ $('lbtn-unirse').onclick  = ()=>{ const inp=$('lobby-input'); if(inp) inp.value=
 $('lobby-input').oninput  = e=>{ e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,''); };
 const _sesionPendienteInicial=_leerSesion();
 _programarCaducidadSesionLocal();
+
+// ── V1.2 · INICIO DEL BLOQUE NUEVO ──
+// Si este navegador tiene una sesión pendiente y está en el lobby
+// (por ejemplo, después de abandonar una partida), registramos un onDisconnect
+// ligero sobre la sala para que el rival reciba el aviso cuando cerremos la
+// pestaña realmente. No tocamos nada más de la sala: solo dejamos armado el
+// disparador de cierre de conexión.
+if(_sesionPendienteInicial && _sesionPendienteInicial.sala && _sesionPendienteInicial.rol){
+  try{
+    const conexionRefLobby = ref(db,'salas/'+_sesionPendienteInicial.sala+'/conexion/'+_sesionPendienteInicial.rol);
+    onDisconnect(conexionRefLobby).set({
+      online:false,
+      ts:serverTimestamp(),
+      evento:'desconexion'
+    });
+  }catch(e){
+    console.warn('[V1.2] no se pudo registrar onDisconnect del lobby:',e);
+  }
+}
+// ── V1.2 · FIN DEL BLOQUE NUEVO ──
+
 if(_sesionPendienteInicial && _sesionPendienteInicial.sala && _sesionPendienteInicial.sessionId){
   const rb=$('lbtn-retomar'), rs=$('lst-retomar');
   if(rb) rb.style.display='none';
