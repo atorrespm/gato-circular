@@ -1003,9 +1003,6 @@ function ocultarLatenciaVisual(){
 function setStats(vX,vO){ $('stat-x').textContent=vX; $('stat-o').textContent=vO; }
 let _cb=null;
 function modal(t,b,btn='ACEPTAR',cb=null){
-// V1.1: cualquier modal nuevo que no sea el modal de presencia vivo invalida
-// el seguimiento del modal de presencia anterior.
-_modalPresenciaVivo=null;
 $('modal-t').textContent=t; $('modal-b').textContent=b;
 $('btn-modal').textContent=btn;
 $('modal').style.display=$('overlay').style.display='block'; _cb=cb;
@@ -2163,36 +2160,30 @@ window._revisarNuevaPartida = _revisarNuevaPartida;
 // ── V21 · OPONENTE ABANDONA DESPUÉS DE UNA PARTIDA TERMINADA ─────────
 let _abandonoOponenteAvisoVisto = null;
 let _salidaTrasAbandono = false;
-// V1.1 · ESTADO VIVO DE PRESENCIA: los modales de presencia no pueden quedar
-// mostrando un estado antiguo si Firebase informa un cambio posterior.
-let _modalPresenciaVivo = null;
-let _modalAbandonoOponenteAbierto = false;
-let _modalAbandonoOponenteEstado = null;
-let _modalAbandonoOponenteTipo = null;
-let _modalAbandonoOponenteClave = null;
-let _postAbandonoEstadoObservado = null;
-function _estadoPresenciaOponente(d, rival){
-  // V1.3 · Estado explícito derivado del campo `evento`, sin heurísticas.
-  // Los 3 eventos posibles son:
-  //   'tablero'    → jugador en la sala jugando          → PRESENTE
-  //   'lobby'      → jugador en el lobby, navegador vivo → NO PRESENTE
-  //   'desconexion'→ navegador cerrado de verdad         → DESCONECTADO
-  const c=((d&&d.conexion)||{})[rival]||{};
-  const pa=(d&&d.post_abandono)||{};
-  const retorno=pa.retorno||{};
 
+// V1.5 · ESTADO ÚNICO DEL MODAL POST-ABANDONO.
+// Una sola variable describe qué modal está visible AHORA:
+//   null            → sin modal
+//   'victory'       → modal de victoria por abandono
+//   'presente'      → oponente presente en el tablero
+//   'no_presente'   → oponente no presente (en lobby)
+//   'desconectado'  → oponente cerró navegador
+let _modalPostAbandonoActual = null;
+
+function _estadoPresenciaOponente(d, rival){
+  // Derivación explícita desde `conexion[rival].evento`. Sin heurísticas.
+  //   'tablero'    → jugador en la sala jugando              → PRESENTE
+  //   'lobby'      → jugador en el lobby, navegador vivo     → NO PRESENTE
+  //   'desconexion'→ navegador cerrado de verdad             → DESCONECTADO
+  const c=((d&&d.conexion)||{})[rival]||{};
   if(c.evento==='tablero' && c.online===true) return 'presente';
   if(c.evento==='lobby')                       return 'no_presente';
   if(c.evento==='desconexion')                 return 'desconectado';
-
-  // Compatibilidad con registros antiguos que usaron 'salida'.
-  if(c.evento==='salida') return 'no_presente';
-
-  // Fallbacks para snapshots sin `evento` (no deberían ocurrir tras V1.3).
-  if(c.online===true) return 'presente';
-  if(retorno[rival]===true && pa.ultimo_retorno_rol===rival) return 'no_presente';
+  if(c.evento==='salida')                      return 'no_presente';
+  if(c.online===true)                          return 'presente';
   return 'desconectado';
 }
+
 function _datosModalPresencia(estado){
   if(estado==='presente') return {
     titulo:'🟢 OPONENTE PRESENTE EN EL TABLERO',
@@ -2207,130 +2198,96 @@ function _datosModalPresencia(estado){
     texto:'Tu oponente no está presente en el tablero en este momento. Puedes revisar la partida histórica. No podrás iniciar una Nueva Partida hasta que ambos jugadores estén presentes.'
   };
 }
-function _mostrarModalPresenciaVivo(estado){
-  _postAbandonoEstadoObservado=estado;
-  const datos=_datosModalPresencia(estado);
+
+function _cerrarModalPostAbandono(){
+  _modalPostAbandonoActual = null;
   UI.cerrarModal();
-  _ocultarModalOponenteAbandono();
-  _modalAbandonoOponenteAbierto=false;
-  _modalAbandonoOponenteEstado=estado;
-  _modalAbandonoOponenteTipo='presencia';
-  _modalPresenciaVivo=estado;
-  UI.modal(datos.titulo,datos.texto,'ACEPTAR',()=>{_modalPresenciaVivo=null;});
+  const ovAb = document.getElementById('abandono-oponente-overlay');
+  if(ovAb) ovAb.style.display = 'none';
 }
-function _procesarModalPostAbandonoVivo(d,miRol){
-  // V1.4 · AUTORIDAD ÚNICA DEL MODAL POST-ABANDONO, con dos hechos separados:
-  //   1) RESULTADO del abandono (una sola vez por cliente y por abandono).
-  //   2) PRESENCIA VIVA del oponente (se actualiza cada vez que cambia).
-  const abandono=d&&d.abandono;
-  if(!abandono || abandono.abandonador===miRol) return false;
 
-  const rival=miRol==='X'?'O':'X';
-  const estadoActual=_estadoPresenciaOponente(d,rival);
-  const pa=d.post_abandono||{};
-  const ret=pa.retorno||{};
-  const con=d.conexion||{};
-  const infoVisto=pa.retorno_info_visto||{};
-  const ambosPresentes=!!(con.X&&con.O&&con.X.online===true&&con.O.online===true&&ret.X===true&&ret.O===true);
-  const puedeContinuar=ambosPresentes && d.fin_sesion!==true;
-  const clave='original-abandono|'+String(pa.abandono_original_ts||abandono.ts||'')+'|'+miRol;
-  const avisoOriginal=pa.abandono_aviso_visto||{};
-  const yaMostrado=avisoOriginal[miRol]===true;
-
-  // V1.4 · REGLA ÚNICA DE AVISO AL RETOMAR.
-  // Si este jugador local acaba de retomar (retorno=true, ultimo_retorno_rol
-  // apunta a él) y aún no ha visto el aviso informativo, mostrarlo AHORA con
-  // el estado actual del rival. Sin importar el resto de la máquina.
-  // Esto garantiza simetría: quien retoma, siempre sabe dónde está el otro.
-  if(ret[miRol]===true && infoVisto[miRol]!==true &&
-     pa.ultimo_retorno_rol===miRol && Number(pa.ultimo_retorno_ts||0)>0){
-    void update(_salaRef,{['post_abandono/retorno_info_visto/'+miRol]:true}).catch(()=>{});
-    // También marcamos el aviso original como consumido por este jugador,
-    // porque ya conoce la existencia del abandono.
-    void update(_salaRef,{['post_abandono/abandono_aviso_visto/'+miRol]:true}).catch(()=>{});
-    _mostrarModalPresenciaVivo(estadoActual);
-    return true;
-  }
-
-  // (1) PRIMERA APERTURA. Si este cliente nunca ha visto el resultado de este
-  // abandono, mostrarlo AHORA. Es el evento más importante y no debe quedar
-  // enmascarado por el estado de presencia del oponente.
-  if(_modalAbandonoOponenteClave !== clave && !yaMostrado){
-    _modalAbandonoOponenteClave   = clave;
-    _modalAbandonoOponenteEstado  = estadoActual;
-    _postAbandonoEstadoObservado  = estadoActual;
-    _modalAbandonoOponenteTipo    = 'resultado_abandono';
-    _modalAbandonoOponenteAbierto = true;
-    _modalPresenciaVivo           = null;
+function _mostrarModalPresenciaVivo(estado){
+  // Dedup: si ya mostramos este mismo modal, no repintar.
+  if(_modalPostAbandonoActual === estado){
+    // Asegurar que el overlay está visible (por si otro modal lo tapó).
+    const ovAb = document.getElementById('abandono-oponente-overlay');
+    if(ovAb) ovAb.style.display = 'none';
     UI.cerrarModal();
-    _mostrarModalOponenteAbandono(abandono.ts, miRol, d);
-    // Marcamos el aviso como consumido por este cliente. Si el modal se cierra,
-    // el siguiente cambio de presencia se gestionará como modal de presencia.
-    void update(_salaRef,{['post_abandono/abandono_aviso_visto/'+miRol]:true}).catch(()=>{});
-    return true;
+    const datos = _datosModalPresencia(estado);
+    $('modal-t').textContent = datos.titulo;
+    $('modal-b').textContent = datos.texto;
+    $('btn-modal').textContent = 'ACEPTAR';
+    $('modal').style.display = $('overlay').style.display = 'block';
+    _cb = null;
+    return;
   }
+  _modalPostAbandonoActual = estado;
+  const datos = _datosModalPresencia(estado);
+  UI.cerrarModal();
+  const ovAb = document.getElementById('abandono-oponente-overlay');
+  if(ovAb) ovAb.style.display = 'none';
+  UI.modal(datos.titulo, datos.texto, 'ACEPTAR', () => {
+    _modalPostAbandonoActual = null;
+  });
+}
 
-  // Si hay una solicitud bilateral activa y ningún modal vivo que actualizar,
-  // cedemos el control al flujo de Nueva Partida.
-  if(!_modalAbandonoOponenteAbierto && !_modalPresenciaVivo && puedeContinuar && d.nueva_partida_solicitud){
-    return false;
-  }
+function _mostrarModalVictoryAbandon(abandono, miRol){
+  if(_modalPostAbandonoActual === 'victory') return;
+  _modalPostAbandonoActual = 'victory';
+  UI.cerrarModal();
+  _mostrarModalOponenteAbandono(abandono.ts, miRol, _ultimoD);
+}
 
-  // (2a) El modal de victoria sigue abierto. Solo lo reemplazamos si la
-  // presencia del oponente ha cambiado realmente desde que se abrió.
-  if(_modalAbandonoOponenteAbierto && _modalAbandonoOponenteTipo==='resultado_abandono'){
-    if(estadoActual === _modalAbandonoOponenteEstado) return true;
+function _procesarModalPostAbandonoVivo(d, miRol){
+  const abandono = d && d.abandono;
+  if(!abandono) return false;
+
+  const rival = miRol === 'X' ? 'O' : 'X';
+  const pa = d.post_abandono || {};
+  const avisoVisto = pa.abandono_aviso_visto || {};
+  const esAbandoner = abandono.abandonador === miRol;
+
+  // Caso 1: SOY EL ABANDONADOR.
+  // - Mientras estoy en el lobby (sin retomar): no veo ningún modal.
+  // - Una vez retomé (retorno[miRol]===true): veo el estado actual del rival.
+  if(esAbandoner){
+    const retorno = pa.retorno || {};
+    const retome = retorno[miRol] === true;
+    if(!retome){
+      // Si había un modal abierto, cerrarlo (no corresponde verlo en lobby).
+      if(_modalPostAbandonoActual !== null){
+        _cerrarModalPostAbandono();
+      }
+      return true;
+    }
+    const estadoActual = _estadoPresenciaOponente(d, rival);
     _mostrarModalPresenciaVivo(estadoActual);
     return true;
   }
 
-  // (2b) El modal de presencia está abierto. Actualizarlo si cambia el estado.
-  if(_modalPresenciaVivo || (_modalAbandonoOponenteAbierto && _modalAbandonoOponenteTipo==='presencia')){
-    const estadoMostrado = _modalPresenciaVivo || _modalAbandonoOponenteEstado;
-    if(estadoMostrado === estadoActual) return true;
-    _mostrarModalPresenciaVivo(estadoActual);
+  // Caso 2: SOY EL RIVAL DEL ABANDONADOR.
+  // - Si aún no vi el resultado del abandono → modal de victoria.
+  // - Si ya lo vi → modal con el estado actual del rival.
+  const yaVio = avisoVisto[miRol] === true;
+  if(!yaVio){
+    _mostrarModalVictoryAbandon(abandono, miRol);
+    void update(_salaRef, {['post_abandono/abandono_aviso_visto/'+miRol]: true}).catch(()=>{});
     return true;
   }
-
-  // (2c) Ningún modal abierto: comparamos con el último estado observado para
-  // detectar cambios posteriores y notificarlos.
-  if(_postAbandonoEstadoObservado === null){
-    _postAbandonoEstadoObservado = estadoActual;
-    return true;
-  }
-
-  if(estadoActual !== _postAbandonoEstadoObservado){
-    _mostrarModalPresenciaVivo(estadoActual);
-    return true;
-  }
+  const estadoActual = _estadoPresenciaOponente(d, rival);
+  _mostrarModalPresenciaVivo(estadoActual);
   return true;
-}  
-
-
-// Compatibilidad interna: ninguna ruta nueva debe usar esta función para
-// decidir el modal. Se conserva solo como alias de transición para código
-// histórico que pudiera consultarla.
-function _sincronizarModalPresenciaVivo(d,miRol){
-  return _procesarModalPostAbandonoVivo(d,miRol);
 }
 
 function _instalarSalidaDirectaTrasAbandono(){
   const b=document.getElementById('btn-abandonar');
   if(!b) return;
-  // V62: esta es una ruta NORMAL terminal. No convierte el botón normal
-  // en un botón histórico ni escribe flags históricos en su DOM.
   b.disabled=false; b.style.opacity=''; b.style.pointerEvents='auto';
-  // V65.0: después del abandono original, ABANDONAR vuelve a ser una acción
-  // de sesión. Debe pasar por abandonarPartida() para registrar el evento de
-  // salida posterior; salirLocalTrasAbandono() por sí solo solo desmontaba
-  // la interfaz y dejaba al rival sin un evento nuevo que procesar.
   b.dataset.salidaTrasAbandono='1';
   _salidaTrasAbandono=true;
   if(window.Juego && typeof Juego.marcarSalidaTrasAbandono==='function') {
     Juego.marcarSalidaTrasAbandono();
   }
-  // V65.4: NO reemplazamos onclick. El botón tiene un único listener central
-  // (instalarHandlersAbandonoSeparados). Esta función solo declara el contexto.
 }
 
 function _mostrarModalOponenteAbandono(ts, miRol, estadoFuente){
@@ -2347,21 +2304,14 @@ function _mostrarModalOponenteAbandono(ts, miRol, estadoFuente){
 <button id="btn-ab-salir" style="padding:10px 18px;background:linear-gradient(135deg,#7a0000,#cc2200);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;">ABANDONAR PARTIDA</button>
 </div></div>`;
     document.body.appendChild(ov);
-        document.getElementById('btn-ab-volver')?.addEventListener('click',async()=>{
+    document.getElementById('btn-ab-volver')?.addEventListener('click',async()=>{
       ov.style.display='none';
-      _postAbandonoEstadoObservado=_estadoPresenciaOponente(_ultimoD||{},miRol==='X'?'O':'X');
-      _modalAbandonoOponenteAbierto=false;
-      _modalAbandonoOponenteEstado=null;
-      _modalAbandonoOponenteTipo=null;
+      _modalPostAbandonoActual = null;
       UI.bloquearTablero(true);
       UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar'],true);
       UI.bloquearBtns(['btn-abandonar'],false);
       const b=document.getElementById('btn-abandonar');
       if(b) _instalarSalidaDirectaTrasAbandono();
-      // V1.4: al aceptar el resultado del abandono, el jugador local debe
-      // saber EXPLÍCITAMENTE dónde está el rival. Si el rival no está en el
-      // tablero (lobby o desconectado), mostramos el modal correspondiente.
-      // Si está presente, no es necesario un segundo modal.
       try{
         const snap=await get(_salaRef);
         if(snap.exists()){
@@ -2376,19 +2326,14 @@ function _mostrarModalOponenteAbandono(ts, miRol, estadoFuente){
           UI.setMsg(ambos2
             ? 'Ambos jugadores están presentes. Pueden solicitar una Nueva Partida para continuar la sesión.'
             : 'Tu oponente no está presente en el tablero. No es posible iniciar una Nueva Partida hasta que ambos jugadores estén presentes.');
-          // Si el rival no está en el tablero, informarlo con modal.
-          if(estadoRival !== 'presente'){
-            _mostrarModalPresenciaVivo(estadoRival);
-          }
+          // Mostrar modal con el estado actual del rival.
+          _mostrarModalPresenciaVivo(estadoRival);
         }
       }catch(e){}
     });
     document.getElementById('btn-ab-salir')?.addEventListener('click',async()=>{
       ov.style.display='none';
-      _postAbandonoEstadoObservado=_estadoPresenciaOponente(_ultimoD||{},miRol==='X'?'O':'X');
-      _modalAbandonoOponenteAbierto=false;
-      _modalAbandonoOponenteEstado=null;
-      _modalAbandonoOponenteTipo=null;
+      _modalPostAbandonoActual = null;
       _salidaTrasAbandono=true;
       try{ await Firebase.abandonarPartida(); }catch(e){ console.error('[V65.0] salida desde modal:',e); }
     });
@@ -2398,22 +2343,18 @@ function _mostrarModalOponenteAbandono(ts, miRol, estadoFuente){
   const nombreAbandonador = (_ultimoD && _ultimoD.abandono && _ultimoD.abandono.abandonador==='X') ? 'Jugador 1 (X)' : 'Jugador 2 (O)';
   const txtAbandonador=document.getElementById('abandono-oponente-ganador-txt');
   if(txtAbandonador) txtAbandonador.textContent=nombreAbandonador;
-  const rival=miRol==='X'?'O':'X';
-  // V1.5 · El resultado conserva el estado de presencia del snapshot que lo abrió.
-  // Ese valor es solo la referencia para detectar el primer cambio posterior.
-  _modalAbandonoOponenteEstado=_estadoPresenciaOponente(estadoFuente||_ultimoD||{},rival);
-  _modalAbandonoOponenteTipo='resultado_abandono';
-  _modalAbandonoOponenteAbierto=true;
-  _modalPresenciaVivo=null;
   ov.style.display='flex';
 }
+
 function _ocultarModalOponenteAbandono(){
   const ov=document.getElementById('abandono-oponente-overlay');
   if(ov) ov.style.display='none';
-  _modalAbandonoOponenteAbierto=false;
-  _modalAbandonoOponenteEstado=null;
-  _modalAbandonoOponenteTipo=null;
+  // Nota: NO reseteamos _modalPostAbandonoActual aquí, porque esta función
+  // se usa para "esconder el overlay" sin cambiar el estado lógico del modal.
 }
+
+window._ocultarModalOponenteAbandono = _ocultarModalOponenteAbandono;
+
 // V78 · El handler del botón ABANDONAR vive en el script type=module.
 // Exponemos explícitamente la función clásica en window para que el módulo
 // pueda invocarla sin depender de un binding léxico de otro script.
@@ -2747,7 +2688,8 @@ function reset(){
     _sorteoVisto=null; _victoriaVista=false; _reclamoKey=null; _partidaInicioVisto=null;
     _prioridadMostrada=null; _empateFinalKey=null; _resultadoReclamoVisto=null;
     _npConfirmacionVista=null; _npMaxAlertVisto=null; _npFinalizacionEnCurso=null; _abandonoVisto=null; _desconexionResultadoVisto=null; _abandonoPostDesconexionVisto=null; // V32.3.11: limpieza de estados terminales
-    _npFinalizacionEnCurso=null; _salidaTrasAbandono=false; _modalPresenciaVivo=null; _modalAbandonoOponenteAbierto=false; _modalAbandonoOponenteEstado=null; _modalAbandonoOponenteTipo=null; _modalAbandonoOponenteClave=null; _ultimoD=null; _modoHistoricoDesconexion=false; _modoContinuableTerminal=false; _historicoInicioTs=null;
+    _npFinalizacionEnCurso=null; _salidaTrasAbandono=false; _modalPostAbandonoActual=null; _ultimoD=null;
+_modoHistoricoDesconexion=false; _modoContinuableTerminal=false; _historicoInicioTs=null;
     window._empateYaMostrado=false;
 }
 return {aplicarEstado, encolarEstado, procesarTerminalDesconexion, procesarPartidaHistorica, setUltimoEstado:(d)=>{_ultimoD=d;}, reset, getUltimoEstado:()=>_ultimoD, isSalidaTrasAbandono:()=>_salidaTrasAbandono, marcarSalidaTrasAbandono:()=>{_salidaTrasAbandono=true;}, isModoHistoricoDesconexion:()=>_modoHistoricoDesconexion, marcarModoHistoricoDesconexion:()=>{_modoHistoricoDesconexion=true;_modoContinuableTerminal=false;}, isModoContinuableTerminal:()=>_modoContinuableTerminal, marcarModoContinuableTerminal:()=>{_modoContinuableTerminal=true;_modoHistoricoDesconexion=false;}, isModoHistorico:()=>_modoHistoricoDesconexion, marcarModoHistorico:()=>{_modoHistoricoDesconexion=true;_modoContinuableTerminal=false;}};
