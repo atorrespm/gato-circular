@@ -2309,65 +2309,7 @@ function _procesarModalPostAbandonoVivo(d, miRol){
 
   _mostrarModalPresenciaVivo(target);
   return true;
-}
-
-  // V1.9 · Si hay una solicitud bilateral de Nueva Partida ACTIVA, esta
-  // tiene prioridad absoluta. Devolvemos false para que aplicarEstado()
-  // continúe su curso y llegue a _revisarNuevaPartida(). También cerramos
-  // cualquier modal de presencia abierto para no tapar el bilateral.
-  const solicitudBil = d.nueva_partida_solicitud;
-  const solicitudActiva = solicitudBil &&
-    solicitudBil.estado !== 'rechazada' &&
-    solicitudBil.estado !== 'cancelada';
-  if(solicitudActiva){
-    if(_modalPostAbandonoMostrado && _modalPostAbandonoMostrado !== 'victory'){
-      _modalPostAbandonoMostrado = null;
-      UI.cerrarModal();
-      const ovAb = document.getElementById('abandono-oponente-overlay');
-      if(ovAb) ovAb.style.display = 'none';
-    }
-    return false;
-  }
-
-  const rival = miRol === 'X' ? 'O' : 'X';
-  const pa = d.post_abandono || {};
-  const esAbandoner = abandono.abandonador === miRol;
-  const retorno = pa.retorno || {};
-  const retome = retorno[miRol] === true;
-  const estadoActual = _estadoPresenciaOponente(d, rival);
-
-  // Determinar qué modal debería estar visible AHORA.
-    let target;
-  if(esAbandoner){
-    // El abandonador: solo ve modal cuando ha retomado el tablero.
-    target = retome ? estadoActual : null;
-  } else {
-    // El rival del abandonador: ve victoria la primera vez, luego presencia.
-    // La marca "ya vio victoria" es persistente entre recargas.
-    const yaVioVictory = _victoryYaFueVista(abandono.ts, miRol);
-    target = yaVioVictory ? estadoActual : 'victory';
-  }
-
-  if(target === _modalPostAbandonoMostrado) return true;
-
-  if(target === null){
-    _modalPostAbandonoMostrado = null;
-    UI.cerrarModal();
-    const ovAb = document.getElementById('abandono-oponente-overlay');
-    if(ovAb) ovAb.style.display = 'none';
-    return true;
-  }
-
-  if(target === 'victory'){
-    _modalPostAbandonoMostrado = 'victory';
-    UI.cerrarModal();
-    _mostrarModalOponenteAbandono(abandono.ts, miRol, d);
-    return true;
-  }
-
-  _mostrarModalPresenciaVivo(target);
-  return true;
-}
+}  
 
 function _sincronizarModalPresenciaVivo(d,miRol){
   return _procesarModalPostAbandonoVivo(d,miRol);
