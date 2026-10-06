@@ -2219,7 +2219,7 @@ function _mostrarModalPresenciaVivo(estado){
   UI.modal(datos.titulo,datos.texto,'ACEPTAR',()=>{_modalPresenciaVivo=null;});
 }
 function _procesarModalPostAbandonoVivo(d,miRol){
-  // V1.1 · AUTORIDAD ÚNICA DEL MODAL POST-ABANDONO, con dos hechos separados:
+  // V1.4 · AUTORIDAD ÚNICA DEL MODAL POST-ABANDONO, con dos hechos separados:
   //   1) RESULTADO del abandono (una sola vez por cliente y por abandono).
   //   2) PRESENCIA VIVA del oponente (se actualiza cada vez que cambia).
   const abandono=d&&d.abandono;
@@ -2230,11 +2230,27 @@ function _procesarModalPostAbandonoVivo(d,miRol){
   const pa=d.post_abandono||{};
   const ret=pa.retorno||{};
   const con=d.conexion||{};
+  const infoVisto=pa.retorno_info_visto||{};
   const ambosPresentes=!!(con.X&&con.O&&con.X.online===true&&con.O.online===true&&ret.X===true&&ret.O===true);
   const puedeContinuar=ambosPresentes && d.fin_sesion!==true;
   const clave='original-abandono|'+String(pa.abandono_original_ts||abandono.ts||'')+'|'+miRol;
   const avisoOriginal=pa.abandono_aviso_visto||{};
   const yaMostrado=avisoOriginal[miRol]===true;
+
+  // V1.4 · REGLA ÚNICA DE AVISO AL RETOMAR.
+  // Si este jugador local acaba de retomar (retorno=true, ultimo_retorno_rol
+  // apunta a él) y aún no ha visto el aviso informativo, mostrarlo AHORA con
+  // el estado actual del rival. Sin importar el resto de la máquina.
+  // Esto garantiza simetría: quien retoma, siempre sabe dónde está el otro.
+  if(ret[miRol]===true && infoVisto[miRol]!==true &&
+     pa.ultimo_retorno_rol===miRol && Number(pa.ultimo_retorno_ts||0)>0){
+    void update(_salaRef,{['post_abandono/retorno_info_visto/'+miRol]:true}).catch(()=>{});
+    // También marcamos el aviso original como consumido por este jugador,
+    // porque ya conoce la existencia del abandono.
+    void update(_salaRef,{['post_abandono/abandono_aviso_visto/'+miRol]:true}).catch(()=>{});
+    _mostrarModalPresenciaVivo(estadoActual);
+    return true;
+  }
 
   // (1) PRIMERA APERTURA. Si este cliente nunca ha visto el resultado de este
   // abandono, mostrarlo AHORA. Es el evento más importante y no debe quedar
@@ -2331,7 +2347,7 @@ function _mostrarModalOponenteAbandono(ts, miRol, estadoFuente){
 <button id="btn-ab-salir" style="padding:10px 18px;background:linear-gradient(135deg,#7a0000,#cc2200);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;">ABANDONAR PARTIDA</button>
 </div></div>`;
     document.body.appendChild(ov);
-    document.getElementById('btn-ab-volver')?.addEventListener('click',async()=>{
+        document.getElementById('btn-ab-volver')?.addEventListener('click',async()=>{
       ov.style.display='none';
       _postAbandonoEstadoObservado=_estadoPresenciaOponente(_ultimoD||{},miRol==='X'?'O':'X');
       _modalAbandonoOponenteAbierto=false;
@@ -2342,9 +2358,10 @@ function _mostrarModalOponenteAbandono(ts, miRol, estadoFuente){
       UI.bloquearBtns(['btn-abandonar'],false);
       const b=document.getElementById('btn-abandonar');
       if(b) _instalarSalidaDirectaTrasAbandono();
-      // V65.1: al aceptar el modal no dejamos NUEVA PARTIDA bloqueada por la
-      // propia rutina del modal. Releemos el estado real para saber si ambos
-      // jugadores ya regresaron y están presentes.
+      // V1.4: al aceptar el resultado del abandono, el jugador local debe
+      // saber EXPLÍCITAMENTE dónde está el rival. Si el rival no está en el
+      // tablero (lobby o desconectado), mostramos el modal correspondiente.
+      // Si está presente, no es necesario un segundo modal.
       try{
         const snap=await get(_salaRef);
         if(snap.exists()){
@@ -2352,14 +2369,19 @@ function _mostrarModalOponenteAbandono(ts, miRol, estadoFuente){
           const pa2=dd.post_abandono||{};
           const ret2=pa2.retorno||{};
           const con2=dd.conexion||{};
+          const rivalRol=miRol==='X'?'O':'X';
+          const estadoRival=_estadoPresenciaOponente(dd,rivalRol);
           const ambos2=ret2.X===true&&ret2.O===true&&con2.X&&con2.O&&con2.X.online===true&&con2.O.online===true&&dd.fin_sesion!==true;
           UI.bloquearBtns(['btn-nueva'],!ambos2);
           UI.setMsg(ambos2
             ? 'Ambos jugadores están presentes. Pueden solicitar una Nueva Partida para continuar la sesión.'
             : 'Tu oponente no está presente en el tablero. No es posible iniciar una Nueva Partida hasta que ambos jugadores estén presentes.');
+          // Si el rival no está en el tablero, informarlo con modal.
+          if(estadoRival !== 'presente'){
+            _mostrarModalPresenciaVivo(estadoRival);
+          }
         }
       }catch(e){}
-      // V65.4: el listener de sala ya está activo; no se reinstala aquí.
     });
     document.getElementById('btn-ab-salir')?.addEventListener('click',async()=>{
       ov.style.display='none';
@@ -3565,14 +3587,23 @@ if(!_modoHistoricoDesconexion){
     // reaparezca tras el RETOMAR (asimetría observada entre J1 y J2).
     cambiosRet['post_abandono/abandono_aviso_visto/'+_rol]=true;
   }
-  await update(_salaRef,cambiosRet);
+    await update(_salaRef,cambiosRet);
   _guardarSesion(); _escuchar();
-  // V70 · ENTREGA EXPLÍCITA DEL SNAPSHOT DE RETORNO: no dependemos de que
-  // onValue entregue el primer snapshot en el mismo instante de la transición.
-  // La ruta RETOMAR ya tiene el estado terminal real `d`; lo entregamos una vez
-  // al mismo serializador que gobierna el resto de la máquina.
+  // V1.4 · ENTREGA EXPLÍCITA DEL SNAPSHOT DE RETORNO.
+  // CRÍTICO: releer Firebase DESPUÉS de los updates. En versiones anteriores
+  // encolábamos `d`, que era el snapshot PREVIO a los cambios. Eso hacía que
+  // `abandono_aviso_visto[rol]` siguiera en false en el snapshot procesado y
+  // el modal de victoria por abandono reapareciera tras el RETOMAR, sobre
+  // todo si el jugador no era el abandonador original.
   if(esContinuableTerminal && window.Juego && typeof Juego.encolarEstado==='function'){
-    Juego.encolarEstado(d,_rol);
+    try{
+      const snapRetomar=await get(_salaRef);
+      const dRetomar=snapRetomar.exists()?snapRetomar.val():d;
+      Juego.encolarEstado(dRetomar,_rol);
+    }catch(e){
+      console.warn('[V1.4] no se pudo releer el snapshot tras retomar:',e);
+      Juego.encolarEstado(d,_rol);
+    }
   }
   Firebase._registrarPresencia();
 }else{
