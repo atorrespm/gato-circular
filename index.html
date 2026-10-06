@@ -2172,37 +2172,24 @@ let _modalAbandonoOponenteTipo = null;
 let _modalAbandonoOponenteClave = null;
 let _postAbandonoEstadoObservado = null;
 function _estadoPresenciaOponente(d, rival){
-  const con=(d&&d.conexion)||{};
-  const c=con[rival]||{};
+  // V1.3 · Estado explícito derivado del campo `evento`, sin heurísticas.
+  // Los 3 eventos posibles son:
+  //   'tablero'    → jugador en la sala jugando          → PRESENTE
+  //   'lobby'      → jugador en el lobby, navegador vivo → NO PRESENTE
+  //   'desconexion'→ navegador cerrado de verdad         → DESCONECTADO
+  const c=((d&&d.conexion)||{})[rival]||{};
   const pa=(d&&d.post_abandono)||{};
-  const salida=pa.salida||{};
   const retorno=pa.retorno||{};
 
-  if(c.online===true) return 'presente';
+  if(c.evento==='tablero' && c.online===true) return 'presente';
+  if(c.evento==='lobby')                       return 'no_presente';
+  if(c.evento==='desconexion')                 return 'desconectado';
 
-  // V1.2 · Distinguir "salida voluntaria (lobby)" de "pestaña cerrada".
-  // El onDisconnect de Firebase sobrescribe `evento` con 'desconexion' cuando
-  // el WebSocket se cierra. Al recargar la página (abandonar → reload), el
-  // socket se cae unos milisegundos y ese onDisconnect se dispara, aunque el
-  // jugador NO haya cerrado el navegador: está en el lobby.
-  // Usamos el timestamp del último 'salida' como referencia temporal: si el
-  // 'desconexion' ocurre en la misma ventana corta, lo tratamos como artefacto
-  // del recargar y seguimos en 'no_presente'. Solo aceptamos 'desconectado'
-  // cuando pasó tiempo suficiente (cierre real de pestaña desde el lobby).
-  const salidaTs   = Number(pa.ultimo_salida_ts || pa.abandono_original_ts || 0);
-  const conexionTs = Number(c.ts || 0);
-
-  if(c.evento==='desconexion'){
-    if(salidaTs > 0 && conexionTs > 0){
-      const gapMs = conexionTs - salidaTs;
-      if(gapMs >= 0 && gapMs < 10000) return 'no_presente';
-    }
-    return 'desconectado';
-  }
-
+  // Compatibilidad con registros antiguos que usaron 'salida'.
   if(c.evento==='salida') return 'no_presente';
-  if(salida[rival]===true) return 'no_presente';
-  if(pa.ultimo_salida_rol===rival && salidaTs>0) return 'no_presente';
+
+  // Fallbacks para snapshots sin `evento` (no deberían ocurrir tras V1.3).
+  if(c.online===true) return 'presente';
   if(retorno[rival]===true && pa.ultimo_retorno_rol===rival) return 'no_presente';
   return 'desconectado';
 }
@@ -3564,7 +3551,7 @@ if(!_modoHistoricoDesconexion){
     cambiosRet['post_desconexion/ultimo_retorno_rol']=_rol;
     cambiosRet['post_desconexion/ultimo_retorno_ts']=Date.now();
   }
-  if(esContinuableAbandono && d.post_abandono){
+    if(esContinuableAbandono && d.post_abandono){
     cambiosRet['post_abandono/retorno/'+_rol]=true;
     cambiosRet['post_abandono/retorno_ack/'+_rol]=false;
     cambiosRet['post_abandono/retorno_info_visto/'+_rol]=false;
@@ -3572,6 +3559,11 @@ if(!_modoHistoricoDesconexion){
     cambiosRet['post_abandono/salida_aviso_visto/'+_rol]=false;
     cambiosRet['post_abandono/ultimo_retorno_rol']=_rol;
     cambiosRet['post_abandono/ultimo_retorno_ts']=Date.now();
+    // V1.3 · Quien retoma YA conoce el abandono original: sea porque fue
+    // el abandonador (nunca vio el modal), sea porque lo vio antes de
+    // recargar. Marcarlo evita que el modal de victoria por abandono
+    // reaparezca tras el RETOMAR (asimetría observada entre J1 y J2).
+    cambiosRet['post_abandono/abandono_aviso_visto/'+_rol]=true;
   }
   await update(_salaRef,cambiosRet);
   _guardarSesion(); _escuchar();
@@ -4536,7 +4528,8 @@ async abandonarPartida(){
         ['post_abandono/abandono_aviso_visto/'+_rol]:true,
         nueva_partida_solicitud:null,
         nueva_partida_max_alert:null,
-        ['conexion/'+_rol]:{online:false,ts:serverTimestamp(),evento:'salida'}
+
+        ['conexion/'+_rol]:{online:true,ts:serverTimestamp(),evento:'lobby'}
       });
 
 
@@ -4560,7 +4553,8 @@ async abandonarPartida(){
         ['post_abandono/salida/'+_rol]:true,
         'post_abandono/ultimo_salida_rol':_rol,
         'post_abandono/ultimo_salida_ts':tsSalida,
-        ['conexion/'+_rol]:{online:false,ts:serverTimestamp(),evento:'salida'}
+
+        ['conexion/'+_rol]:{online:true,ts:serverTimestamp(),evento:'lobby'}
       });
       this.salirLocalTrasAbandono();
       return;
@@ -4625,7 +4619,7 @@ async abandonarPartida(){
       },
       historico_inicio_ts:ahoraAbandono,
       nueva_partida_solicitud:null,nueva_partida_max_alert:null,presencia_terminal:null,
-      ['conexion/'+_rol]:{online:false,ts:serverTimestamp(),evento:'salida'}
+      ['conexion/'+_rol]:{online:true,ts:serverTimestamp(),evento:'lobby'}
     });
     // El jugador que abandona sale de su propia sala inmediatamente.
     // No dependemos del listener remoto para desmontar su interfaz local.
@@ -4680,6 +4674,20 @@ async salirLocalTrasAbandono(forzarSalidaHistorica=false){
     // la salida es idempotente y debe poder ejecutarse siempre.
     if(_recargandoTrasAbandono && !forzarSalidaHistorica) return;
     _recargandoTrasAbandono=true;
+
+    // V1.3 · CRÍTICO: cancelar el onDisconnect ANTES de recargar.
+    // Sin esto, el cierre del WebSocket durante el reload dispara el
+    // onDisconnect y sobreescribe el estado de conexión con 'desconexion'
+    // (que significa "cerró el navegador"), cuando en realidad el jugador
+    // solo se fue al lobby y su navegador sigue abierto.
+    // El botón RETOMAR del lobby registrará un onDisconnect nuevo al
+    // recargar la página, que SÍ captura el cierre real del navegador.
+    try{
+      if(_salaRef && _rol){
+        const conexionRefLocal = ref(db,'salas/'+_sala+'/conexion/'+_rol);
+        await onDisconnect(conexionRefLocal).cancel();
+      }
+    }catch(e){ console.warn('[V1.3] no se pudo cancelar onDisconnect antes del reload:',e); }
 
     // V55: la decisión de conservar la sesión histórica se toma con el estado
     // REAL de Firebase, antes de desmontar listeners o ejecutar cualquier reset
