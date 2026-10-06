@@ -1586,7 +1586,6 @@ if(d.terminado===true && !d.fin_por_desconexion && d.abandono && d.post_abandono
 
     // V1.3 · La autoridad única ya procesó el modal post-abandono al entrar
     // en esta rama. Si devolvió true, el snapshot queda consumido aquí.
-    if(_modalAbandonoOponenteAbierto || _modalPresenciaVivo) return;
 
     // 2) UNA SOLA VEZ: una solicitud bilateral ACTUAL tiene prioridad absoluta
     // sobre cualquier aviso secundario de retorno. Esto es deliberado: si un
@@ -2236,6 +2235,24 @@ function _procesarModalPostAbandonoVivo(d, miRol){
   const abandono = d && d.abandono;
   if(!abandono) return false;
 
+  // V1.9 · Si hay una solicitud bilateral de Nueva Partida ACTIVA, esta
+  // tiene prioridad absoluta. Devolvemos false para que aplicarEstado()
+  // continúe su curso y llegue a _revisarNuevaPartida(). También cerramos
+  // cualquier modal de presencia abierto para no tapar el bilateral.
+  const solicitudBil = d.nueva_partida_solicitud;
+  const solicitudActiva = solicitudBil &&
+    solicitudBil.estado !== 'rechazada' &&
+    solicitudBil.estado !== 'cancelada';
+  if(solicitudActiva){
+    if(_modalPostAbandonoMostrado && _modalPostAbandonoMostrado !== 'victory'){
+      _modalPostAbandonoMostrado = null;
+      UI.cerrarModal();
+      const ovAb = document.getElementById('abandono-oponente-overlay');
+      if(ovAb) ovAb.style.display = 'none';
+    }
+    return false;
+  }
+
   const rival = miRol === 'X' ? 'O' : 'X';
   const pa = d.post_abandono || {};
   const esAbandoner = abandono.abandonador === miRol;
@@ -2325,11 +2342,13 @@ function _mostrarModalOponenteAbandono(ts, miRol, estadoFuente){
           const con2=dd.conexion||{};
           const ambos2=ret2.X===true&&ret2.O===true&&con2.X&&con2.O&&con2.X.online===true&&con2.O.online===true&&dd.fin_sesion!==true;
           UI.bloquearBtns(['btn-nueva'],!ambos2);
-          UI.setMsg(ambos2
+                    UI.setMsg(ambos2
             ? 'Ambos jugadores están presentes. Pueden solicitar una Nueva Partida para continuar la sesión.'
             : 'Tu oponente no está presente en el tablero. No es posible iniciar una Nueva Partida hasta que ambos jugadores estén presentes.');
-          const rivalRol=miRol==='X'?'O':'X';
-          const estadoRival=_estadoPresenciaOponente(dd,rivalRol);
+          // V1.9 · Mostrar el modal con el estado ACTUAL del rival.
+          // Sin esto, el jugador se queda en el tablero sin saber dónde está el otro.
+          const rivalRol = miRol === 'X' ? 'O' : 'X';
+          const estadoRival = _estadoPresenciaOponente(dd, rivalRol);
           _mostrarModalPresenciaVivo(estadoRival);
         }
       }catch(e){}
