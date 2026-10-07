@@ -2349,6 +2349,21 @@ function _mostrarModalOponenteAbandono(ts, miRol, estadoFuente){
         _marcarVictoryComoVista(_claveAbandonoOriginal(paLocal, ddLocal.abandono), miRol);
       }catch(e){}
       _modalPostAbandonoMostrado = null;
+
+      // V1.8 ÚLTIMA CIRUGÍA · Entrega inmediata del estado de presencia.
+      // No esperamos al `get()` de Firebase para abrir el modal: el snapshot
+      // que ya está en `_ultimoD` es el estado terminal que acaba de producir
+      // la victoria. En el escenario objetivo, J1 sigue en lobby, por lo que
+      // aquí ya conocemos que J2 debe recibir OPONENTE NO PRESENTE.
+      // Después se relee Firebase para confirmar/actualizar el estado vivo.
+      try{
+        const ddInicial = _ultimoD || {};
+        if(ddInicial.abandono && ddInicial.post_abandono){
+          const rivalInicial = miRol==='X'?'O':'X';
+          _mostrarModalPresenciaVivo(_estadoPresenciaOponente(ddInicial,rivalInicial));
+        }
+      }catch(e){}
+
       UI.bloquearTablero(true);
       UI.bloquearBtns(['btn-sortear','btn-reclamar','btn-confirmar'],true);
       UI.bloquearBtns(['btn-abandonar'],false);
@@ -2368,9 +2383,10 @@ function _mostrarModalOponenteAbandono(ts, miRol, estadoFuente){
           UI.setMsg(ambos2
             ? 'Ambos jugadores están presentes. Pueden solicitar una Nueva Partida para continuar la sesión.'
             : 'Tu oponente no está presente en el tablero. No es posible iniciar una Nueva Partida hasta que ambos jugadores estén presentes.');
-          // V2.0 · Modal con el estado ACTUAL del rival. Forzamos su apertura
-          // limpiando primero el estado del modal y llamando directamente.
-          _modalPostAbandonoMostrado = null;
+          // V1.8 ÚLTIMA CIRUGÍA · Confirmamos el estado actual sin volver a
+          // cerrar/reabrir el modal si el estado no cambió. Si Firebase confirma
+          // NO PRESENTE, el modal ya está visible; si confirma otro estado,
+          // la función viva lo sustituye.
           _mostrarModalPresenciaVivo(estadoRival);
         }
       }catch(e){}
